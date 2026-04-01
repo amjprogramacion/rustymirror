@@ -132,7 +132,7 @@
             <div class="history-badges">
               <span v-if="entry.fastMode" class="history-fast-badge" title="Fast mode (EXIF thumbnail)">
                 <svg viewBox="0 0 7 11" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M4.2 0L0 6h3.2L2.8 11 7 5H3.8L4.2 0z" fill="rgba(0,0,0,0.65)"/>
+                  <path d="M4.2 0L0 6h3.2L2.8 11 7 5H3.8L4.2 0z" fill="#f5c542"/>
                 </svg>
               </span>
               <span class="history-threshold">{{ entry.threshold ?? 90 }}%</span>
@@ -558,13 +558,14 @@ async function pickFolder() {
   justify-content: center;
   width: 16px;
   height: 16px;
-  background: var(--color-accent);
+  background: transparent;
   border-radius: 50%;
 }
 
 .history-fast-badge svg {
   width: 7px;
   height: 11px;
+  transform: rotate(15deg);
 }
 
 /* ── Cache size badge ── */
