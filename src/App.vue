@@ -13,13 +13,31 @@
       <div class="update-toast-body">
         <span class="update-toast-icon">⚡</span>
         <div class="update-toast-text">
-          <span class="update-toast-title">Update available</span>
-          <span class="update-toast-version">{{ latestVersion }} is ready to download</span>
+          <span class="update-toast-title">
+            <template v-if="updateStatus === 'ready'">Update installed</template>
+            <template v-else>Update available</template>
+          </span>
+          <span class="update-toast-version">
+            <template v-if="updateStatus === 'downloading'">
+              Downloading{{ downloadProgress >= 0 ? ` ${downloadProgress}%` : '…' }}
+            </template>
+            <template v-else-if="updateStatus === 'ready'">Restart to apply {{ latestVersion }}</template>
+            <template v-else>{{ latestVersion }} is ready to install</template>
+          </span>
         </div>
       </div>
-      <div class="update-toast-actions">
-        <button class="toast-btn toast-btn-primary" @click="openReleasePage">Download</button>
-        <button class="toast-btn toast-btn-dismiss" @click="showNotification = false">Dismiss</button>
+      <div v-if="updateStatus === 'downloading'" class="update-toast-progress">
+        <div class="update-toast-progress-bar" :style="{ width: downloadProgress >= 0 ? `${downloadProgress}%` : '100%' }" />
+      </div>
+      <div v-else class="update-toast-actions">
+        <template v-if="updateStatus === 'ready'">
+          <button class="toast-btn toast-btn-primary" @click="restartApp">Restart now</button>
+          <button class="toast-btn toast-btn-dismiss" @click="showNotification = false">Later</button>
+        </template>
+        <template v-else>
+          <button class="toast-btn toast-btn-primary" @click="installUpdate">Install</button>
+          <button class="toast-btn toast-btn-dismiss" @click="showNotification = false">Dismiss</button>
+        </template>
       </div>
     </div>
   </Transition>
@@ -32,7 +50,7 @@ import ResultsArea from './components/ResultsArea.vue'
 import Lightbox from './components/Lightbox.vue'
 import { useUpdater } from './composables/useUpdater'
 
-const { autoCheck, showNotification, latestVersion, checkForUpdates, openReleasePage } = useUpdater()
+const { autoCheck, showNotification, latestVersion, status: updateStatus, downloadProgress, checkForUpdates, installUpdate, restartApp } = useUpdater()
 
 onMounted(() => {
   if (autoCheck.value) checkForUpdates({ notify: true })
@@ -98,6 +116,20 @@ onMounted(() => {
 .update-toast-version {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+}
+
+.update-toast-progress {
+  height: 4px;
+  background: var(--bg-card);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.update-toast-progress-bar {
+  height: 100%;
+  background: #f5c542;
+  border-radius: 2px;
+  transition: width 0.3s ease;
 }
 
 .update-toast-actions {

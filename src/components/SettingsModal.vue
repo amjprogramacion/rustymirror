@@ -123,9 +123,11 @@
                 <span v-if="updateStatus === 'idle'">Not checked yet</span>
                 <span v-else-if="updateStatus === 'checking'" class="status-checking">Checking…</span>
                 <span v-else-if="updateStatus === 'up-to-date'" class="status-ok">Up to date</span>
-                <span v-else-if="updateStatus === 'available'" class="status-available">
-                  Update available: {{ latestVersion }}
+                <span v-else-if="updateStatus === 'available'" class="status-available">Update available: {{ latestVersion }}</span>
+                <span v-else-if="updateStatus === 'downloading'" class="status-checking">
+                  Downloading{{ downloadProgress >= 0 ? ` ${downloadProgress}%` : '…' }}
                 </span>
+                <span v-else-if="updateStatus === 'ready'" class="status-ok">Installed — restart to apply</span>
                 <span v-else-if="updateStatus === 'error'" class="status-error">Could not check for updates</span>
               </span>
               <button
@@ -137,8 +139,16 @@
               </button>
             </div>
             <div v-if="updateStatus === 'available'" class="settings-row">
-              <button class="btn-setting btn-setting--update btn-setting--full" @click="openReleasePage">
-                Download {{ latestVersion }}
+              <button class="btn-setting btn-setting--update btn-setting--full" @click="installUpdate">
+                Install {{ latestVersion }}
+              </button>
+            </div>
+            <div v-if="updateStatus === 'downloading'" class="update-progress-wrap">
+              <div class="update-progress-bar" :style="{ width: downloadProgress >= 0 ? `${downloadProgress}%` : '100%' }" />
+            </div>
+            <div v-if="updateStatus === 'ready'" class="settings-row">
+              <button class="btn-setting btn-setting--update btn-setting--full" @click="restartApp">
+                Restart now
               </button>
             </div>
           </section>
@@ -194,7 +204,7 @@ function saveFastMode() {
 }
 
 const { cacheSize, thumbCacheSize, loadCacheSizes, clearCache, clearThumbCache } = useCacheSize()
-const { autoCheck, notifyOnUpdate, status: updateStatus, latestVersion, checkForUpdates, saveAutoCheck, saveNotifyOnUpdate, openReleasePage } = useUpdater()
+const { autoCheck, notifyOnUpdate, status: updateStatus, latestVersion, downloadProgress, checkForUpdates, installUpdate, restartApp, saveAutoCheck, saveNotifyOnUpdate } = useUpdater()
 
 function formatBytes(b) {
   if (b === 0) return '0 B'
@@ -417,6 +427,21 @@ onMounted(loadCacheSizes)
 /* ── Dim label when dependency toggle is off ── */
 .settings-row-label--dim { opacity: 0.35; }
 .toggle--disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── Update progress bar ── */
+.update-progress-wrap {
+  height: 4px;
+  background: var(--bg-card);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: -4px;
+}
+.update-progress-bar {
+  height: 100%;
+  background: #f5c542;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
 
 /* ── Update status ── */
 .update-status { font-size: var(--font-size-sm); }

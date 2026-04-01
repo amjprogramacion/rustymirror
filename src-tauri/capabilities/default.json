@@ -12,6 +12,9 @@
   ],
   "permissions": [
     "core:default",
+    "updater:default",
+    "process:default",
+    "process:allow-relaunch",
     "opener:default",
     "opener:allow-open-url",
     "dialog:default",
