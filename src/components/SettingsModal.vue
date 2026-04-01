@@ -137,8 +137,8 @@
               </button>
             </div>
             <div v-if="updateStatus === 'available'" class="settings-row">
-              <button class="btn-setting btn-setting--update btn-setting--full" @click="openReleasePage()">
-                Download {{ latestVersion }} →
+              <button class="btn-setting btn-setting--update btn-setting--full" @click="openReleasePage">
+                Download {{ latestVersion }}
               </button>
             </div>
           </section>

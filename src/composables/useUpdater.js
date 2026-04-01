@@ -53,7 +53,11 @@ function saveNotifyOnUpdate() {
 
 // ── Open releases page in browser ────────────────────────────────────────────
 async function openReleasePage() {
-  await openUrl(`https://github.com/${GITHUB_REPO}/releases/latest`)
+  try {
+    await openUrl(`https://github.com/${GITHUB_REPO}/releases/latest`)
+  } catch (e) {
+    console.error('[updater] openReleasePage failed:', e)
+  }
 }
 
 export function useUpdater() {
