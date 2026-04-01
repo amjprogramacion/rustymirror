@@ -14,6 +14,10 @@ let pendingUpdate = null
 
 // ── Check for updates ─────────────────────────────────────────────────────────
 async function checkForUpdates({ notify = false } = {}) {
+  if (import.meta.env.DEV) {
+    status.value = 'dev'
+    return
+  }
   status.value = 'checking'
   latestVersion.value = null
   showNotification.value = false

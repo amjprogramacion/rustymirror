@@ -121,6 +121,7 @@
             <div class="settings-row">
               <span class="settings-row-label update-status">
                 <span v-if="updateStatus === 'idle'">Not checked yet</span>
+                <span v-else-if="updateStatus === 'dev'" class="status-checking">Not available in dev mode</span>
                 <span v-else-if="updateStatus === 'checking'" class="status-checking">Checking…</span>
                 <span v-else-if="updateStatus === 'up-to-date'" class="status-ok">Up to date</span>
                 <span v-else-if="updateStatus === 'available'" class="status-available">Update available: {{ latestVersion }}</span>
