@@ -112,6 +112,13 @@
               </label>
             </div>
             <div class="settings-row">
+              <span class="settings-row-label" :class="{ 'settings-row-label--dim': !autoCheck }">Notify if update found</span>
+              <label class="toggle" :class="{ 'toggle--disabled': !autoCheck }">
+                <input type="checkbox" v-model="notifyOnUpdate" @change="saveNotifyOnUpdate" :disabled="!autoCheck" />
+                <span class="toggle-track"><span class="toggle-thumb" /></span>
+              </label>
+            </div>
+            <div class="settings-row">
               <span class="settings-row-label update-status">
                 <span v-if="updateStatus === 'idle'">Not checked yet</span>
                 <span v-else-if="updateStatus === 'checking'" class="status-checking">Checking…</span>
@@ -187,7 +194,7 @@ function saveFastMode() {
 }
 
 const { cacheSize, thumbCacheSize, loadCacheSizes, clearCache, clearThumbCache } = useCacheSize()
-const { autoCheck, status: updateStatus, latestVersion, checkForUpdates, saveAutoCheck, openReleasePage } = useUpdater()
+const { autoCheck, notifyOnUpdate, status: updateStatus, latestVersion, checkForUpdates, saveAutoCheck, saveNotifyOnUpdate, openReleasePage } = useUpdater()
 
 function formatBytes(b) {
   if (b === 0) return '0 B'
@@ -406,6 +413,10 @@ onMounted(loadCacheSizes)
   transform: translateX(14px);
   background: #fff;
 }
+
+/* ── Dim label when dependency toggle is off ── */
+.settings-row-label--dim { opacity: 0.35; }
+.toggle--disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── Update status ── */
 .update-status { font-size: var(--font-size-sm); }
