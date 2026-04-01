@@ -9,9 +9,17 @@
 </template>
 
 <script setup>
+import { onMounted } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import ResultsArea from './components/ResultsArea.vue'
 import Lightbox from './components/Lightbox.vue'
+import { useUpdater } from './composables/useUpdater'
+
+const { autoCheck, checkForUpdates } = useUpdater()
+
+onMounted(() => {
+  if (autoCheck.value) checkForUpdates()
+})
 </script>
 
 <style>

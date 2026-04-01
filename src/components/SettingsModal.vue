@@ -101,6 +101,43 @@
 
           <div class="settings-divider" />
 
+          <!-- Updates -->
+          <section class="settings-section">
+            <p class="settings-label">Updates</p>
+            <div class="settings-row">
+              <span class="settings-row-label">Check on startup</span>
+              <label class="toggle">
+                <input type="checkbox" v-model="autoCheck" @change="saveAutoCheck" />
+                <span class="toggle-track"><span class="toggle-thumb" /></span>
+              </label>
+            </div>
+            <div class="settings-row">
+              <span class="settings-row-label update-status">
+                <span v-if="updateStatus === 'idle'">Not checked yet</span>
+                <span v-else-if="updateStatus === 'checking'" class="status-checking">Checking…</span>
+                <span v-else-if="updateStatus === 'up-to-date'" class="status-ok">Up to date</span>
+                <span v-else-if="updateStatus === 'available'" class="status-available">
+                  Update available: {{ latestVersion }}
+                </span>
+                <span v-else-if="updateStatus === 'error'" class="status-error">Could not check for updates</span>
+              </span>
+              <button
+                class="btn-setting btn-setting--active"
+                :disabled="updateStatus === 'checking'"
+                @click="checkForUpdates()"
+              >
+                {{ updateStatus === 'checking' ? 'Checking…' : 'Check now' }}
+              </button>
+            </div>
+            <div v-if="updateStatus === 'available'" class="settings-row">
+              <button class="btn-setting btn-setting--update btn-setting--full" @click="openReleasePage()">
+                Download {{ latestVersion }} →
+              </button>
+            </div>
+          </section>
+
+          <div class="settings-divider" />
+
           <!-- About -->
           <section class="settings-section">
             <p class="settings-label">About</p>
@@ -121,6 +158,7 @@
 import { ref, onMounted } from 'vue'
 import { useHistoryStore } from '../store/history'
 import { useCacheSize } from '../composables/useCacheSize'
+import { useUpdater } from '../composables/useUpdater'
 
 defineProps({ modelValue: Boolean })
 defineEmits(['update:modelValue'])
@@ -149,6 +187,7 @@ function saveFastMode() {
 }
 
 const { cacheSize, thumbCacheSize, loadCacheSizes, clearCache, clearThumbCache } = useCacheSize()
+const { autoCheck, status: updateStatus, latestVersion, checkForUpdates, saveAutoCheck, openReleasePage } = useUpdater()
 
 function formatBytes(b) {
   if (b === 0) return '0 B'
@@ -367,6 +406,25 @@ onMounted(loadCacheSizes)
   transform: translateX(14px);
   background: #fff;
 }
+
+/* ── Update status ── */
+.update-status { font-size: var(--font-size-sm); }
+.status-checking { color: var(--text-muted); font-style: italic; }
+.status-ok       { color: var(--color-success); }
+.status-available{ color: #f5c542; font-weight: 600; }
+.status-error    { color: var(--color-danger); }
+
+.btn-setting--update {
+  background: #f5c542;
+  color: #1a1200;
+  border-color: #f5c542;
+  font-weight: 600;
+}
+.btn-setting--update:hover {
+  background: #f0b800;
+  border-color: #f0b800;
+}
+.btn-setting--full { width: 100%; justify-content: center; }
 
 /* ── Transition ── */
 .modal-fade-enter-active,
