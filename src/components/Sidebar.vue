@@ -5,7 +5,7 @@
     <div class="sidebar-header">
       <div class="header-brand">
         <span class="app-name">RustyMirror</span>
-        <span class="app-version">v{{ version }}</span>
+        <span class="app-version">v{{ version }}<span v-if="devSuffix" class="app-version-dev">{{ devSuffix }}</span></span>
       </div>
       <button class="btn-settings" @click="showSettings = true" title="Settings">
         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -182,6 +182,7 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useScanStore } from '../store/scan'
 import { useHistoryStore } from '../store/history'
@@ -192,7 +193,17 @@ import SettingsModal from './SettingsModal.vue'
 const store = useScanStore()
 const history = useHistoryStore()
 const { status: updateStatus } = useUpdater()
-const version = ref(import.meta.env.VITE_APP_VERSION ?? '0.1.0')
+const baseVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0'
+const isDev = import.meta.env.DEV
+const version = ref(baseVersion)
+const devSuffix = ref('')
+
+onMounted(async () => {
+  if (isDev) {
+    const isDebug = await invoke('is_debug_build')
+    devSuffix.value = isDebug ? '.dev' : '.dev-release'
+  }
+})
 const showSettings = ref(false)
 
 const filters = [
@@ -324,7 +335,9 @@ async function pickFolder() {
 
 .app-version {
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  color: var(--color-accent);
+  font-weight: 600;
+  letter-spacing: 0.6px;
 }
 
 .btn-settings {

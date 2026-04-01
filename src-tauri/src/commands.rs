@@ -584,3 +584,8 @@ pub fn directory_fingerprint(
 
     Ok(fingerprint)
 }
+
+#[tauri::command]
+pub fn is_debug_build() -> bool {
+    cfg!(debug_assertions)
+}

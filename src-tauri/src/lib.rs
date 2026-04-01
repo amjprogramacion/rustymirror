@@ -34,6 +34,7 @@ pub fn run() {
             commands::get_thumb_cache_size,
             commands::clear_thumb_cache,
             commands::is_network_path,
+            commands::is_debug_build,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
