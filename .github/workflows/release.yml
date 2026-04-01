@@ -62,4 +62,4 @@ jobs:
             See the assets below to download and install this version.
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
+          args: ${{ matrix.args }} --verbose
