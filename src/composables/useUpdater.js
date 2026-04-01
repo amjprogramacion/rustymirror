@@ -13,7 +13,7 @@ const showNotification = ref(false)
 let pendingUpdate = null
 
 // ── Check for updates ─────────────────────────────────────────────────────────
-async function checkForUpdates({ notify = false } = {}) {
+async function checkForUpdates({ notify = false, silent = false } = {}) {
   if (import.meta.env.DEV) {
     status.value = 'dev'
     return
@@ -34,7 +34,7 @@ async function checkForUpdates({ notify = false } = {}) {
     }
   } catch (e) {
     console.error('[updater] check failed:', e)
-    status.value = 'error'
+    status.value = silent ? 'idle' : 'error'
   }
 }
 

@@ -1,6 +1,6 @@
 {
   "productName": "RustyMirror",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "identifier": "RustyMirror",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -33,7 +33,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3M0EzMEUzQjlCQzMwMzMKUldRek1MeTU0ekE2OTNKZnlFRk95Q0VOT1pQbzJlWDdveHU0SkRLR3RUaFNyR0Z1dldJSHNRL0YK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIyNzEyQTNERjYyM0JGOEQKUldTTnZ5UDJRU3B4c2pQcER5cUZEbzRzR05QYStzMlBOKy9kcEUyMnZPQlVRSmltYklqUlFUOGcK",
       "endpoints": [
         "https://github.com/amjprogramacion/rustymirror/releases/latest/download/latest.json"
       ]
