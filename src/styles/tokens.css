@@ -1,0 +1,52 @@
+:root {
+  /* ── Brand ── */
+  --color-accent:        #4a90d9;
+  --color-accent-hover:  #3a7bc8;
+  --color-danger:        #d9534f;
+  --color-danger-hover:  #c9302c;
+  --color-success:       #4a9e6b;
+  --color-success-hover: #3a8a5b;
+
+  /* ── Sidebar ── */
+  --sidebar-width:       240px;
+  --sidebar-bg:          #1e1e1e;
+  --sidebar-border:      #2e2e2e;
+
+  /* ── Surface ── */
+  --bg-primary:          #141414;
+  --bg-secondary:        #1e1e1e;
+  --bg-card:             #252525;
+  --bg-card-hover:       #2c2c2c;
+  --bg-card-selected:    #1e3a5f;
+
+  /* ── Text ── */
+  --text-primary:        #e8e8e8;
+  --text-secondary:      #999;
+  --text-muted:          #555;
+
+  /* ── Border ── */
+  --border-color:        #2e2e2e;
+  --border-radius-sm:    4px;
+  --border-radius-md:    8px;
+  --border-radius-lg:    12px;
+  --border-radius-pill:  999px;
+
+  /* ── Spacing ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* ── Typography ── */
+  --font-sans:   'Inter', system-ui, -apple-system, sans-serif;
+  --font-size-xs:  11px;
+  --font-size-sm:  12px;
+  --font-size-md:  14px;
+  --font-size-lg:  16px;
+  --font-size-xl:  20px;
+
+  /* ── Transitions ── */
+  --transition: 150ms ease;
+}
