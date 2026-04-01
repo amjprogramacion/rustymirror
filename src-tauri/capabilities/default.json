@@ -14,7 +14,7 @@
     "core:default",
     "updater:default",
     "process:default",
-    "process:allow-relaunch",
+    "process:allow-restart",
     "opener:default",
     "opener:allow-open-url",
     "dialog:default",
