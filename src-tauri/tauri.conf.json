@@ -1,6 +1,5 @@
 {
   "productName": "RustyMirror",
-  "version": "1.2.2",
   "version": "1.2.3",
   "identifier": "RustyMirror",
   "build": {
@@ -34,8 +33,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "targets": [
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -45,7 +43,11 @@
     ],
     "resources": [
       "resources/*"
-    ]
     ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   }
 }
