@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { check } from '@tauri-apps/plugin-updater'
-import { restart } from '@tauri-apps/plugin-process'
+import { relaunch } from '@tauri-apps/plugin-process'
 
 // ── Shared state ──────────────────────────────────────────────────────────────
 const autoCheck        = ref(localStorage.getItem('rustymirror_auto_update') !== 'false')
@@ -61,7 +61,7 @@ async function installUpdate() {
 
 // ── Restart app ───────────────────────────────────────────────────────────────
 async function restartApp() {
-  await restart()
+  await relaunch()
 }
 
 // ── Persist preferences ───────────────────────────────────────────────────────
