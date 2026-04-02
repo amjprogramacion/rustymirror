@@ -129,7 +129,7 @@
                   Downloading{{ downloadProgress >= 0 ? ` ${downloadProgress}%` : '…' }}
                 </span>
                 <span v-else-if="updateStatus === 'ready'" class="status-ok">Installed — restart to apply</span>
-                <span v-else-if="updateStatus === 'error'" class="status-error" :title="errorMessage">Error — see console for details</span>
+                <span v-else-if="updateStatus === 'error'" class="status-error">Error</span>
               </span>
               <button
                 class="btn-setting btn-setting--active"
@@ -138,6 +138,9 @@
               >
                 {{ updateStatus === 'checking' ? 'Checking…' : 'Check now' }}
               </button>
+            </div>
+            <div v-if="updateStatus === 'error' && errorMessage" class="update-error-detail">
+              {{ errorMessage }}
             </div>
             <div v-if="updateStatus === 'available'" class="settings-row">
               <button class="btn-setting btn-setting--update btn-setting--full" @click="installUpdate">
@@ -450,6 +453,17 @@ onMounted(loadCacheSizes)
 .status-ok       { color: var(--color-success); }
 .status-available{ color: #f5c542; font-weight: 600; }
 .status-error    { color: var(--color-danger); }
+
+.update-error-detail {
+  font-size: 11px;
+  color: var(--color-danger);
+  background: rgba(220, 53, 69, 0.08);
+  border: 1px solid rgba(220, 53, 69, 0.25);
+  border-radius: var(--border-radius-sm);
+  padding: 6px 10px;
+  word-break: break-all;
+  line-height: 1.5;
+}
 
 .btn-setting--update {
   background: #f5c542;
