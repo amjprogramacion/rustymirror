@@ -129,7 +129,7 @@
                   Downloading{{ downloadProgress >= 0 ? ` ${downloadProgress}%` : '…' }}
                 </span>
                 <span v-else-if="updateStatus === 'ready'" class="status-ok">Installed — restart to apply</span>
-                <span v-else-if="updateStatus === 'error'" class="status-error">Could not check for updates</span>
+                <span v-else-if="updateStatus === 'error'" class="status-error" :title="errorMessage">Error — see console for details</span>
               </span>
               <button
                 class="btn-setting btn-setting--active"
@@ -205,7 +205,7 @@ function saveFastMode() {
 }
 
 const { cacheSize, thumbCacheSize, loadCacheSizes, clearCache, clearThumbCache } = useCacheSize()
-const { autoCheck, notifyOnUpdate, status: updateStatus, latestVersion, downloadProgress, checkForUpdates, installUpdate, restartApp, saveAutoCheck, saveNotifyOnUpdate } = useUpdater()
+const { autoCheck, notifyOnUpdate, status: updateStatus, latestVersion, downloadProgress, errorMessage, checkForUpdates, installUpdate, restartApp, saveAutoCheck, saveNotifyOnUpdate } = useUpdater()
 
 function formatBytes(b) {
   if (b === 0) return '0 B'
