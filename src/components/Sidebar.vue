@@ -494,7 +494,7 @@ async function pickFolder() {
 }
 
 .threshold-hint {
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--text-muted);
   text-align: center;
 }
