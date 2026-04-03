@@ -1,5 +1,5 @@
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" :style="{ width: sidebarWidth + 'px', minWidth: sidebarWidth + 'px' }">
 
     <!-- Branding -->
     <div class="sidebar-header">
@@ -177,11 +177,14 @@
       </button>
     </section>
 
+    <!-- Resize handle -->
+    <div class="sidebar-resizer" @mousedown.prevent="startResize" />
+
   </aside>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useScanStore } from '../store/scan'
@@ -294,12 +297,56 @@ async function pickFolder() {
   const path = await open({ directory: true, multiple: false })
   if (path) store.addFolder(path)
 }
+
+// ── Sidebar resize ────────────────────────────────────────────────────────────
+const SIDEBAR_MIN = 200
+const SIDEBAR_MAX = 420
+const SIDEBAR_DEFAULT = 240
+
+const sidebarWidth = ref(
+  parseInt(localStorage.getItem('rustymirror_sidebar_width') ?? SIDEBAR_DEFAULT, 10)
+)
+
+let resizing = false
+let startX = 0
+let startWidth = 0
+
+function startResize(e) {
+  resizing = true
+  startX = e.clientX
+  startWidth = sidebarWidth.value
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+}
+
+function onMouseMove(e) {
+  if (!resizing) return
+  const delta = e.clientX - startX
+  sidebarWidth.value = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + delta))
+}
+
+function onMouseUp() {
+  if (!resizing) return
+  resizing = false
+  document.body.style.cursor = ''
+  document.body.style.userSelect = ''
+  localStorage.setItem('rustymirror_sidebar_width', String(sidebarWidth.value))
+}
+
+onMounted(() => {
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('mousemove', onMouseMove)
+  document.removeEventListener('mouseup', onMouseUp)
+})
 </script>
 
 <style scoped>
 .sidebar {
-  width: var(--sidebar-width);
-  min-width: var(--sidebar-width);
+  position: relative;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   display: flex;
@@ -307,6 +354,22 @@ async function pickFolder() {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* ── Resize handle ── */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+  background: var(--color-accent);
+  opacity: 0.4;
 }
 
 /* ── Branding ── */
