@@ -1,0 +1,23 @@
+# Normalize line endings to LF for all text files
+* text=auto eol=lf
+
+# Explicitly LF for source files
+*.rs text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.vue text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Binaries — no conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.exe binary
+*.dll binary
