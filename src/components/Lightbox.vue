@@ -150,6 +150,8 @@ function onOverlayClick(e) {
 // Keyboard navigation
 function onKeydown(e) {
   if (!store.lightbox) return
+  const tag = document.activeElement?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); store.lightboxNext() }
   if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   { e.preventDefault(); store.lightboxPrev() }
   if (e.key === 'Escape')                               { store.closeLightbox() }

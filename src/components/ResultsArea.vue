@@ -155,6 +155,8 @@ function onWindowKeydown(e) {
   if (showConfirm.value) return
   const arrows = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']
   if (!arrows.includes(e.key)) return
+  const tag = document.activeElement?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
   const active = document.activeElement
   if (!active?.dataset?.cardPath) {
     e.preventDefault()
