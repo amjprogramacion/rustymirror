@@ -608,6 +608,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eb8a2a1cd12ab0d987a5d5e825195d372001a4094a0376319d5a0ad71c1ba0d"
+dependencies = [
+ "crc-catalog",
+]
+
+[[package]]
+name = "crc-catalog"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19d374276b40fb8bbdee95aef7c7fa6b5316ec764510eb64b8dd0e2ed0d7e7f5"
+
+[[package]]
 name = "crc32fast"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2252,6 +2267,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
+name = "little_exif"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8201487fa998c3bcac297c50b8a5daceef9f41b66f67381403e1e3c36b1813c1"
+dependencies = [
+ "crc",
+ "miniz_oxide",
+ "paste",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2757,6 +2783,12 @@ dependencies = [
  "smallvec",
  "windows-link 0.2.1",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pathdiff"
@@ -3596,7 +3628,7 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
 name = "rustymirror"
-version = "1.2.13"
+version = "1.2.14"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3606,6 +3638,7 @@ dependencies = [
  "image",
  "image_hasher",
  "kamadak-exif",
+ "little_exif",
  "open",
  "rayon",
  "rusqlite",

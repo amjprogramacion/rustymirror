@@ -6,6 +6,7 @@
     </main>
   </div>
   <Lightbox />
+  <MetadataPanel />
 
   <!-- Update toast -->
   <Transition name="toast-slide">
@@ -48,6 +49,7 @@ import { onMounted } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import ResultsArea from './components/ResultsArea.vue'
 import Lightbox from './components/Lightbox.vue'
+import MetadataPanel from './components/MetadataPanel.vue'
 import { useUpdater } from './composables/useUpdater'
 
 const { autoCheck, showNotification, latestVersion, status: updateStatus, downloadProgress, checkForUpdates, installUpdate, restartApp } = useUpdater()

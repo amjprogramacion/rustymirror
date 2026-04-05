@@ -589,3 +589,41 @@ pub fn directory_fingerprint(
 pub fn is_debug_build() -> bool {
     cfg!(debug_assertions)
 }
+
+/// Reads all EXIF and file metadata for a single image.
+#[tauri::command]
+pub async fn read_metadata(path: String) -> Result<crate::types::ImageMetadata, String> {
+    tokio::task::spawn_blocking(move || {
+        crate::metadata::read_metadata(std::path::Path::new(&path))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Writes editable EXIF fields back to an image file and invalidates the
+/// SQLite cache entry so the next scan re-reads the updated metadata.
+#[tauri::command]
+pub async fn write_metadata(
+    path: String,
+    update: crate::types::MetadataUpdate,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let path_clone = path.clone();
+    tokio::task::spawn_blocking(move || {
+        crate::metadata::write_metadata(std::path::Path::new(&path_clone), &update)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    // Invalidate the SQLite cache entry so the next scan picks up the new date
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        if let Ok(cache) = crate::cache::Cache::open(&data_dir) {
+            cache.evict_deleted(&[path]);
+        }
+    }
+
+    Ok(())
+}
