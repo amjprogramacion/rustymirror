@@ -2,6 +2,7 @@ mod cache;
 mod commands;
 mod hasher;
 mod heic;
+mod metadata;
 mod scanner;
 mod types;
 
@@ -37,6 +38,8 @@ pub fn run() {
             commands::clear_thumb_cache,
             commands::is_network_path,
             commands::is_debug_build,
+            commands::read_metadata,
+            commands::write_metadata,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

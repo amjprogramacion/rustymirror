@@ -30,6 +30,56 @@ pub struct DuplicateGroup {
     pub similarity: Option<u8>,
 }
 
+/// Full EXIF + file metadata for the metadata panel
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageMetadata {
+    // File info
+    pub file_size: u64,
+    pub width: u32,
+    pub height: u32,
+    pub format: String,
+    // Camera
+    pub make: Option<String>,
+    pub model: Option<String>,
+    pub software: Option<String>,
+    // Dates
+    pub date_time_original: Option<String>,
+    pub date_time: Option<String>,
+    // Exposure
+    pub exposure_time: Option<String>,
+    pub f_number: Option<String>,
+    pub iso_speed: Option<u32>,
+    pub focal_length: Option<String>,
+    pub flash: Option<String>,
+    pub white_balance: Option<String>,
+    pub exposure_mode: Option<String>,
+    pub exposure_program: Option<String>,
+    pub metering_mode: Option<String>,
+    // Lens
+    pub lens_make: Option<String>,
+    pub lens_model: Option<String>,
+    // GPS
+    pub gps_latitude: Option<f64>,
+    pub gps_longitude: Option<f64>,
+    pub gps_altitude: Option<f64>,
+    // Editable fields
+    pub image_description: Option<String>,
+    pub artist: Option<String>,
+    pub copyright: Option<String>,
+    pub orientation: Option<u16>,
+}
+
+/// Fields the user can modify in the metadata panel
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetadataUpdate {
+    pub date_time_original: Option<String>,
+    pub image_description: Option<String>,
+    pub artist: Option<String>,
+    pub copyright: Option<String>,
+}
+
 /// Emitted during phase 1 (file hashing)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

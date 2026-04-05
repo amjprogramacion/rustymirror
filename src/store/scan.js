@@ -25,6 +25,8 @@ export const useScanStore = defineStore('scan', {
     networkFolders: new Set(),
     lightbox: null,
     directSrcCache: {},
+    // Metadata panel: null when closed, { entry, metadata, loading, saving, error, dirty } when open
+    metadataPanel: null,
     heicThumbGenerated: 0,
     _thumbQueue: [],
     _thumbActive: 0,
@@ -311,6 +313,31 @@ export const useScanStore = defineStore('scan', {
     },
     closeLightbox() {
       this.lightbox = null
+    },
+
+    async openMetadataPanel(entry) {
+      this.metadataPanel = { entry, metadata: null, loading: true, saving: false, error: null, dirty: false }
+      try {
+        const metadata = await invoke('read_metadata', { path: entry.path })
+        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, metadata, loading: false }
+      } catch (e) {
+        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, loading: false, error: String(e) }
+      }
+    },
+    closeMetadataPanel() {
+      this.metadataPanel = null
+    },
+    async saveMetadata(update) {
+      if (!this.metadataPanel) return
+      this.metadataPanel = { ...this.metadataPanel, saving: true, error: null }
+      try {
+        await invoke('write_metadata', { path: this.metadataPanel.entry.path, update })
+        // Refresh metadata from disk after write
+        const metadata = await invoke('read_metadata', { path: this.metadataPanel.entry.path })
+        this.metadataPanel = { ...this.metadataPanel, metadata, saving: false, dirty: false }
+      } catch (e) {
+        this.metadataPanel = { ...this.metadataPanel, saving: false, error: String(e) }
+      }
     },
     lightboxNext() {
       if (!this.lightbox) return

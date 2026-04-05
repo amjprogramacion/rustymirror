@@ -56,8 +56,9 @@
           <p class="meta-detail">{{ formatDate(entry.modified) }}</p>
           <div class="meta-actions">
             <div class="btn-group">
-              <button class="btn-open" @click.stop="openFile(entry.path)" title="Open file">Open</button>
               <button class="btn-open btn-explore" @click.stop="openFolder(entry.path)" title="Show in folder">Explore</button>
+              <button class="btn-open" @click.stop="openFile(entry.path)" title="Open file">Open</button>
+              <button class="btn-open btn-info" @click.stop="store.openMetadataPanel(entry)" title="View metadata">Info</button>
             </div>
             <label v-if="!store.multiSelect" class="card-checkbox" @click.stop>
               <input
@@ -250,7 +251,7 @@ function kindLabel(kind) {
 }
 
 .card {
-  width: 160px;
+  width: 190px;
   border-radius: var(--border-radius-md);
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -319,7 +320,7 @@ function kindLabel(kind) {
 .thumb-wrap {
   position: relative;
   width: 100%;
-  height: 120px;
+  height: 150px;
   background: #111;
   overflow: hidden;
 }
@@ -374,7 +375,7 @@ function kindLabel(kind) {
 
 .btn-open {
   margin-top: 0;
-  padding: 2px 8px;
+  padding: 2px 6px;
   font-size: 10px; font-weight: 500;
   background: var(--bg-secondary);
   color: var(--text-secondary);
@@ -385,4 +386,5 @@ function kindLabel(kind) {
 }
 .btn-open:hover       { background: var(--color-accent);  color: #fff; border-color: var(--color-accent);  }
 .btn-explore:hover    { background: var(--color-success); color: #fff; border-color: var(--color-success); }
+.btn-info:hover       { background: #7c3aed; color: #fff; border-color: #7c3aed; }
 </style>
