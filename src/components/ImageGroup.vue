@@ -58,7 +58,7 @@
             <div class="btn-group">
               <button class="btn-open btn-explore" @click.stop="openFolder(entry.path)" title="Show in folder">Explore</button>
               <button class="btn-open" @click.stop="openFile(entry.path)" title="Open file">Open</button>
-              <button class="btn-open btn-info" @click.stop="store.openMetadataPanel(entry)" title="View metadata">Info</button>
+              <button class="btn-open btn-info" @click.stop="store.openMetadataPanel(entry)" title="View metadata">EXIF</button>
             </div>
             <label v-if="!store.multiSelect" class="card-checkbox" @click.stop>
               <input
