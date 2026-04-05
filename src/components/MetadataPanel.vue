@@ -43,15 +43,14 @@
       </div>
 
       <!-- Metadata content -->
-      <div v-else-if="meta" class="mp-content">
+      <div v-else-if="meta" class="mp-content" :style="panel.dirty || panel.saving ? 'padding-bottom: 64px' : ''">
 
         <!-- File + Camera side by side -->
         <div class="mp-pair">
           <div class="mp-section mp-section--half">
             <p class="mp-section-title">File</p>
             <div class="mp-rows">
-              <div class="mp-row"><span class="mp-label">Format</span><span class="mp-value">{{ meta.format }}</span></div>
-              <div class="mp-row"><span class="mp-label">Size</span><span class="mp-value">{{ formatSize(meta.fileSize) }}</span></div>
+<div class="mp-row"><span class="mp-label">Size</span><span class="mp-value">{{ formatSize(meta.fileSize) }}</span></div>
               <div class="mp-row" v-if="meta.width > 0"><span class="mp-label">Dims</span><span class="mp-value">{{ meta.width }}×{{ meta.height }}</span></div>
             </div>
           </div>
@@ -76,10 +75,9 @@
 
         <!-- Date -->
         <div class="mp-section">
-          <p class="mp-section-title">Date</p>
+          <p class="mp-section-title">Date taken</p>
           <div class="mp-edit-rows">
             <label class="mp-edit-row">
-              <span class="mp-label">Date taken</span>
               <input
                 class="mp-input"
                 type="datetime-local"
@@ -92,9 +90,9 @@
         </div>
 
         <!-- Location -->
-        <div class="mp-section" v-if="meta.gpsLatitude != null && meta.gpsLongitude != null">
+        <div class="mp-section">
           <p class="mp-section-title">Location</p>
-          <div class="mp-rows">
+          <div class="mp-rows" v-if="hasGpsPreview">
             <div class="mp-row" v-if="locationLoading">
               <span class="mp-label">Location</span>
               <span class="mp-value mp-value--muted">Fetching…</span>
@@ -103,12 +101,53 @@
               <span class="mp-label">Location</span>
               <span class="mp-value">{{ locationName }}</span>
             </div>
-            <div class="mp-row">
-              <span class="mp-label">Coordinates</span>
-              <span class="mp-value">{{ formatGps(meta.gpsLatitude, meta.gpsLongitude) }}</span>
-            </div>
           </div>
-          <MapPreview :lat="meta.gpsLatitude" :lon="meta.gpsLongitude" />
+          <!-- Combined input: only when no GPS exists yet -->
+          <div v-if="showCombinedInput" class="mp-edit-rows" style="margin-bottom: 8px">
+            <label class="mp-edit-row">
+              <input
+                class="mp-input"
+                type="text"
+                v-model="gpsCombinedRaw"
+                @input="onCombinedInput"
+                :class="{ 'mp-input--error': gpsCombinedError }"
+                placeholder="39°48'43.1&quot;N 0°25'29.1&quot;W"
+              />
+            </label>
+            <p v-if="gpsCombinedError" class="mp-gps-error">{{ gpsCombinedError }}</p>
+          </div>
+
+          <!-- Split inputs: when GPS already exists or has been parsed -->
+          <div v-else class="mp-gps-row" style="margin-top: 10px; margin-bottom: 8px">
+            <label class="mp-edit-row">
+              <span class="mp-label mp-gps-label">Latitude</span>
+              <input
+                class="mp-input"
+                type="text"
+                v-model="edit.gpsLatitudeRaw"
+                @input="onGpsInput('lat')"
+                @blur="normalizeGpsInput('lat')"
+                :class="{ 'mp-input--error': gpsLatError }"
+                placeholder="40.71600 or 40°42'57.6&quot;N"
+              />
+            </label>
+            <label class="mp-edit-row">
+              <span class="mp-label mp-gps-label">Longitude</span>
+              <input
+                class="mp-input"
+                type="text"
+                v-model="edit.gpsLongitudeRaw"
+                @input="onGpsInput('lon')"
+                @blur="normalizeGpsInput('lon')"
+                :class="{ 'mp-input--error': gpsLonError }"
+                placeholder="-74.00600 or 0°25'29.1&quot;W"
+              />
+            </label>
+            <p v-if="gpsLatError || gpsLonError" class="mp-gps-error">
+              {{ gpsLatError || gpsLonError }}
+            </p>
+          </div>
+          <MapPreview v-if="hasGpsPreview" :lat="previewLat" :lon="previewLon" />
         </div>
 
         <!-- Exposure -->
@@ -189,22 +228,26 @@
             </label>
           </div>
 
-          <p v-if="saveError" class="mp-save-error">{{ saveError }}</p>
-
-          <div class="mp-actions" v-if="panel.dirty || panel.saving">
-            <button class="mp-btn mp-btn-ghost" @click="resetEdit" :disabled="panel.saving">Reset</button>
-            <button class="mp-btn mp-btn-primary" @click="save" :disabled="panel.saving">
-              <span v-if="panel.saving">Saving…</span>
-              <span v-else>Save changes</span>
-            </button>
-          </div>
-
           <p class="mp-save-notice" v-if="!panel.dirty && !panel.saving && !saveError">
             Changes are written directly to the file's EXIF data.
           </p>
         </div>
 
       </div>
+
+      <!-- Floating action bar -->
+      <Transition name="mp-bar">
+        <div class="mp-float-bar" v-if="panel.dirty || panel.saving">
+          <p v-if="saveError" class="mp-save-error">{{ saveError }}</p>
+          <div class="mp-actions">
+            <button class="mp-btn mp-btn-ghost" @click="resetEdit" :disabled="panel.saving">Reset</button>
+            <button class="mp-btn mp-btn-primary" @click="save" :disabled="panel.saving">
+              <span v-if="panel.saving">Saving…</span>
+              <span v-else>Save changes</span>
+            </button>
+          </div>
+        </div>
+      </Transition>
 
     </div>
   </Transition>
@@ -219,7 +262,7 @@ import MapPreview from './MapPreview.vue'
 const store = useScanStore()
 const HEIC  = new Set(['heic', 'heif'])
 
-const MIN_WIDTH = 300
+const MIN_WIDTH = 450
 const panelWidth = ref(MIN_WIDTH)
 
 const MIN_THUMB_HEIGHT = 200
@@ -271,32 +314,88 @@ const saveError = ref(null)
 const locationName    = ref(null)
 const locationLoading = ref(false)
 
-watch(
-  () => [meta.value?.gpsLatitude, meta.value?.gpsLongitude],
-  async ([lat, lon]) => {
-    if (lat == null || lon == null) { locationName.value = null; return }
-    locationLoading.value = true
-    locationName.value = null
-    try {
-      const res  = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
-        { headers: { 'User-Agent': 'RustyMirror/1.0 (desktop app)' } }
-      )
-      const data = await res.json()
-      const addr = data.address ?? {}
-      const city = addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.county ?? null
-      locationName.value = [city, addr.country].filter(Boolean).join(', ') || null
-    } catch {
-      locationName.value = null
-    } finally {
-      locationLoading.value = false
-    }
-  },
-  { immediate: true }
-)
+// ── GPS parsing ───────────────────────────────────────────────────────────────
+// Accepts decimal ("40.71600", "-74.006") or DMS ("39°48'43.1"N", "0°25'29.1"W")
+// Returns decimal degrees, or null if unparseable.
+function parseGpsInput(raw) {
+  if (!raw || !raw.trim()) return null
+  const s = raw.trim()
+
+  // Plain decimal: optional sign, digits, optional decimal part
+  if (/^-?\d+(\.\d+)?$/.test(s)) return parseFloat(s)
+
+  // DMS pattern: degrees° [minutes' [seconds"]] [NSEW]
+  const dms = s.match(
+    /^(\d+(?:\.\d+)?)\s*[°d]\s*(?:(\d+(?:\.\d+)?)\s*['′]\s*(?:(\d+(?:\.\d+)?)\s*["″]\s*)?)?([NSEWnsew])?$/
+  )
+  if (dms) {
+    const deg = parseFloat(dms[1])
+    const min = dms[2] ? parseFloat(dms[2]) : 0
+    const sec = dms[3] ? parseFloat(dms[3]) : 0
+    const dir = (dms[4] || '').toUpperCase()
+    let decimal = deg + min / 60 + sec / 3600
+    if (dir === 'S' || dir === 'W') decimal = -decimal
+    return decimal
+  }
+
+  return null
+}
+
+// Parse a combined string like "39°48'43.1"N 0°25'29.1"W" → { lat, lon } or null.
+function parseCombinedGps(raw) {
+  if (!raw || !raw.trim()) return null
+  const pattern = /(\d+(?:\.\d+)?)\s*[°d]\s*(?:(\d+(?:\.\d+)?)\s*['′]\s*(?:(\d+(?:\.\d+)?)\s*["″]\s*)?)?([NSEWnsew])/g
+  const matches = [...raw.matchAll(pattern)]
+  if (matches.length < 2) return null
+
+  let lat = null, lon = null
+  for (const m of matches) {
+    const deg = parseFloat(m[1])
+    const min = m[2] ? parseFloat(m[2]) : 0
+    const sec = m[3] ? parseFloat(m[3]) : 0
+    const dir = m[4].toUpperCase()
+    let dec = deg + min / 60 + sec / 3600
+    if (dir === 'S' || dir === 'W') dec = -dec
+    if ('NS'.includes(dir)) lat = dec
+    else lon = dec
+  }
+
+  return (lat !== null && lon !== null) ? { lat, lon } : null
+}
 
 // Editable fields — synced from meta when panel opens
-const edit = ref({ dateTimeOriginal: null, imageDescription: '', artist: '', copyright: '' })
+const edit = ref({
+  dateTimeOriginal: null,
+  imageDescription: '',
+  artist: '',
+  copyright: '',
+  gpsLatitudeRaw: '',
+  gpsLongitudeRaw: '',
+})
+
+const gpsLatError     = ref(null)
+const gpsLonError     = ref(null)
+const gpsCombinedRaw  = ref('')
+const gpsCombinedError = ref(null)
+
+// Show combined single input only when the image has no GPS and the user hasn't
+// filled either individual field yet.
+const showCombinedInput = computed(() =>
+  meta.value?.gpsLatitude == null &&
+  !edit.value.gpsLatitudeRaw &&
+  !edit.value.gpsLongitudeRaw
+)
+
+function onCombinedInput() {
+  gpsCombinedError.value = null
+  const result = parseCombinedGps(gpsCombinedRaw.value)
+  if (result) {
+    edit.value.gpsLatitudeRaw  = result.lat.toFixed(6)
+    edit.value.gpsLongitudeRaw = result.lon.toFixed(6)
+    gpsCombinedRaw.value = ''
+    panel.value.dirty = true
+  }
+}
 
 function resetEdit() {
   if (!meta.value) return
@@ -305,21 +404,107 @@ function resetEdit() {
     imageDescription: meta.value.imageDescription ?? '',
     artist:           meta.value.artist ?? '',
     copyright:        meta.value.copyright ?? '',
+    gpsLatitudeRaw:   meta.value.gpsLatitude != null ? meta.value.gpsLatitude.toFixed(6) : '',
+    gpsLongitudeRaw:  meta.value.gpsLongitude != null ? meta.value.gpsLongitude.toFixed(6) : '',
   }
+  gpsLatError.value     = null
+  gpsLonError.value     = null
+  gpsCombinedRaw.value  = ''
+  gpsCombinedError.value = null
   if (panel.value) panel.value.dirty = false
   saveError.value = null
+}
+
+function onGpsInput(field) {
+  if (field === 'lat') gpsLatError.value = null
+  else gpsLonError.value = null
+  panel.value.dirty = true
+}
+
+// On blur: parse & normalize the raw input to decimal if it's DMS
+function normalizeGpsInput(field) {
+  const key = field === 'lat' ? 'gpsLatitudeRaw' : 'gpsLongitudeRaw'
+  const errKey = field === 'lat' ? gpsLatError : gpsLonError
+  const raw = edit.value[key]
+  if (!raw || !raw.trim()) return
+  const val = parseGpsInput(raw)
+  if (val === null) {
+    errKey.value = `Invalid ${field === 'lat' ? 'latitude' : 'longitude'}`
+    return
+  }
+  errKey.value = null
+  // Normalize to decimal string (round to 6 decimal places)
+  edit.value[key] = val.toFixed(6)
 }
 
 // Reset editable fields whenever a new panel opens or metadata loads
 watch(meta, (m) => { if (m) resetEdit() }, { immediate: true })
 
+// Parsed numeric GPS from raw inputs
+const parsedLat = computed(() => parseGpsInput(edit.value.gpsLatitudeRaw))
+const parsedLon = computed(() => parseGpsInput(edit.value.gpsLongitudeRaw))
+
+// Preview coordinates: parsed edit values, or fall back to meta
+const previewLat = computed(() => parsedLat.value ?? meta.value?.gpsLatitude ?? null)
+const previewLon = computed(() => parsedLon.value ?? meta.value?.gpsLongitude ?? null)
+const hasGpsPreview = computed(() => previewLat.value != null && previewLon.value != null)
+
+// Reverse geocoding — debounced so Nominatim isn't called on every keystroke
+let geocodeTimer = null
+watch(
+  () => [previewLat.value, previewLon.value],
+  ([lat, lon]) => {
+    clearTimeout(geocodeTimer)
+    if (lat == null || lon == null) { locationName.value = null; return }
+    locationLoading.value = true
+    geocodeTimer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+          { headers: { 'User-Agent': 'RustyMirror/1.0 (desktop app)' } }
+        )
+        const data = await res.json()
+        const addr = data.address ?? {}
+        const city = addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.county ?? null
+        locationName.value = [city, addr.country].filter(Boolean).join(', ') || null
+      } catch {
+        locationName.value = null
+      } finally {
+        locationLoading.value = false
+      }
+    }, 600)
+  },
+  { immediate: true }
+)
+
 async function save() {
   saveError.value = null
+
+  // Validate GPS before saving
+  const rawLat = edit.value.gpsLatitudeRaw.trim()
+  const rawLon = edit.value.gpsLongitudeRaw.trim()
+  const hasRawGps = rawLat !== '' || rawLon !== ''
+
+  if (hasRawGps) {
+    const lat = parseGpsInput(rawLat)
+    const lon = parseGpsInput(rawLon)
+    if (rawLat && lat === null) { gpsLatError.value = 'Invalid latitude'; return }
+    if (rawLon && lon === null) { gpsLonError.value = 'Invalid longitude'; return }
+    if (rawLat && (lat < -90 || lat > 90))   { gpsLatError.value = 'Must be between -90 and 90'; return }
+    if (rawLon && (lon < -180 || lon > 180)) { gpsLonError.value = 'Must be between -180 and 180'; return }
+  }
+
+  const lat = hasRawGps ? parsedLat.value : null
+  const lon = hasRawGps ? parsedLon.value : null
+  const hasValidGps = lat !== null && lon !== null
+
   await store.saveMetadata({
     dateTimeOriginal: edit.value.dateTimeOriginal || null,
     imageDescription: edit.value.imageDescription || null,
     artist:           edit.value.artist || null,
     copyright:        edit.value.copyright || null,
+    gpsLatitude:      hasValidGps ? lat : null,
+    gpsLongitude:     hasValidGps ? lon : null,
   })
   if (panel.value?.error) saveError.value = panel.value.error
 }
@@ -692,6 +877,27 @@ function datetimeLocalToIso(v) {
 }
 .mp-input:focus { border-color: var(--color-accent); }
 .mp-input::placeholder { color: var(--text-muted); }
+.mp-input--error { border-color: var(--color-danger) !important; }
+
+.mp-gps-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.mp-gps-row .mp-edit-row {
+  flex: 1;
+  min-width: 0;
+}
+.mp-gps-label {
+  font-size: var(--font-size-xs) !important;
+  width: auto !important;
+}
+
+.mp-gps-error {
+  font-size: 10px;
+  color: var(--color-danger);
+  margin-top: 2px;
+  width: 100%;
+}
 
 /* datetime-local color fix */
 .mp-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
@@ -700,10 +906,32 @@ function datetimeLocalToIso(v) {
 }
 
 /* ── Save actions ── */
+/* ── Floating action bar ── */
+.mp-float-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding: 10px var(--space-3);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.mp-bar-enter-active,
+.mp-bar-leave-active {
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+.mp-bar-enter-from,
+.mp-bar-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
 .mp-actions {
   display: flex;
   gap: var(--space-2);
-  margin-top: var(--space-3);
 }
 
 .mp-btn {

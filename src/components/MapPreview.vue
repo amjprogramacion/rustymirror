@@ -2,11 +2,17 @@
   <div class="map-wrap">
     <div ref="mapEl" class="map-container" />
 
-    <!-- Custom zoom buttons — avoids conflict with app's global button/anchor reset -->
+    <!-- Custom zoom buttons -->
     <div class="map-zoom">
       <button class="map-zoom-btn" @click="zoomIn" title="Zoom in">+</button>
       <button class="map-zoom-btn" @click="zoomOut" title="Zoom out">−</button>
     </div>
+
+    <!-- Satellite toggle -->
+    <button class="map-sat-btn" @click="toggleSatellite" :title="isSatellite ? 'Map view' : 'Satellite view'">
+      <span v-if="isSatellite">🗺</span>
+      <span v-else>🛰</span>
+    </button>
 
   </div>
 </template>
@@ -27,28 +33,38 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 })
 
+const TILES = {
+  map: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+}
+
 const props = defineProps({
   lat: { type: Number, required: true },
   lon: { type: Number, required: true },
 })
 
-const mapEl = ref(null)
-let map = null
+const mapEl      = ref(null)
+const isSatellite = ref(false)
+let map    = null
 let marker = null
+let tileLayer = null
 
 function initMap() {
   if (!mapEl.value || map) return
   map = L.map(mapEl.value, {
-    zoomControl: false,       // disabled — using custom Vue buttons instead
+    zoomControl: false,
     scrollWheelZoom: false,
     attributionControl: false,
   }).setView([props.lat, props.lon], 14)
 
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-  }).addTo(map)
-
+  tileLayer = L.tileLayer(TILES.map, { maxZoom: 19 }).addTo(map)
   marker = L.marker([props.lat, props.lon]).addTo(map)
+}
+
+function toggleSatellite() {
+  if (!map) return
+  isSatellite.value = !isSatellite.value
+  tileLayer.setUrl(isSatellite.value ? TILES.sat : TILES.map)
 }
 
 function zoomIn()  { map?.zoomIn() }
@@ -75,7 +91,6 @@ onBeforeUnmount(() => {
 })
 
 watch(() => [props.lat, props.lon], updateView)
-
 </script>
 
 <style scoped>
@@ -95,7 +110,7 @@ watch(() => [props.lat, props.lon], updateView)
   height: 100%;
 }
 
-/* Custom zoom controls — z-index must exceed Leaflet's marker pane (600+) */
+/* Custom zoom controls */
 .map-zoom {
   position: absolute;
   top: 8px;
@@ -136,4 +151,29 @@ watch(() => [props.lat, props.lon], updateView)
   background: #f0f0f0 !important;
 }
 
+/* Satellite toggle button */
+.map-sat-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1000;
+  width: 26px;
+  height: 26px;
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.35) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  padding: 0 !important;
+  margin: 0 !important;
+  transition: background 0.15s;
+  opacity: 1 !important;
+}
+.map-sat-btn:hover {
+  background: #f0f0f0 !important;
+}
 </style>

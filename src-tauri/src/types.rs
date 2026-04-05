@@ -78,6 +78,8 @@ pub struct MetadataUpdate {
     pub image_description: Option<String>,
     pub artist: Option<String>,
     pub copyright: Option<String>,
+    pub gps_latitude: Option<f64>,
+    pub gps_longitude: Option<f64>,
 }
 
 /// Emitted during phase 1 (file hashing)
