@@ -48,15 +48,19 @@
         <!-- File + Camera side by side -->
         <div class="mp-pair">
           <div class="mp-section mp-section--half">
-            <p class="mp-section-title">File</p>
-            <div class="mp-rows">
-<div class="mp-row"><span class="mp-label">Size</span><span class="mp-value">{{ formatSize(meta.fileSize) }}</span></div>
+            <button class="mp-section-title" @click="toggle('file')">
+              File <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.file }">›</span>
+            </button>
+            <div class="mp-rows" v-show="!collapsed.file">
+              <div class="mp-row"><span class="mp-label">Size</span><span class="mp-value">{{ formatSize(meta.fileSize) }}</span></div>
               <div class="mp-row" v-if="meta.width > 0"><span class="mp-label">Dims</span><span class="mp-value">{{ meta.width }}×{{ meta.height }}</span></div>
             </div>
           </div>
           <div class="mp-section mp-section--half" v-if="hasCameraInfo">
-            <p class="mp-section-title">Camera</p>
-            <div class="mp-rows">
+            <button class="mp-section-title" @click="toggle('camera')">
+              Camera <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.camera }">›</span>
+            </button>
+            <div class="mp-rows" v-show="!collapsed.camera">
               <div class="mp-row" v-if="meta.make || meta.model">
                 <span class="mp-label">Device</span>
                 <span class="mp-value">{{ [meta.make, meta.model].filter(Boolean).join(' ') }}</span>
@@ -75,8 +79,10 @@
 
         <!-- Date -->
         <div class="mp-section">
-          <p class="mp-section-title">Date taken</p>
-          <div class="mp-edit-rows">
+          <button class="mp-section-title" @click="toggle('date')">
+            Date taken <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.date }">›</span>
+          </button>
+          <div class="mp-edit-rows" v-show="!collapsed.date">
             <label class="mp-edit-row">
               <input
                 class="mp-input"
@@ -91,69 +97,74 @@
 
         <!-- Location -->
         <div class="mp-section">
-          <p class="mp-section-title">Location</p>
-          <div class="mp-rows" v-if="hasGpsPreview">
-            <div class="mp-row" v-if="locationLoading">
-              <span class="mp-label">Location</span>
-              <span class="mp-value mp-value--muted">Fetching…</span>
+          <button class="mp-section-title" @click="toggle('location')">
+            Location <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.location }">›</span>
+          </button>
+          <div v-show="!collapsed.location">
+            <div class="mp-rows" v-if="hasGpsPreview">
+              <div class="mp-row" v-if="locationLoading">
+                <span class="mp-label">Location</span>
+                <span class="mp-value mp-value--muted">Fetching…</span>
+              </div>
+              <div class="mp-row" v-else-if="locationName">
+                <span class="mp-label">Location</span>
+                <span class="mp-value">{{ locationName }}</span>
+              </div>
             </div>
-            <div class="mp-row" v-else-if="locationName">
-              <span class="mp-label">Location</span>
-              <span class="mp-value">{{ locationName }}</span>
+            <!-- Combined input: only when no GPS exists yet -->
+            <div v-if="showCombinedInput" class="mp-edit-rows" style="margin-bottom: 8px">
+              <label class="mp-edit-row">
+                <input
+                  class="mp-input"
+                  type="text"
+                  v-model="gpsCombinedRaw"
+                  @input="onCombinedInput"
+                  :class="{ 'mp-input--error': gpsCombinedError }"
+                  placeholder="39°48'43.1&quot;N 0°25'29.1&quot;W"
+                />
+              </label>
+              <p v-if="gpsCombinedError" class="mp-gps-error">{{ gpsCombinedError }}</p>
             </div>
+            <!-- Split inputs: when GPS already exists or has been parsed -->
+            <div v-else class="mp-gps-row" style="margin-top: 10px; margin-bottom: 8px">
+              <label class="mp-edit-row">
+                <span class="mp-label mp-gps-label">Latitude</span>
+                <input
+                  class="mp-input"
+                  type="text"
+                  v-model="edit.gpsLatitudeRaw"
+                  @input="onGpsInput('lat')"
+                  @blur="normalizeGpsInput('lat')"
+                  :class="{ 'mp-input--error': gpsLatError }"
+                  placeholder="40.71600 or 40°42'57.6&quot;N"
+                />
+              </label>
+              <label class="mp-edit-row">
+                <span class="mp-label mp-gps-label">Longitude</span>
+                <input
+                  class="mp-input"
+                  type="text"
+                  v-model="edit.gpsLongitudeRaw"
+                  @input="onGpsInput('lon')"
+                  @blur="normalizeGpsInput('lon')"
+                  :class="{ 'mp-input--error': gpsLonError }"
+                  placeholder="-74.00600 or 0°25'29.1&quot;W"
+                />
+              </label>
+              <p v-if="gpsLatError || gpsLonError" class="mp-gps-error">
+                {{ gpsLatError || gpsLonError }}
+              </p>
+            </div>
+            <MapPreview v-if="hasGpsPreview" :lat="previewLat" :lon="previewLon" />
           </div>
-          <!-- Combined input: only when no GPS exists yet -->
-          <div v-if="showCombinedInput" class="mp-edit-rows" style="margin-bottom: 8px">
-            <label class="mp-edit-row">
-              <input
-                class="mp-input"
-                type="text"
-                v-model="gpsCombinedRaw"
-                @input="onCombinedInput"
-                :class="{ 'mp-input--error': gpsCombinedError }"
-                placeholder="39°48'43.1&quot;N 0°25'29.1&quot;W"
-              />
-            </label>
-            <p v-if="gpsCombinedError" class="mp-gps-error">{{ gpsCombinedError }}</p>
-          </div>
-
-          <!-- Split inputs: when GPS already exists or has been parsed -->
-          <div v-else class="mp-gps-row" style="margin-top: 10px; margin-bottom: 8px">
-            <label class="mp-edit-row">
-              <span class="mp-label mp-gps-label">Latitude</span>
-              <input
-                class="mp-input"
-                type="text"
-                v-model="edit.gpsLatitudeRaw"
-                @input="onGpsInput('lat')"
-                @blur="normalizeGpsInput('lat')"
-                :class="{ 'mp-input--error': gpsLatError }"
-                placeholder="40.71600 or 40°42'57.6&quot;N"
-              />
-            </label>
-            <label class="mp-edit-row">
-              <span class="mp-label mp-gps-label">Longitude</span>
-              <input
-                class="mp-input"
-                type="text"
-                v-model="edit.gpsLongitudeRaw"
-                @input="onGpsInput('lon')"
-                @blur="normalizeGpsInput('lon')"
-                :class="{ 'mp-input--error': gpsLonError }"
-                placeholder="-74.00600 or 0°25'29.1&quot;W"
-              />
-            </label>
-            <p v-if="gpsLatError || gpsLonError" class="mp-gps-error">
-              {{ gpsLatError || gpsLonError }}
-            </p>
-          </div>
-          <MapPreview v-if="hasGpsPreview" :lat="previewLat" :lon="previewLon" />
         </div>
 
         <!-- Exposure -->
         <div class="mp-section" v-if="hasExposureInfo">
-          <p class="mp-section-title">Exposure</p>
-          <div class="mp-rows">
+          <button class="mp-section-title" @click="toggle('exposure')">
+            Exposure <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.exposure }">›</span>
+          </button>
+          <div class="mp-rows" v-show="!collapsed.exposure">
             <div class="mp-row" v-if="meta.exposureTime">
               <span class="mp-label">Shutter</span>
               <span class="mp-value">{{ meta.exposureTime }}</span>
@@ -191,8 +202,10 @@
 
         <!-- Editable fields -->
         <div class="mp-section mp-section--edit">
-          <p class="mp-section-title">Details</p>
-          <div class="mp-edit-rows">
+          <button class="mp-section-title" @click="toggle('details')">
+            Details <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.details }">›</span>
+          </button>
+          <div class="mp-edit-rows" v-show="!collapsed.details">
 
             <label class="mp-edit-row">
               <span class="mp-label">Description</span>
@@ -307,6 +320,12 @@ onBeforeUnmount(() => {
 const panel  = computed(() => store.metadataPanel)
 const entry  = computed(() => panel.value?.entry ?? {})
 const meta   = computed(() => panel.value?.metadata ?? null)
+
+// ── Section collapse state ────────────────────────────────────────────────────
+const collapsed = ref({ file: false, camera: false, date: false, location: false, exposure: true, details: false })
+function toggle(key) { collapsed.value[key] = !collapsed.value[key] }
+// Reset collapse state when a new image is opened
+watch(meta, (m) => { if (m) collapsed.value = { file: false, camera: false, date: false, location: false, exposure: true, details: false } })
 
 const saveError = ref(null)
 
@@ -775,13 +794,12 @@ function datetimeLocalToIso(v) {
 
 /* ── Sections ── */
 .mp-section {
-  padding: var(--space-2) var(--space-3);
+  padding: 0 var(--space-3);
   border-bottom: 1px solid var(--border-color);
 }
 
 .mp-section--edit {
   border-bottom: none;
-  padding-bottom: var(--space-4);
 }
 
 /* ── Side-by-side pair (File + Camera) ── */
@@ -795,7 +813,7 @@ function datetimeLocalToIso(v) {
   flex: 1;
   min-width: 0;
   border-bottom: none;
-  padding: var(--space-2) var(--space-2);
+  padding: 0 var(--space-3);
 }
 
 .mp-section--half:first-child {
@@ -808,12 +826,44 @@ function datetimeLocalToIso(v) {
 }
 
 .mp-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 36px;
   font-size: 10px;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  margin-bottom: var(--space-2);
+  margin: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1;
+}
+.mp-section-title:hover { color: var(--text-secondary); }
+
+.mp-chevron {
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--text-muted);
+  transform: rotate(90deg);
+  transition: transform 180ms ease;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.mp-chevron--open {
+  transform: rotate(270deg);
+}
+
+/* Content padding inside each section */
+.mp-section > *:not(.mp-section-title) {
+  padding-bottom: var(--space-2);
 }
 
 /* ── Read-only rows ── */
