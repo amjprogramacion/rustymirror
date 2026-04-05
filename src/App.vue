@@ -53,7 +53,7 @@ import { useUpdater } from './composables/useUpdater'
 const { autoCheck, showNotification, latestVersion, status: updateStatus, downloadProgress, checkForUpdates, installUpdate, restartApp } = useUpdater()
 
 onMounted(() => {
-  if (autoCheck.value) checkForUpdates({ notify: true })
+  if (autoCheck.value) checkForUpdates({ notify: true, silent: true })
 })
 </script>
 

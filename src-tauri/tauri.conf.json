@@ -1,6 +1,6 @@
 {
   "productName": "RustyMirror",
-  "version": "1.2.9",
+  "version": "1.2.13",
   "identifier": "RustyMirror",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -33,10 +33,13 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY3M0EzMEUzQjlCQzMwMzMKUldRek1MeTU0ekE2OTNKZnlFRk95Q0VOT1pQbzJlWDdveHU0SkRLR3RUaFNyR0Z1dldJSHNRL0YK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM2QjE1NzEwRjcxNzc2MApSV1JnZDNFUGNSVnJETGM3MGxpL1h1RzMwMnBudlRpMUdYWDlSaHNISWpQcnMycjVsK2d6Y2hrbAo=",
       "endpoints": [
         "https://github.com/amjprogramacion/rustymirror/releases/latest/download/latest.json"
-      ]
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {
@@ -44,6 +47,7 @@
     "targets": [
       "nsis"
     ],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

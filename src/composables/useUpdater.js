@@ -9,11 +9,12 @@ const status           = ref('idle') // idle | checking | up-to-date | available
 const latestVersion    = ref(null)
 const downloadProgress = ref(0)
 const showNotification = ref(false)
+const errorMessage     = ref('')
 
 let pendingUpdate = null
 
 // ── Check for updates ─────────────────────────────────────────────────────────
-async function checkForUpdates({ notify = false } = {}) {
+async function checkForUpdates({ notify = false, silent = false } = {}) {
   if (import.meta.env.DEV) {
     status.value = 'dev'
     return
@@ -34,7 +35,8 @@ async function checkForUpdates({ notify = false } = {}) {
     }
   } catch (e) {
     console.error('[updater] check failed:', e)
-    status.value = 'error'
+    errorMessage.value = String(e)
+    status.value = silent ? 'idle' : 'error'
   }
 }
 
@@ -59,6 +61,7 @@ async function installUpdate() {
     status.value = 'ready'
   } catch (e) {
     console.error('[updater] install failed:', e)
+    errorMessage.value = String(e)
     status.value = 'error'
   }
 }
@@ -78,7 +81,7 @@ function saveNotifyOnUpdate() {
 
 export function useUpdater() {
   return {
-    autoCheck, notifyOnUpdate, status, latestVersion, downloadProgress, showNotification,
+    autoCheck, notifyOnUpdate, status, latestVersion, downloadProgress, showNotification, errorMessage,
     checkForUpdates, installUpdate, restartApp, saveAutoCheck, saveNotifyOnUpdate,
   }
 }
