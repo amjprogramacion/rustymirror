@@ -21,7 +21,6 @@
                 v-model.number="maxHistory"
                 min="1"
                 max="50"
-                @change="saveMaxHistory"
               />
             </div>
             <div class="settings-row">
@@ -32,13 +31,12 @@
                 v-model.number="thumbConcurrency"
                 min="1"
                 max="16"
-                @change="saveThumbConcurrency"
               />
             </div>
             <div class="settings-row">
               <span class="settings-row-label">Cross-date similarity (phase 5)</span>
               <label class="toggle">
-                <input type="checkbox" v-model="crossDatePhash" @change="saveCrossDatePhash" />
+                <input type="checkbox" v-model="crossDatePhash" />
                 <span class="toggle-track"><span class="toggle-thumb" /></span>
               </label>
             </div>
@@ -46,7 +44,7 @@
             <div class="settings-row">
               <span class="settings-row-label">Fast mode (EXIF thumbnail)</span>
               <label class="toggle">
-                <input type="checkbox" v-model="fastMode" @change="saveFastMode" />
+                <input type="checkbox" v-model="fastMode" />
                 <span class="toggle-track"><span class="toggle-thumb" /></span>
               </label>
             </div>
@@ -107,14 +105,14 @@
             <div class="settings-row">
               <span class="settings-row-label">Check on startup</span>
               <label class="toggle">
-                <input type="checkbox" v-model="autoCheck" @change="saveAutoCheck" />
+                <input type="checkbox" v-model="autoCheck" />
                 <span class="toggle-track"><span class="toggle-thumb" /></span>
               </label>
             </div>
             <div class="settings-row">
               <span class="settings-row-label" :class="{ 'settings-row-label--dim': !autoCheck }">Notify if update found</span>
               <label class="toggle" :class="{ 'toggle--disabled': !autoCheck }">
-                <input type="checkbox" v-model="notifyOnUpdate" @change="saveNotifyOnUpdate" :disabled="!autoCheck" />
+                <input type="checkbox" v-model="notifyOnUpdate" :disabled="!autoCheck" />
                 <span class="toggle-track"><span class="toggle-thumb" /></span>
               </label>
             </div>
@@ -180,6 +178,7 @@ import { ref, onMounted } from 'vue'
 import { useHistoryStore } from '../store/history'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
+import { useSettings } from '../composables/useSettings'
 import { formatSize } from '../utils/formatters'
 
 defineProps({ modelValue: Boolean })
@@ -188,28 +187,10 @@ defineEmits(['update:modelValue'])
 const history = useHistoryStore()
 const version = ref(import.meta.env.VITE_APP_VERSION ?? '0.1.0')
 
-const maxHistory = ref(parseInt(localStorage.getItem('rustymirror_max_history') ?? '5', 10))
-function saveMaxHistory() {
-  localStorage.setItem('rustymirror_max_history', String(maxHistory.value))
-}
-
-const thumbConcurrency = ref(parseInt(localStorage.getItem('rustymirror_thumb_concurrency') ?? '4', 10))
-function saveThumbConcurrency() {
-  localStorage.setItem('rustymirror_thumb_concurrency', String(thumbConcurrency.value))
-}
-
-const crossDatePhash = ref(localStorage.getItem('rustymirror_cross_date_phash') !== 'false')
-function saveCrossDatePhash() {
-  localStorage.setItem('rustymirror_cross_date_phash', String(crossDatePhash.value))
-}
-
-const fastMode = ref(localStorage.getItem('rustymirror_fast_mode') === 'true')
-function saveFastMode() {
-  localStorage.setItem('rustymirror_fast_mode', String(fastMode.value))
-}
+const { maxHistory, thumbConcurrency, crossDatePhash, fastMode, autoUpdate: autoCheck, notifyOnUpdate } = useSettings()
 
 const { cacheSize, thumbCacheSize, loadCacheSizes, clearCache, clearThumbCache } = useCacheSize()
-const { autoCheck, notifyOnUpdate, status: updateStatus, latestVersion, downloadProgress, errorMessage, checkForUpdates, installUpdate, restartApp, saveAutoCheck, saveNotifyOnUpdate } = useUpdater()
+const { status: updateStatus, latestVersion, downloadProgress, errorMessage, checkForUpdates, installUpdate, restartApp } = useUpdater()
 
 onMounted(loadCacheSizes)
 </script>

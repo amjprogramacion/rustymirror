@@ -185,6 +185,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useSettings } from '../composables/useSettings'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useScanStore } from '../store/scan'
@@ -266,11 +267,8 @@ async function pickFolder() {
 // ── Sidebar resize ────────────────────────────────────────────────────────────
 const SIDEBAR_MIN = 200
 const SIDEBAR_MAX = 420
-const SIDEBAR_DEFAULT = 240
 
-const sidebarWidth = ref(
-  parseInt(localStorage.getItem('rustymirror_sidebar_width') ?? SIDEBAR_DEFAULT, 10)
-)
+const { sidebarWidth } = useSettings()
 
 let resizing = false
 let startX = 0
@@ -295,7 +293,6 @@ function onMouseUp() {
   resizing = false
   document.body.style.cursor = ''
   document.body.style.userSelect = ''
-  localStorage.setItem('rustymirror_sidebar_width', String(sidebarWidth.value))
 }
 
 onMounted(() => {

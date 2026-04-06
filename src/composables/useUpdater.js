@@ -1,10 +1,10 @@
 import { ref } from 'vue'
 import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
+import { useSettings } from './useSettings'
 
 // ── Shared state ──────────────────────────────────────────────────────────────
-const autoCheck        = ref(localStorage.getItem('rustymirror_auto_update') !== 'false')
-const notifyOnUpdate   = ref(localStorage.getItem('rustymirror_notify_update') !== 'false')
+const { autoUpdate: autoCheck, notifyOnUpdate } = useSettings()
 const status           = ref('idle') // idle | checking | up-to-date | available | downloading | ready | error
 const latestVersion    = ref(null)
 const downloadProgress = ref(0)
@@ -71,17 +71,9 @@ async function restartApp() {
   await relaunch()
 }
 
-// ── Persist preferences ───────────────────────────────────────────────────────
-function saveAutoCheck() {
-  localStorage.setItem('rustymirror_auto_update', String(autoCheck.value))
-}
-function saveNotifyOnUpdate() {
-  localStorage.setItem('rustymirror_notify_update', String(notifyOnUpdate.value))
-}
-
 export function useUpdater() {
   return {
     autoCheck, notifyOnUpdate, status, latestVersion, downloadProgress, showNotification, errorMessage,
-    checkForUpdates, installUpdate, restartApp, saveAutoCheck, saveNotifyOnUpdate,
+    checkForUpdates, installUpdate, restartApp,
   }
 }

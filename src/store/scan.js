@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { logger } from '../utils/logger'
 import { useHistoryStore } from './history'
+import { useSettings } from '../composables/useSettings'
 
 export const useScanStore = defineStore('scan', {
   state: () => ({
@@ -233,9 +234,10 @@ export const useScanStore = defineStore('scan', {
 
         // Resolve fastMode before the try block so it is visible in all branches below.
         // Uses the one-shot override set by loadFromHistory, or falls back to the setting.
+        const settings = useSettings()
         const fastMode = this.fastModeOverride !== null
           ? this.fastModeOverride
-          : localStorage.getItem('rustymirror_fast_mode') === 'true'
+          : settings.fastMode.value
         this.fastModeOverride = null
 
         logger.info('computing directory fingerprint...')
@@ -260,7 +262,7 @@ export const useScanStore = defineStore('scan', {
         if (!groups) {
           logger.info('invoking scan_directories...')
           logger.info(`similarity threshold: ${this.similarityThreshold}% -> hamming ${hammingThreshold}`)
-          const crossDatePhash = localStorage.getItem('rustymirror_cross_date_phash') !== 'false'
+          const crossDatePhash = settings.crossDatePhash.value
           groups = await invoke('scan_directories', { paths: this.folders, hammingThreshold, crossDatePhash, fastMode })
           logger.info(`scan returned ${groups?.length} groups`)
         }
@@ -374,7 +376,7 @@ export const useScanStore = defineStore('scan', {
     },
 
     _flushThumbQueue() {
-      const MAX = parseInt(localStorage.getItem('rustymirror_thumb_concurrency') ?? '4', 10)
+      const MAX = useSettings().thumbConcurrency.value
       while (this._thumbActive < MAX && this._thumbQueue.length > 0) {
         const path = this._thumbQueue.shift()
         if (path in this.thumbCache) continue
