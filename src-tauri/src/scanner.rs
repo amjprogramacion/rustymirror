@@ -650,21 +650,59 @@ where
     let n = ph_pairs.len();
     let mut ph_grouped = vec![false; n];
 
+    // For moderate n, pre-compute all pairwise Hamming distances into a flat
+    // upper-triangular matrix so each pair is computed exactly once and subsequent
+    // lookups are a cheap array index rather than a hash-bit operation.
+    // Index formula for pair (lo, hi) where lo < hi:
+    //   lo * n - lo * (lo + 1) / 2 + (hi - lo - 1)
+    // For large n the early-termination path dominates, so we skip the matrix
+    // to avoid a potentially large allocation (4000 * 3999 / 2 * 4 B ≈ 32 MB).
+    const MATRIX_LIMIT: usize = 4_000;
+    let dist_matrix: Option<Vec<u32>> = if n > 1 && n <= MATRIX_LIMIT {
+        let size = n * (n - 1) / 2;
+        let mut m = vec![0u32; size];
+        for a in 0..n {
+            let base = a * n - a * (a + 1) / 2;
+            for b in (a + 1)..n {
+                m[base + (b - a - 1)] = ph_pairs[a].1.dist(ph_pairs[b].1);
+            }
+        }
+        Some(m)
+    } else {
+        None
+    };
+
+    // Returns the Hamming distance between ph_pairs[a] and ph_pairs[b],
+    // using the pre-computed matrix when available.
+    let pair_dist = |a: usize, b: usize| -> u32 {
+        let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+        if let Some(ref m) = dist_matrix {
+            m[lo * n - lo * (lo + 1) / 2 + (hi - lo - 1)]
+        } else {
+            ph_pairs[lo].1.dist(ph_pairs[hi].1)
+        }
+    };
+
     // Complete-linkage greedy clustering:
     // B is added to a cluster only if dist(B, X) ≤ threshold for EVERY existing
     // member X. This guarantees that the worst-case pairwise distance inside any
     // cluster never exceeds the threshold, so the displayed similarity is always
     // ≥ the value the user selected in the slider.
+    //
+    // max_dist is tracked incrementally during formation — no post-loop needed.
     for a in 0..n {
         if ph_grouped[a] { continue; }
         let mut cluster: Vec<usize> = vec![a];
+        let mut max_dist = 0u32;
 
         'next_b: for b in (a + 1)..n {
             if ph_grouped[b] { continue; }
             for &x in &cluster {
-                if ph_pairs[x].1.dist(ph_pairs[b].1) > phash_threshold {
+                let d = pair_dist(x, b);
+                if d > phash_threshold {
                     continue 'next_b; // too far from some cluster member — skip
                 }
+                if d > max_dist { max_dist = d; }
             }
             cluster.push(b);
             ph_grouped[b] = true;
@@ -673,13 +711,6 @@ where
         if cluster.len() < 2 { continue; }
         ph_grouped[a] = true;
 
-        let mut max_dist = 0u32;
-        for x in 0..cluster.len() {
-            for y in (x + 1)..cluster.len() {
-                let d = ph_pairs[cluster[x]].1.dist(ph_pairs[cluster[y]].1);
-                if d > max_dist { max_dist = d; }
-            }
-        }
         // max_dist ≤ phash_threshold is guaranteed by construction
         let (kind, similarity) = if max_dist == 0 {
             (SimilarityKind::Exact, Some(100u8))
