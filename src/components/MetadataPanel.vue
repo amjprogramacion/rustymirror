@@ -132,7 +132,7 @@
                 <input
                   class="mp-input"
                   type="text"
-                  v-model="edit.gpsLatitudeRaw"
+                  v-model="gpsLatitudeRaw"
                   @input="onGpsInput('lat')"
                   @blur="normalizeGpsInput('lat')"
                   :class="{ 'mp-input--error': gpsLatError }"
@@ -144,7 +144,7 @@
                 <input
                   class="mp-input"
                   type="text"
-                  v-model="edit.gpsLongitudeRaw"
+                  v-model="gpsLongitudeRaw"
                   @input="onGpsInput('lon')"
                   @blur="normalizeGpsInput('lon')"
                   :class="{ 'mp-input--error': gpsLonError }"
@@ -271,7 +271,8 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useScanStore } from '../store/scan'
 import MapPreview from './MapPreview.vue'
-import { fileExt, fileName, folderPath, formatSize, formatGps, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
+import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
+import { useGpsEditor } from '../composables/useGpsEditor'
 
 const store = useScanStore()
 const HEIC  = new Set(['heic', 'heif'])
@@ -325,97 +326,29 @@ const meta   = computed(() => panel.value?.metadata ?? null)
 // ── Section collapse state ────────────────────────────────────────────────────
 const collapsed = ref({ file: false, camera: false, date: false, location: false, exposure: true, details: false })
 function toggle(key) { collapsed.value[key] = !collapsed.value[key] }
-// Reset collapse state when a new image is opened
 watch(meta, (m) => { if (m) collapsed.value = { file: false, camera: false, date: false, location: false, exposure: true, details: false } })
 
 const saveError = ref(null)
 
-// Reverse geocoding via Nominatim (OpenStreetMap)
-const locationName    = ref(null)
-const locationLoading = ref(false)
+// ── GPS editor ────────────────────────────────────────────────────────────────
+const {
+  gpsLatitudeRaw, gpsLongitudeRaw,
+  gpsLatError, gpsLonError,
+  gpsCombinedRaw, gpsCombinedError,
+  locationName, locationLoading,
+  showCombinedInput,
+  previewLat, previewLon, hasGpsPreview,
+  onCombinedInput, onGpsInput, normalizeGpsInput,
+  resetGps, validateGps,
+} = useGpsEditor(meta, () => { panel.value.dirty = true })
 
-// ── GPS parsing ───────────────────────────────────────────────────────────────
-// Accepts decimal ("40.71600", "-74.006") or DMS ("39°48'43.1"N", "0°25'29.1"W")
-// Returns decimal degrees, or null if unparseable.
-function parseGpsInput(raw) {
-  if (!raw || !raw.trim()) return null
-  const s = raw.trim()
-
-  // Plain decimal: optional sign, digits, optional decimal part
-  if (/^-?\d+(\.\d+)?$/.test(s)) return parseFloat(s)
-
-  // DMS pattern: degrees° [minutes' [seconds"]] [NSEW]
-  const dms = s.match(
-    /^(\d+(?:\.\d+)?)\s*[°d]\s*(?:(\d+(?:\.\d+)?)\s*['′]\s*(?:(\d+(?:\.\d+)?)\s*["″]\s*)?)?([NSEWnsew])?$/
-  )
-  if (dms) {
-    const deg = parseFloat(dms[1])
-    const min = dms[2] ? parseFloat(dms[2]) : 0
-    const sec = dms[3] ? parseFloat(dms[3]) : 0
-    const dir = (dms[4] || '').toUpperCase()
-    let decimal = deg + min / 60 + sec / 3600
-    if (dir === 'S' || dir === 'W') decimal = -decimal
-    return decimal
-  }
-
-  return null
-}
-
-// Parse a combined string like "39°48'43.1"N 0°25'29.1"W" → { lat, lon } or null.
-function parseCombinedGps(raw) {
-  if (!raw || !raw.trim()) return null
-  const pattern = /(\d+(?:\.\d+)?)\s*[°d]\s*(?:(\d+(?:\.\d+)?)\s*['′]\s*(?:(\d+(?:\.\d+)?)\s*["″]\s*)?)?([NSEWnsew])/g
-  const matches = [...raw.matchAll(pattern)]
-  if (matches.length < 2) return null
-
-  let lat = null, lon = null
-  for (const m of matches) {
-    const deg = parseFloat(m[1])
-    const min = m[2] ? parseFloat(m[2]) : 0
-    const sec = m[3] ? parseFloat(m[3]) : 0
-    const dir = m[4].toUpperCase()
-    let dec = deg + min / 60 + sec / 3600
-    if (dir === 'S' || dir === 'W') dec = -dec
-    if ('NS'.includes(dir)) lat = dec
-    else lon = dec
-  }
-
-  return (lat !== null && lon !== null) ? { lat, lon } : null
-}
-
-// Editable fields — synced from meta when panel opens
+// ── Editable fields ───────────────────────────────────────────────────────────
 const edit = ref({
   dateTimeOriginal: null,
   imageDescription: '',
   artist: '',
   copyright: '',
-  gpsLatitudeRaw: '',
-  gpsLongitudeRaw: '',
 })
-
-const gpsLatError     = ref(null)
-const gpsLonError     = ref(null)
-const gpsCombinedRaw  = ref('')
-const gpsCombinedError = ref(null)
-
-// Show combined single input only when the image has no GPS and the user hasn't
-// filled either individual field yet.
-const showCombinedInput = computed(() =>
-  meta.value?.gpsLatitude == null &&
-  !edit.value.gpsLatitudeRaw &&
-  !edit.value.gpsLongitudeRaw
-)
-
-function onCombinedInput() {
-  gpsCombinedError.value = null
-  const result = parseCombinedGps(gpsCombinedRaw.value)
-  if (result) {
-    edit.value.gpsLatitudeRaw  = result.lat.toFixed(6)
-    edit.value.gpsLongitudeRaw = result.lon.toFixed(6)
-    gpsCombinedRaw.value = ''
-    panel.value.dirty = true
-  }
-}
 
 function resetEdit() {
   if (!meta.value) return
@@ -424,112 +357,31 @@ function resetEdit() {
     imageDescription: meta.value.imageDescription ?? '',
     artist:           meta.value.artist ?? '',
     copyright:        meta.value.copyright ?? '',
-    gpsLatitudeRaw:   meta.value.gpsLatitude != null ? meta.value.gpsLatitude.toFixed(6) : '',
-    gpsLongitudeRaw:  meta.value.gpsLongitude != null ? meta.value.gpsLongitude.toFixed(6) : '',
   }
-  gpsLatError.value     = null
-  gpsLonError.value     = null
-  gpsCombinedRaw.value  = ''
-  gpsCombinedError.value = null
+  resetGps(meta.value)
   if (panel.value) panel.value.dirty = false
   saveError.value = null
 }
 
-function onGpsInput(field) {
-  if (field === 'lat') gpsLatError.value = null
-  else gpsLonError.value = null
-  panel.value.dirty = true
-}
-
-// On blur: parse & normalize the raw input to decimal if it's DMS
-function normalizeGpsInput(field) {
-  const key = field === 'lat' ? 'gpsLatitudeRaw' : 'gpsLongitudeRaw'
-  const errKey = field === 'lat' ? gpsLatError : gpsLonError
-  const raw = edit.value[key]
-  if (!raw || !raw.trim()) return
-  const val = parseGpsInput(raw)
-  if (val === null) {
-    errKey.value = `Invalid ${field === 'lat' ? 'latitude' : 'longitude'}`
-    return
-  }
-  errKey.value = null
-  // Normalize to decimal string (round to 6 decimal places)
-  edit.value[key] = val.toFixed(6)
-}
-
-// Reset editable fields whenever a new panel opens or metadata loads
 watch(meta, (m) => { if (m) resetEdit() }, { immediate: true })
-
-// Parsed numeric GPS from raw inputs
-const parsedLat = computed(() => parseGpsInput(edit.value.gpsLatitudeRaw))
-const parsedLon = computed(() => parseGpsInput(edit.value.gpsLongitudeRaw))
-
-// Preview coordinates: parsed edit values, or fall back to meta
-const previewLat = computed(() => parsedLat.value ?? meta.value?.gpsLatitude ?? null)
-const previewLon = computed(() => parsedLon.value ?? meta.value?.gpsLongitude ?? null)
-const hasGpsPreview = computed(() => previewLat.value != null && previewLon.value != null)
-
-// Reverse geocoding — debounced so Nominatim isn't called on every keystroke
-let geocodeTimer = null
-watch(
-  () => [previewLat.value, previewLon.value],
-  ([lat, lon]) => {
-    clearTimeout(geocodeTimer)
-    if (lat == null || lon == null) { locationName.value = null; return }
-    locationLoading.value = true
-    geocodeTimer = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
-          { headers: { 'User-Agent': 'RustyMirror/1.0 (desktop app)' } }
-        )
-        const data = await res.json()
-        const addr = data.address ?? {}
-        const city = addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.county ?? null
-        locationName.value = [city, addr.country].filter(Boolean).join(', ') || null
-      } catch {
-        locationName.value = null
-      } finally {
-        locationLoading.value = false
-      }
-    }, 600)
-  },
-  { immediate: true }
-)
 
 async function save() {
   saveError.value = null
-
-  // Validate GPS before saving
-  const rawLat = edit.value.gpsLatitudeRaw.trim()
-  const rawLon = edit.value.gpsLongitudeRaw.trim()
-  const hasRawGps = rawLat !== '' || rawLon !== ''
-
-  if (hasRawGps) {
-    const lat = parseGpsInput(rawLat)
-    const lon = parseGpsInput(rawLon)
-    if (rawLat && lat === null) { gpsLatError.value = 'Invalid latitude'; return }
-    if (rawLon && lon === null) { gpsLonError.value = 'Invalid longitude'; return }
-    if (rawLat && (lat < -90 || lat > 90))   { gpsLatError.value = 'Must be between -90 and 90'; return }
-    if (rawLon && (lon < -180 || lon > 180)) { gpsLonError.value = 'Must be between -180 and 180'; return }
-  }
-
-  const lat = hasRawGps ? parsedLat.value : null
-  const lon = hasRawGps ? parsedLon.value : null
-  const hasValidGps = lat !== null && lon !== null
+  const { ok, lat, lon } = validateGps()
+  if (!ok) return
 
   await store.saveMetadata({
     dateTimeOriginal: edit.value.dateTimeOriginal || null,
     imageDescription: edit.value.imageDescription || null,
     artist:           edit.value.artist || null,
     copyright:        edit.value.copyright || null,
-    gpsLatitude:      hasValidGps ? lat : null,
-    gpsLongitude:     hasValidGps ? lon : null,
+    gpsLatitude:      lat,
+    gpsLongitude:     lon,
   })
   if (panel.value?.error) saveError.value = panel.value.error
 }
 
-// Thumbnail source
+// ── Thumbnail source ──────────────────────────────────────────────────────────
 const thumbSrc = computed(() => {
   const p = entry.value?.path
   if (!p) return null
@@ -542,10 +394,8 @@ const thumbSrc = computed(() => {
   return store.directSrcCache[p] ?? convertFileSrc(p)
 })
 
-const hasCameraInfo  = computed(() => meta.value && (meta.value.make || meta.value.model || meta.value.lensModel || meta.value.software))
+const hasCameraInfo   = computed(() => meta.value && (meta.value.make || meta.value.model || meta.value.lensModel || meta.value.software))
 const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime || meta.value.fNumber || meta.value.isoSpeed || meta.value.focalLength))
-
-// ── Formatters ────────────────────────────────────────────────────────────────
 </script>
 
 <style scoped>
