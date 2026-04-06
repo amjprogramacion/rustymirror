@@ -1,4 +1,5 @@
 import { ref, computed, watch } from 'vue'
+import { GEOCODE_DEBOUNCE_MS } from '../constants'
 
 export function useGpsEditor(meta, onDirty) {
   const gpsLatitudeRaw   = ref('')
@@ -153,7 +154,7 @@ export function useGpsEditor(meta, onDirty) {
         } finally {
           locationLoading.value = false
         }
-      }, 600)
+      }, GEOCODE_DEBOUNCE_MS)
     },
     { immediate: true }
   )

@@ -1,9 +1,9 @@
 import { defineStore } from 'pinia'
 import { load } from '@tauri-apps/plugin-store'
+import { HISTORY_MAX_ENTRIES } from '../constants'
 
 const STORE_FILE = 'rustymirror.json'
 const HISTORY_KEY = 'scanHistory'
-const MAX_ENTRIES = 5
 
 let _store = null
 
@@ -68,8 +68,8 @@ export const useHistoryStore = defineStore('history', {
         this.entries[existingIdx] = entry
       } else {
         this.entries.unshift(entry)
-        if (this.entries.length > MAX_ENTRIES) {
-          this.entries = this.entries.slice(0, MAX_ENTRIES)
+        if (this.entries.length > HISTORY_MAX_ENTRIES) {
+          this.entries = this.entries.slice(0, HISTORY_MAX_ENTRIES)
         }
       }
 

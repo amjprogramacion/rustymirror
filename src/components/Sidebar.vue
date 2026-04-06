@@ -193,6 +193,7 @@ import { useHistoryStore } from '../store/history'
 import { formatSize, shortPath, formatLocalDate, formatDuration } from '../utils/formatters'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
+import { SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../constants'
 import SettingsModal from './SettingsModal.vue'
 
 const store = useScanStore()
@@ -265,8 +266,6 @@ async function pickFolder() {
 }
 
 // ── Sidebar resize ────────────────────────────────────────────────────────────
-const SIDEBAR_MIN = 200
-const SIDEBAR_MAX = 420
 
 const { sidebarWidth } = useSettings()
 
@@ -285,7 +284,7 @@ function startResize(e) {
 function onMouseMove(e) {
   if (!resizing) return
   const delta = e.clientX - startX
-  sidebarWidth.value = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth + delta))
+  sidebarWidth.value = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, startWidth + delta))
 }
 
 function onMouseUp() {

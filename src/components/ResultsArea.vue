@@ -91,8 +91,8 @@
             />
             {{ fileName(path) }}
           </div>
-          <div v-if="store.selectedCount > MAX_PREVIEW" class="dialog-file dialog-more">
-            +{{ store.selectedCount - MAX_PREVIEW }} more…
+          <div v-if="store.selectedCount > DELETE_MAX_PREVIEW" class="dialog-file dialog-more">
+            +{{ store.selectedCount - DELETE_MAX_PREVIEW }} more…
           </div>
         </div>
 
@@ -139,6 +139,7 @@ import { useScanStore } from '../store/scan'
 import ImageGroup from './ImageGroup.vue'
 import ScanProgress from './ScanProgress.vue'
 import { fileName } from '../utils/formatters'
+import { DELETE_MAX_PREVIEW } from '../constants'
 
 const store        = useScanStore()
 const showConfirm  = ref(false)
@@ -174,7 +175,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
 const deleting       = ref(false)
 const deleteProgress = ref({ done: 0, total: 0 })
 const networkRoots   = ref(new Set())
-const MAX_PREVIEW    = 10
 
 function pathIsNetwork(p) {
   for (const root of networkRoots.value) {
@@ -191,7 +191,7 @@ const hasMixed = computed(() =>
 )
 
 const previewPaths = computed(() =>
-  [...store.selected].slice(0, MAX_PREVIEW)
+  [...store.selected].slice(0, DELETE_MAX_PREVIEW)
 )
 
 async function confirmDelete() {

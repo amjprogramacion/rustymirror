@@ -273,22 +273,20 @@ import { useScanStore } from '../store/scan'
 import MapPreview from './MapPreview.vue'
 import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
 import { useGpsEditor } from '../composables/useGpsEditor'
+import { MP_MIN_WIDTH, MP_MIN_THUMB_HEIGHT } from '../constants'
 
 const store = useScanStore()
 const HEIC  = new Set(['heic', 'heif'])
 
-const MIN_WIDTH = 450
-const panelWidth = ref(MIN_WIDTH)
-
-const MIN_THUMB_HEIGHT = 200
-const thumbHeight = ref(MIN_THUMB_HEIGHT)
+const panelWidth  = ref(MP_MIN_WIDTH)
+const thumbHeight = ref(MP_MIN_THUMB_HEIGHT)
 
 function startThumbResize(e) {
   const startY = e.clientY
   const startH = thumbHeight.value
 
   function onMove(e) {
-    thumbHeight.value = Math.max(MIN_THUMB_HEIGHT, startH + (e.clientY - startY))
+    thumbHeight.value = Math.max(MP_MIN_THUMB_HEIGHT, startH + (e.clientY - startY))
   }
   function onUp() {
     window.removeEventListener('mousemove', onMove)
@@ -304,7 +302,7 @@ function startResize(e) {
 
   function onMove(e) {
     const delta = startX - e.clientX
-    panelWidth.value = Math.max(MIN_WIDTH, startW + delta)
+    panelWidth.value = Math.max(MP_MIN_WIDTH, startW + delta)
   }
   function onUp() {
     window.removeEventListener('mousemove', onMove)
@@ -315,8 +313,8 @@ function startResize(e) {
 }
 
 onBeforeUnmount(() => {
-  panelWidth.value = MIN_WIDTH
-  thumbHeight.value = MIN_THUMB_HEIGHT
+  panelWidth.value  = MP_MIN_WIDTH
+  thumbHeight.value = MP_MIN_THUMB_HEIGHT
 })
 
 const panel  = computed(() => store.metadataPanel)
