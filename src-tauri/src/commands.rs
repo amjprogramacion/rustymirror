@@ -588,6 +588,47 @@ pub fn is_debug_build() -> bool {
     cfg!(debug_assertions)
 }
 
+/// Scans directories and returns all images with basic file metadata.
+/// Used by the metadata editor mode.
+#[tauri::command]
+pub async fn scan_for_metadata(paths: Vec<String>) -> Result<Vec<crate::types::ImageEntry>, String> {
+    tokio::task::spawn_blocking(move || {
+        use rayon::prelude::*;
+
+        let directories: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+        let images = crate::scanner::collect_images(&directories);
+
+        let mut entries: Vec<crate::types::ImageEntry> = images
+            .into_par_iter()
+            .filter_map(|p| {
+                let meta = std::fs::metadata(&p).ok()?;
+                let size_bytes = meta.len();
+                let modified = meta.modified().ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .and_then(|d| chrono::DateTime::<chrono::Utc>::from_timestamp(d.as_secs() as i64, 0))
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
+
+                let (width, height) = image::image_dimensions(&p).unwrap_or((0, 0));
+
+                Some(crate::types::ImageEntry {
+                    path: p.to_string_lossy().to_string(),
+                    size_bytes,
+                    width,
+                    height,
+                    modified,
+                    is_original: false,
+                })
+            })
+            .collect();
+
+        entries.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(entries)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Reads all EXIF and file metadata for a single image.
 #[tauri::command]
 pub async fn read_metadata(path: String) -> Result<crate::types::ImageMetadata, String> {

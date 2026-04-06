@@ -1,8 +1,10 @@
 <template>
   <div class="app-layout">
+    <ModeRail />
     <Sidebar />
     <main class="content-area">
-      <ResultsArea />
+      <ResultsArea v-if="activeMode === 'duplicates'" />
+      <MetadataManager v-else />
     </main>
   </div>
   <Lightbox />
@@ -12,12 +14,17 @@
 
 <script setup>
 import { onMounted } from 'vue'
+import ModeRail from './components/ModeRail.vue'
 import Sidebar from './components/Sidebar.vue'
 import ResultsArea from './components/ResultsArea.vue'
+import MetadataManager from './components/MetadataManager.vue'
 import Lightbox from './components/Lightbox.vue'
 import MetadataPanel from './components/MetadataPanel.vue'
 import UpdateToast from './components/UpdateToast.vue'
 import { useUpdater } from './composables/useUpdater'
+import { useMode } from './composables/useMode'
+
+const { activeMode } = useMode()
 
 const { autoCheck, checkForUpdates } = useUpdater()
 

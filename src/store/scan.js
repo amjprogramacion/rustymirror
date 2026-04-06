@@ -383,12 +383,12 @@ export const useScanStore = defineStore('scan', {
         this._thumbActive++
         invoke('get_thumbnail', { path })
           .then(src => {
-            this.thumbCache = { ...this.thumbCache, [path]: src }
+            this.thumbCache[path] = src
             this.heicThumbGenerated++
           })
           .catch((e) => {
             console.warn('Thumbnail generation failed:', path, e)
-            this.thumbCache = { ...this.thumbCache, [path]: '__error__' }
+            this.thumbCache[path] = '__error__'
           })
           .finally(() => {
             this._thumbActive--

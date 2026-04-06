@@ -45,6 +45,7 @@ pub fn run() {
             commands::is_debug_build,
             commands::read_metadata,
             commands::write_metadata,
+            commands::scan_for_metadata,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

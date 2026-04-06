@@ -18,128 +18,165 @@
 
     <SettingsModal v-model="showSettings" />
 
-    <div class="sidebar-divider" />
-
-    <!-- Folder list -->
-    <section class="sidebar-section">
-      <p class="section-label">Folders</p>
-
-      <ul class="folder-list" v-if="store.folders.length">
-        <li v-for="folder in store.folders" :key="folder" class="folder-item">
-          <span class="folder-path" :title="folder">{{ folder }}</span>
-          <button class="btn-remove" @click="store.removeFolder(folder)" title="Remove folder">✕</button>
-        </li>
-      </ul>
-      <p class="empty-hint" v-else>No folders added yet</p>
-
-      <button class="btn btn-secondary btn-full" @click="pickFolder">
-        + Add folder
-      </button>
-    </section>
-
-    <div class="sidebar-divider" />
-
-    <!-- Similarity threshold -->
-    <section class="sidebar-section">
-      <div class="threshold-header">
-        <p class="section-label">Similarity</p>
-        <span class="threshold-value">{{ store.similarityThreshold }}%</span>
-      </div>
-      <input
-        type="range"
-        min="75"
-        max="100"
-        step="1"
-        v-model.number="store.similarityThreshold"
-        class="threshold-slider"
-        :disabled="store.scanning"
-      />
-      <p class="threshold-hint">
-        <span v-if="store.similarityThreshold === 100">Exact matches only</span>
-        <span v-else-if="store.similarityThreshold >= 95">Very similar ({{ store.similarityThreshold }}%+)</span>
-        <span v-else-if="store.similarityThreshold >= 85">Similar ({{ store.similarityThreshold }}%+)</span>
-        <span v-else>Loosely similar ({{ store.similarityThreshold }}%+)</span>
-      </p>
-    </section>
-
-    <div class="sidebar-divider" />
-
-    <!-- Scan button -->
-    <section class="sidebar-section">
-      <button
-        class="btn btn-full"
-        :class="store.scanning ? 'btn-danger' : 'btn-success'"
-        :disabled="!store.scanning && store.folders.length === 0"
-        @click="store.scanning ? store.stopScan() : store.startScan()"
-      >
-        {{ store.scanning ? 'Stop scan' : 'Scan' }}
-      </button>
-
-    </section>
-
-    <!-- Filter pills — only after scan -->
-    <template v-if="store.scanDone">
+    <template v-if="activeMode === 'duplicates'">
       <div class="sidebar-divider" />
+
+      <!-- Folder list -->
       <section class="sidebar-section">
-        <p class="section-label">Filter</p>
-        <div class="filter-pills">
-          <button
-            v-for="f in filters"
-            :key="f.value"
-            class="pill"
-            :class="{ active: store.filter === f.value }"
-            @click="store.filter = f.value"
-          >
-            {{ f.label }}
-            <span class="pill-count">{{ store.groupCounts[f.value] }}</span>
-          </button>
-        </div>
+        <p class="section-label">Folders</p>
+
+        <ul class="folder-list" v-if="store.folders.length">
+          <li v-for="folder in store.folders" :key="folder" class="folder-item">
+            <span class="folder-path" :title="folder">{{ folder }}</span>
+            <button class="btn-remove" @click="store.removeFolder(folder)" title="Remove folder">✕</button>
+          </li>
+        </ul>
+        <p class="empty-hint" v-else>No folders added yet</p>
+
+        <button class="btn btn-secondary btn-full" @click="pickFolder">
+          + Add folder
+        </button>
       </section>
-    </template>
 
-    <!-- Recent scans -->
-    <template v-if="history.entries.length > 0">
       <div class="sidebar-divider" />
+
+      <!-- Similarity threshold -->
       <section class="sidebar-section">
-        <p class="section-label">Recent scans</p>
-        <div
-          v-for="entry in history.entries"
-          :key="entry.id"
-          class="history-entry"
-          :class="{
-            disabled: store.scanning,
-            active: isActiveEntry(entry),
-          }"
-          @click="loadFromHistory(entry)"
-          :title="entry.folders.join('\n')"
+        <div class="threshold-header">
+          <p class="section-label">Similarity</p>
+          <span class="threshold-value">{{ store.similarityThreshold }}%</span>
+        </div>
+        <input
+          type="range"
+          min="75"
+          max="100"
+          step="1"
+          v-model.number="store.similarityThreshold"
+          class="threshold-slider"
+          :disabled="store.scanning"
+        />
+        <p class="threshold-hint">
+          <span v-if="store.similarityThreshold === 100">Exact matches only</span>
+          <span v-else-if="store.similarityThreshold >= 95">Very similar ({{ store.similarityThreshold }}%+)</span>
+          <span v-else-if="store.similarityThreshold >= 85">Similar ({{ store.similarityThreshold }}%+)</span>
+          <span v-else>Loosely similar ({{ store.similarityThreshold }}%+)</span>
+        </p>
+      </section>
+
+      <div class="sidebar-divider" />
+
+      <!-- Scan button -->
+      <section class="sidebar-section">
+        <button
+          class="btn btn-full"
+          :class="store.scanning ? 'btn-danger' : 'btn-success'"
+          :disabled="!store.scanning && store.folders.length === 0"
+          @click="store.scanning ? store.stopScan() : store.startScan()"
         >
-          <!-- Line 1: date & time (+ scan duration on first real scan) -->
-          <div class="history-date">
-            {{ formatLocalDate(entry.date) }}<span v-if="formatDuration(entry.durationMs)" class="history-duration">&nbsp;({{ formatDuration(entry.durationMs) }})</span>
-          </div>
+          {{ store.scanning ? 'Stop scan' : 'Scan' }}
+        </button>
+      </section>
 
-          <!-- Line 2: folder path(s) -->
-          <div class="history-folders">
-            <span v-for="f in entry.folders" :key="f" class="history-folder" :title="f">
-              {{ shortPath(f) }}
-            </span>
+      <!-- Filter pills — only after scan -->
+      <template v-if="store.scanDone">
+        <div class="sidebar-divider" />
+        <section class="sidebar-section">
+          <p class="section-label">Filter</p>
+          <div class="filter-pills">
+            <button
+              v-for="f in filters"
+              :key="f.value"
+              class="pill"
+              :class="{ active: store.filter === f.value }"
+              @click="store.filter = f.value"
+            >
+              {{ f.label }}
+              <span class="pill-count">{{ store.groupCounts[f.value] }}</span>
+            </button>
           </div>
+        </section>
+      </template>
 
-          <!-- Line 3: stats left · threshold badge right -->
-          <div class="history-footer">
-            <span class="history-stats">
-              {{ entry.imageCount ?? 0 }} img · {{ entry.duplicates }} group{{ entry.duplicates !== 1 ? 's' : '' }}
-            </span>
-            <div class="history-badges">
-              <span v-if="entry.fastMode" class="history-fast-badge" title="Fast mode (EXIF thumbnail)">
-                <svg viewBox="0 0 7 11" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M4.2 0L0 6h3.2L2.8 11 7 5H3.8L4.2 0z" fill="#f5c542"/>
-                </svg>
+      <!-- Recent scans -->
+      <template v-if="history.entries.length > 0">
+        <div class="sidebar-divider" />
+        <section class="sidebar-section">
+          <p class="section-label">Recent scans</p>
+          <div
+            v-for="entry in history.entries"
+            :key="entry.id"
+            class="history-entry"
+            :class="{
+              disabled: store.scanning,
+              active: isActiveEntry(entry),
+            }"
+            @click="loadFromHistory(entry)"
+            :title="entry.folders.join('\n')"
+          >
+            <!-- Line 1: date & time (+ scan duration on first real scan) -->
+            <div class="history-date">
+              {{ formatLocalDate(entry.date) }}<span v-if="formatDuration(entry.durationMs)" class="history-duration">&nbsp;({{ formatDuration(entry.durationMs) }})</span>
+            </div>
+
+            <!-- Line 2: folder path(s) -->
+            <div class="history-folders">
+              <span v-for="f in entry.folders" :key="f" class="history-folder" :title="f">
+                {{ shortPath(f) }}
               </span>
-              <span class="history-threshold">{{ entry.threshold ?? 90 }}%</span>
+            </div>
+
+            <!-- Line 3: stats left · threshold badge right -->
+            <div class="history-footer">
+              <span class="history-stats">
+                {{ entry.imageCount ?? 0 }} img · {{ entry.duplicates }} group{{ entry.duplicates !== 1 ? 's' : '' }}
+              </span>
+              <div class="history-badges">
+                <span v-if="entry.fastMode" class="history-fast-badge" title="Fast mode (EXIF thumbnail)">
+                  <svg viewBox="0 0 7 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4.2 0L0 6h3.2L2.8 11 7 5H3.8L4.2 0z" fill="#f5c542"/>
+                  </svg>
+                </span>
+                <span class="history-threshold">{{ entry.threshold ?? 90 }}%</span>
+              </div>
             </div>
           </div>
-        </div>
+        </section>
+      </template>
+    </template>
+
+    <!-- Metadata mode sidebar -->
+    <template v-else>
+      <div class="sidebar-divider" />
+
+      <!-- Folder list -->
+      <section class="sidebar-section">
+        <p class="section-label">Folders</p>
+
+        <ul class="folder-list" v-if="meta.folders.length">
+          <li v-for="folder in meta.folders" :key="folder" class="folder-item">
+            <span class="folder-path" :title="folder">{{ folder }}</span>
+            <button class="btn-remove" @click="meta.removeFolder(folder)" title="Remove folder">✕</button>
+          </li>
+        </ul>
+        <p class="empty-hint" v-else>No folders added yet</p>
+
+        <button class="btn btn-secondary btn-full" @click="pickMetaFolder">
+          + Add folder
+        </button>
+      </section>
+
+      <div class="sidebar-divider" />
+
+      <!-- Scan button -->
+      <section class="sidebar-section">
+        <button
+          class="btn btn-full"
+          :class="meta.scanning ? 'btn-danger' : 'btn-success'"
+          :disabled="!meta.scanning && meta.folders.length === 0"
+          @click="meta.scanning ? null : meta.startScan()"
+        >
+          {{ meta.scanning ? 'Scanning…' : 'Scan' }}
+        </button>
       </section>
     </template>
 
@@ -148,6 +185,7 @@
     <div class="sidebar-divider" />
     <section class="sidebar-section sidebar-bottom">
       <button
+        v-if="activeMode === 'duplicates'"
         class="btn btn-cache btn-full btn-sm"
         :class="{ 'btn-cache--active': history.entries.length > 0 }"
         @click="history.clearHistory()"
@@ -156,6 +194,7 @@
         Clear scan history
       </button>
       <button
+        v-if="activeMode === 'duplicates'"
         class="btn btn-cache btn-full btn-sm"
         :class="{ 'btn-cache--active': cacheSize > 0 }"
         @click="clearCache"
@@ -185,10 +224,12 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useMode } from '../composables/useMode'
 import { useSettings } from '../composables/useSettings'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useScanStore } from '../store/scan'
+import { useMetadataStore } from '../store/metadata'
 import { useHistoryStore } from '../store/history'
 import { formatSize, shortPath, formatLocalDate, formatDuration } from '../utils/formatters'
 import { useCacheSize } from '../composables/useCacheSize'
@@ -196,7 +237,9 @@ import { useUpdater } from '../composables/useUpdater'
 import { SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../constants'
 import SettingsModal from './SettingsModal.vue'
 
+const { activeMode } = useMode()
 const store = useScanStore()
+const meta = useMetadataStore()
 const history = useHistoryStore()
 const { status: updateStatus } = useUpdater()
 const baseVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0'
@@ -263,6 +306,11 @@ watch(() => store.heicThumbGenerated, () => { loadCacheSize() })
 async function pickFolder() {
   const path = await open({ directory: true, multiple: false })
   if (path) store.addFolder(path)
+}
+
+async function pickMetaFolder() {
+  const path = await open({ directory: true, multiple: false })
+  if (path) meta.addFolder(path)
 }
 
 // ── Sidebar resize ────────────────────────────────────────────────────────────
