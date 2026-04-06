@@ -12,6 +12,7 @@
  */
 
 import { readFileSync, writeFileSync } from 'fs'
+import { execSync } from 'child_process'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -37,6 +38,12 @@ let cargo = readFileSync(cargoPath, 'utf8')
 cargo = cargo.replace(/^version = "[\d.]+"/m, `version = "${version}"`)
 writeFileSync(cargoPath, cargo)
 console.log(`[sync-version] Updated Cargo.toml`)
+
+// ── Cargo.lock ────────────────────────────────────────────────────────────────
+// Cargo.lock is auto-generated, so we let cargo update only the package entry.
+const srcTauriPath = resolve(root, 'src-tauri')
+execSync(`cargo update --precise ${version} --package rustymirror`, { cwd: srcTauriPath, stdio: 'inherit' })
+console.log(`[sync-version] Updated Cargo.lock`)
 
 // ── package-lock.json ─────────────────────────────────────────────────────────
 const pkgLockPath = resolve(root, 'package-lock.json')
