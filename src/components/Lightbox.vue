@@ -93,6 +93,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { useScanStore } from '../store/scan'
+import { fileName, formatSize, formatDate } from '../utils/formatters'
 
 const store   = useScanStore()
 const HEIC    = new Set(['heic', 'heif'])
@@ -166,18 +167,6 @@ onMounted(()        => window.addEventListener('keydown', onKeydown))
 onBeforeUnmount(()  => window.removeEventListener('keydown', onKeydown))
 
 // Formatters
-function fileName(p) { return p?.split(/[/\\]/).pop() ?? '' }
-function formatSize(b) {
-  if (!b) return ''
-  if (b < 1048576) return `${(b/1024).toFixed(1)} KB`
-  return `${(b/1048576).toFixed(1)} MB`
-}
-function formatDate(iso) {
-  if (!iso || iso.startsWith('1970')) return ''
-  const d = new Date(iso)
-  const pad = n => String(n).padStart(2, '0')
-  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth()+1)}/${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
-}
 </script>
 
 <style scoped>

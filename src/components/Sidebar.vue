@@ -115,7 +115,7 @@
         >
           <!-- Line 1: date & time (+ scan duration on first real scan) -->
           <div class="history-date">
-            {{ formatHistoryDate(entry.date) }}<span v-if="formatDuration(entry.durationMs)" class="history-duration">&nbsp;({{ formatDuration(entry.durationMs) }})</span>
+            {{ formatLocalDate(entry.date) }}<span v-if="formatDuration(entry.durationMs)" class="history-duration">&nbsp;({{ formatDuration(entry.durationMs) }})</span>
           </div>
 
           <!-- Line 2: folder path(s) -->
@@ -160,20 +160,20 @@
         :class="{ 'btn-cache--active': cacheSize > 0 }"
         @click="clearCache"
         :disabled="cacheSize === 0"
-        :title="`Hash cache: ${formatBytes(cacheSize)}`"
+        :title="`Hash cache: ${formatSize(cacheSize)}`"
       >
         Clear hash cache
-        <span class="cache-size" v-if="cacheSize > 0">{{ formatBytes(cacheSize) }}</span>
+        <span class="cache-size" v-if="cacheSize > 0">{{ formatSize(cacheSize) }}</span>
       </button>
       <button
         class="btn btn-cache btn-full btn-sm"
         :class="{ 'btn-cache--active': thumbCacheSize > 0 }"
         @click="clearThumbCache"
         :disabled="thumbCacheSize === 0"
-        :title="`Thumbnail cache: ${formatBytes(thumbCacheSize)}`"
+        :title="`Thumbnail cache: ${formatSize(thumbCacheSize)}`"
       >
         Clear thumbnail cache
-        <span class="cache-size" v-if="thumbCacheSize > 0">{{ formatBytes(thumbCacheSize) }}</span>
+        <span class="cache-size" v-if="thumbCacheSize > 0">{{ formatSize(thumbCacheSize) }}</span>
       </button>
     </section>
 
@@ -189,6 +189,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useScanStore } from '../store/scan'
 import { useHistoryStore } from '../store/history'
+import { formatSize, shortPath, formatLocalDate, formatDuration } from '../utils/formatters'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
 import SettingsModal from './SettingsModal.vue'
@@ -224,24 +225,6 @@ watch(() => store.filter, () => {
 // ── Cache management ──────────────────────────────────────────────────────────
 const { cacheSize, thumbCacheSize, loadCacheSizes: loadCacheSize, clearCache, clearThumbCache } = useCacheSize()
 
-function formatBytes(b) {
-  if (b === 0) return '0 B'
-  if (b < 1024) return `${b} B`
-  if (b < 1048576) return `${(b/1024).toFixed(1)} KB`
-  return `${(b/1048576).toFixed(1)} MB`
-}
-
-// Shows: drive + "…" + last 3 folders  e.g.  N:\…\FOTOS\GALERÍA\2019
-function shortPath(p) {
-  const sep = p.includes('\\') ? '\\' : '/'
-  const parts = p.split(/[/\\]/).filter(Boolean)
-  if (parts.length <= 4) return p
-  const isUnc = p.startsWith('\\\\') || p.startsWith('//')
-  const drive = isUnc ? sep + sep + parts[0] + sep
-              : p.match(/^[a-zA-Z]:/) ? parts[0] + sep
-              : parts[0] + sep
-  return drive + '…' + sep + parts.slice(-3).join(sep)
-}
 
 function isActiveEntry(entry) {
   return store.scanDone && entry.id === store.activeHistoryEntryId
@@ -265,24 +248,6 @@ function loadFromHistory(entry) {
   store.startScan()
 }
 
-function formatHistoryDate(iso) {
-  const d = new Date(iso)
-  const pad = n => String(n).padStart(2, '0')
-  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function formatDuration(ms) {
-  if (ms === -1) return 'cancelled'
-  if (!ms || ms < 500) return null
-  const s = Math.round(ms / 1000)
-  if (s < 60) return `${s}s`
-  const m = Math.floor(s / 60)
-  const r = s % 60
-  if (m < 60) return r > 0 ? `${m}m ${r}s` : `${m}m`
-  const h = Math.floor(m / 60)
-  const rm = m % 60
-  return rm > 0 ? `${h}h ${rm}m` : `${h}h`
-}
 
 onMounted(() => {
   loadCacheSize()

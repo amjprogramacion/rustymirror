@@ -271,6 +271,7 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useScanStore } from '../store/scan'
 import MapPreview from './MapPreview.vue'
+import { fileExt, fileName, folderPath, formatSize, formatGps, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
 
 const store = useScanStore()
 const HEIC  = new Set(['heic', 'heif'])
@@ -545,48 +546,6 @@ const hasCameraInfo  = computed(() => meta.value && (meta.value.make || meta.val
 const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime || meta.value.fNumber || meta.value.isoSpeed || meta.value.focalLength))
 
 // ── Formatters ────────────────────────────────────────────────────────────────
-function fileExt(p)    { return p?.split('.').pop()?.toLowerCase() ?? '' }
-function fileName(p)   { return p?.split(/[/\\]/).pop() ?? '' }
-function folderPath(p) {
-  const parts = p?.split(/[/\\]/) ?? []
-  return parts.slice(0, -1).join('/')
-}
-
-function formatSize(b) {
-  if (!b) return ''
-  if (b < 1024)    return `${b} B`
-  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`
-  return `${(b / 1048576).toFixed(1)} MB`
-}
-
-function formatDate(iso) {
-  if (!iso || iso.startsWith('1970')) return '—'
-  const d = new Date(iso)
-  const pad = n => String(n).padStart(2, '0')
-  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
-}
-
-function formatGps(lat, lon) {
-  const fmt = (v, pos, neg) => {
-    const d = Math.abs(v)
-    return `${d.toFixed(5)}° ${v >= 0 ? pos : neg}`
-  }
-  return `${fmt(lat, 'N', 'S')}, ${fmt(lon, 'E', 'W')}`
-}
-
-// "2023-06-15T14:30:00Z" → "2023-06-15T14:30:00" (step=1 needs seconds)
-function isoToDatetimeLocal(iso) {
-  if (!iso) return ''
-  const s = iso.replace('Z', '')
-  return s.length >= 19 ? s.slice(0, 19) : s.slice(0, 16) + ':00'
-}
-
-// "2023-06-15T14:30:45" → "2023-06-15T14:30:45"
-// "2023-06-15T14:30" → "2023-06-15T14:30:00"
-function datetimeLocalToIso(v) {
-  if (!v) return null
-  return v.length === 16 ? `${v}:00` : v
-}
 </script>
 
 <style scoped>

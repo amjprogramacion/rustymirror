@@ -72,7 +72,7 @@
             <div class="settings-row">
               <span class="settings-row-label">
                 Hash cache
-                <span class="cache-hint" v-if="cacheSize > 0">{{ formatBytes(cacheSize) }}</span>
+                <span class="cache-hint" v-if="cacheSize > 0">{{ formatSize(cacheSize) }}</span>
               </span>
               <button
                 class="btn-setting"
@@ -86,7 +86,7 @@
             <div class="settings-row">
               <span class="settings-row-label">
                 Thumbnail cache
-                <span class="cache-hint" v-if="thumbCacheSize > 0">{{ formatBytes(thumbCacheSize) }}</span>
+                <span class="cache-hint" v-if="thumbCacheSize > 0">{{ formatSize(thumbCacheSize) }}</span>
               </span>
               <button
                 class="btn-setting"
@@ -180,6 +180,7 @@ import { ref, onMounted } from 'vue'
 import { useHistoryStore } from '../store/history'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
+import { formatSize } from '../utils/formatters'
 
 defineProps({ modelValue: Boolean })
 defineEmits(['update:modelValue'])
@@ -209,13 +210,6 @@ function saveFastMode() {
 
 const { cacheSize, thumbCacheSize, loadCacheSizes, clearCache, clearThumbCache } = useCacheSize()
 const { autoCheck, notifyOnUpdate, status: updateStatus, latestVersion, downloadProgress, errorMessage, checkForUpdates, installUpdate, restartApp, saveAutoCheck, saveNotifyOnUpdate } = useUpdater()
-
-function formatBytes(b) {
-  if (b === 0) return '0 B'
-  if (b < 1024) return `${b} B`
-  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`
-  return `${(b / 1048576).toFixed(1)} MB`
-}
 
 onMounted(loadCacheSizes)
 </script>

@@ -136,6 +136,7 @@ import { listen } from '@tauri-apps/api/event'
 import { useScanStore } from '../store/scan'
 import ImageGroup from './ImageGroup.vue'
 import ScanProgress from './ScanProgress.vue'
+import { fileName } from '../utils/formatters'
 
 const store        = useScanStore()
 const showConfirm  = ref(false)
@@ -189,10 +190,6 @@ const hasMixed = computed(() =>
 const previewPaths = computed(() =>
   [...store.selected].slice(0, MAX_PREVIEW)
 )
-
-function fileName(p) {
-  return p.split(/[/\\]/).pop()
-}
 
 async function confirmDelete() {
   if (store.selectedCount === 0) return

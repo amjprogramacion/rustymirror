@@ -78,6 +78,7 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { useScanStore } from '../store/scan'
+import { fileExt, fileName, formatSize, formatDate, kindLabel } from '../utils/formatters'
 
 const props = defineProps({ group: { type: Object, required: true } })
 const store = useScanStore()
@@ -196,28 +197,6 @@ async function openFolder(path) {
   await invoke('open_folder', { path })
 }
 
-function fileExt(p)  { return p.split('.').pop()?.toLowerCase() || '' }
-function fileName(p) { return p.split(/[/\\]/).pop() }
-
-function formatSize(b) {
-  if (b < 1024)    return `${b} B`
-  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`
-  return `${(b / 1048576).toFixed(1)} MB`
-}
-
-function formatDate(iso) {
-  if (!iso || iso.startsWith('1970')) return ''
-  const d = new Date(iso)
-  const pad = n => String(n).padStart(2, '0')
-  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth()+1)}/${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
-}
-
-function kindLabel(kind) {
-  if (kind === 'exact')    return 'Exact duplicate'
-  if (kind === 'similar')  return 'Similar'
-  if (kind === 'sameDate') return 'Same date'
-  return kind
-}
 </script>
 
 <style scoped>
