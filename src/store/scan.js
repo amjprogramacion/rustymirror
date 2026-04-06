@@ -386,7 +386,8 @@ export const useScanStore = defineStore('scan', {
             this.thumbCache = { ...this.thumbCache, [path]: src }
             this.heicThumbGenerated++
           })
-          .catch(() => {
+          .catch((e) => {
+            console.warn('Thumbnail generation failed:', path, e)
             this.thumbCache = { ...this.thumbCache, [path]: '__error__' }
           })
           .finally(() => {

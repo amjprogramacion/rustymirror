@@ -114,8 +114,10 @@
           </template>
         </p>
 
+        <p v-if="deleteError" class="dialog-error">{{ deleteError }}</p>
+
         <div class="dialog-actions">
-          <button class="btn btn-ghost" @click="showConfirm = false">Cancel</button>
+          <button class="btn btn-ghost" @click="showConfirm = false; deleteError = null">Cancel</button>
           <button class="btn btn-danger" @click="doDelete" :disabled="deleting">
             <span v-if="deleting && deleteProgress.total > 0">
               Deleting {{ deleteProgress.done }}/{{ deleteProgress.total }}…
@@ -140,6 +142,7 @@ import { fileName } from '../utils/formatters'
 
 const store        = useScanStore()
 const showConfirm  = ref(false)
+const deleteError  = ref(null)
 
 function focusFirstCard() {
   const first = document.querySelector('[data-card-path]')
@@ -208,6 +211,7 @@ async function confirmDelete() {
 
 async function doDelete() {
   deleting.value = true
+  deleteError.value = null
   deleteProgress.value = { done: 0, total: store.selectedCount }
 
   const unlisten = await listen('delete_progress', (e) => {
@@ -219,7 +223,7 @@ async function doDelete() {
     showConfirm.value = false
     store.multiSelect = false
   } catch (e) {
-    alert(`Delete failed: ${e}`)
+    deleteError.value = `Delete failed: ${e}`
   } finally {
     unlisten()
     deleting.value = false
@@ -450,6 +454,12 @@ async function doDelete() {
   color: var(--text-muted);
   text-align: center;
   line-height: 1.5;
+}
+
+.dialog-error {
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+  text-align: center;
 }
 
 .dialog-actions {

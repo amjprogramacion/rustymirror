@@ -6,8 +6,8 @@ const cacheSize      = ref(0)
 const thumbCacheSize = ref(0)
 
 async function loadCacheSizes() {
-  try { cacheSize.value      = await invoke('get_cache_size') }       catch {}
-  try { thumbCacheSize.value = await invoke('get_thumb_cache_size') } catch {}
+  try { cacheSize.value      = await invoke('get_cache_size') }       catch (e) { console.warn('get_cache_size failed:', e) }
+  try { thumbCacheSize.value = await invoke('get_thumb_cache_size') } catch (e) { console.warn('get_thumb_cache_size failed:', e) }
 }
 
 async function clearCache() {
