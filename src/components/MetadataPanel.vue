@@ -49,7 +49,7 @@
         <div class="mp-pair">
           <div class="mp-section mp-section--half">
             <button class="mp-section-title" @click="toggle('file')">
-              File <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.file }">›</span>
+              File <ChevronIcon :open="!collapsed.file" />
             </button>
             <div class="mp-rows" v-show="!collapsed.file">
               <div class="mp-row"><span class="mp-label">Size</span><span class="mp-value">{{ formatSize(meta.fileSize) }}</span></div>
@@ -58,7 +58,7 @@
           </div>
           <div class="mp-section mp-section--half" v-if="hasCameraInfo">
             <button class="mp-section-title" @click="toggle('camera')">
-              Camera <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.camera }">›</span>
+              Camera <ChevronIcon :open="!collapsed.camera" />
             </button>
             <div class="mp-rows" v-show="!collapsed.camera">
               <div class="mp-row" v-if="meta.make || meta.model">
@@ -80,7 +80,7 @@
         <!-- Date -->
         <div class="mp-section">
           <button class="mp-section-title" @click="toggle('date')">
-            Date taken <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.date }">›</span>
+            Date taken <ChevronIcon :open="!collapsed.date" />
           </button>
           <div class="mp-edit-rows" v-show="!collapsed.date">
             <label class="mp-edit-row">
@@ -98,7 +98,7 @@
         <!-- Location -->
         <div class="mp-section">
           <button class="mp-section-title" @click="toggle('location')">
-            Location <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.location }">›</span>
+            Location <ChevronIcon :open="!collapsed.location" />
           </button>
           <div v-show="!collapsed.location">
             <div class="mp-rows" v-if="hasGpsPreview">
@@ -162,7 +162,7 @@
         <!-- Exposure -->
         <div class="mp-section" v-if="hasExposureInfo">
           <button class="mp-section-title" @click="toggle('exposure')">
-            Exposure <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.exposure }">›</span>
+            Exposure <ChevronIcon :open="!collapsed.exposure" />
           </button>
           <div class="mp-rows" v-show="!collapsed.exposure">
             <div class="mp-row" v-if="meta.exposureTime">
@@ -203,7 +203,7 @@
         <!-- Editable fields -->
         <div class="mp-section mp-section--edit">
           <button class="mp-section-title" @click="toggle('details')">
-            Details <span class="mp-chevron" :class="{ 'mp-chevron--open': !collapsed.details }">›</span>
+            Details <ChevronIcon :open="!collapsed.details" />
           </button>
           <div class="mp-edit-rows" v-show="!collapsed.details">
 
@@ -271,6 +271,7 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useScanStore } from '../store/scan'
 import MapPreview from './MapPreview.vue'
+import ChevronIcon from './ChevronIcon.vue'
 import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
 import { useGpsEditor } from '../composables/useGpsEditor'
 import { MP_MIN_WIDTH, MP_MIN_THUMB_HEIGHT } from '../constants'
@@ -322,9 +323,9 @@ const entry  = computed(() => panel.value?.entry ?? {})
 const meta   = computed(() => panel.value?.metadata ?? null)
 
 // ── Section collapse state ────────────────────────────────────────────────────
-const collapsed = ref({ file: false, camera: false, date: false, location: false, exposure: true, details: false })
+const collapsed = ref({ file: false, camera: false, date: false, location: false, exposure: true, details: true })
 function toggle(key) { collapsed.value[key] = !collapsed.value[key] }
-watch(meta, (m) => { if (m) collapsed.value = { file: false, camera: false, date: false, location: false, exposure: true, details: false } })
+watch(meta, (m) => { if (m) collapsed.value = { file: false, camera: false, date: false, location: false, exposure: true, details: true } })
 
 const saveError = ref(null)
 
@@ -653,20 +654,6 @@ const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime ||
 }
 .mp-section-title:hover { color: var(--text-secondary); }
 
-.mp-chevron {
-  font-size: 18px;
-  font-weight: 400;
-  line-height: 1;
-  color: var(--text-muted);
-  transform: rotate(90deg);
-  transition: transform 180ms ease;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-.mp-chevron--open {
-  transform: rotate(270deg);
-}
 
 /* Content padding inside each section */
 .mp-section > *:not(.mp-section-title) {
