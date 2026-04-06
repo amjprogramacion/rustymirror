@@ -12,6 +12,11 @@ use std::sync::atomic::AtomicBool;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(debug_assertions)]
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("rustymirror=debug"),
+    ).init();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())

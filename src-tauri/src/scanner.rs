@@ -272,7 +272,7 @@ where
     }
     let mut ext_list: Vec<_> = ext_counts.into_iter().collect();
     ext_list.sort_by(|a, b| b.1.cmp(&a.1));
-    println!("[RustyMirror:RS] {} images: {}", total,
+    log::debug!("[RustyMirror:RS] {} images: {}", total,
         ext_list.iter().map(|(e, n)| format!("{}: {}", e, n)).collect::<Vec<_>>().join(", "));
 
     // ── Phase 1: incremental scan ────────────────────────────────────────────
@@ -287,7 +287,7 @@ where
     // with stored paths in case of encoding discrepancies.
     for ps in path_strings.iter().take(3) {
         let hex: String = ps.bytes().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-        println!("[RustyMirror:RS] query path hex: {:?} = {}", ps, hex);
+        log::debug!("[RustyMirror:RS] query path hex: {:?} = {}", ps, hex);
     }
 
     let bulk_cache = cache.as_ref()
@@ -298,7 +298,7 @@ where
     // from get_bulk — they are the paths actually stored in SQLite).
     for (k, _) in bulk_cache.iter().take(3) {
         let hex: String = k.bytes().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-        println!("[RustyMirror:RS] stored path hex: {:?} = {}", k, hex);
+        log::debug!("[RustyMirror:RS] stored path hex: {:?} = {}", k, hex);
     }
 
     let cache_hits        = std::sync::atomic::AtomicUsize::new(0);
@@ -306,7 +306,7 @@ where
     let dbg_has_hh        = std::sync::atomic::AtomicUsize::new(0);
     let dbg_hh_match      = std::sync::atomic::AtomicUsize::new(0);
     let dbg_hh_read_fail  = std::sync::atomic::AtomicUsize::new(0);
-    println!("[RustyMirror:RS] cache: {} entries ({} paths to check)",
+    log::debug!("[RustyMirror:RS] cache: {} entries ({} paths to check)",
         cache.as_ref().map(|c| c.count()).unwrap_or(0), paths.len());
 
     // Process one file: returns the FileRecord (or None on failure/stop).
@@ -423,15 +423,15 @@ where
     }
 
     let hits = cache_hits.load(AOrdering::Relaxed);
-    println!("[RustyMirror:RS] phase 1: {} hits, {} processed from disk", hits, total - hits);
-    println!("[RustyMirror:RS] cache diag: size_match={} has_header_hash={} hh_match={} hh_read_fail={}",
+    log::debug!("[RustyMirror:RS] phase 1: {} hits, {} processed from disk", hits, total - hits);
+    log::debug!("[RustyMirror:RS] cache diag: size_match={} has_header_hash={} hh_match={} hh_read_fail={}",
         dbg_size_match.load(AOrdering::Relaxed),
         dbg_has_hh.load(AOrdering::Relaxed),
         dbg_hh_match.load(AOrdering::Relaxed),
         dbg_hh_read_fail.load(AOrdering::Relaxed));
 
     let records: Vec<FileRecord> = results.into_iter().flatten().collect();
-    println!("[RustyMirror:RS] phase 1 done: {} records in {:.1}s", records.len(), t1.elapsed().as_secs_f32());
+    log::debug!("[RustyMirror:RS] phase 1 done: {} records in {:.1}s", records.len(), t1.elapsed().as_secs_f32());
 
     // Always persist to cache — even on cancellation, so partial results aren't lost.
     if let Some(ref c) = cache {
@@ -460,17 +460,17 @@ where
         // Diagnostic: print hex bytes of first 3 paths being stored.
         for (k, _, _) in to_cache.iter().take(3) {
             let hex: String = k.bytes().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-            println!("[RustyMirror:RS] write path hex: {:?} = {}", k, hex);
+            log::debug!("[RustyMirror:RS] write path hex: {:?} = {}", k, hex);
         }
         if let Err(e) = c.put_batch(&to_cache) {
-            println!("[RustyMirror:RS] cache write error: {}", e);
+            log::debug!("[RustyMirror:RS] cache write error: {}", e);
         } else {
-            println!("[RustyMirror:RS] cache: wrote {} entries", to_cache.len());
+            log::debug!("[RustyMirror:RS] cache: wrote {} entries", to_cache.len());
         }
     }
 
     if stop.load(AOrdering::Relaxed) {
-        println!("[RustyMirror:RS] scan stopped by user — partial cache saved ({} records)", records.len());
+        log::debug!("[RustyMirror:RS] scan stopped by user — partial cache saved ({} records)", records.len());
         return Ok(vec![]);
     }
 
@@ -491,15 +491,15 @@ where
         indices.iter().for_each(|&i| grouped[i] = true);
         groups.push(DuplicateGroup { kind: SimilarityKind::Exact, entries, similarity: Some(100) });
     }
-    println!("[RustyMirror:RS] phase 2: {} exact groups", groups.len());
+    log::debug!("[RustyMirror:RS] phase 2: {} exact groups", groups.len());
 
     // ── Phase 3: perceptual hash (user threshold) ─────────────────────────────
     if stop.load(AOrdering::Relaxed) {
-        println!("[RustyMirror:RS] scan stopped by user before phase 3");
+        log::debug!("[RustyMirror:RS] scan stopped by user before phase 3");
         return Ok(groups);
     }
     let ungrouped_ph: Vec<usize> = (0..records.len()).filter(|&i| !grouped[i]).collect();
-    println!("[RustyMirror:RS] phase 3 (pHash): {} files to compare", ungrouped_ph.len());
+    log::debug!("[RustyMirror:RS] phase 3 (pHash): {} files to compare", ungrouped_ph.len());
 
     let t3 = std::time::Instant::now();
 
@@ -514,7 +514,7 @@ where
         .map(|&i| PathBuf::from(&records[i].entry.path)).collect();
     let heic_count = heic_convert_paths.len();
 
-    println!("[RustyMirror:RS] phase 3: {} HEIC ({} need conversion, {} from cache)",
+    log::debug!("[RustyMirror:RS] phase 3: {} HEIC ({} need conversion, {} from cache)",
         ungrouped_heic_indices.len(), heic_count,
         ungrouped_heic_indices.len() - heic_count);
 
@@ -528,7 +528,7 @@ where
         }).into_iter().map(|(orig, tmp, w, h)| (orig, (tmp, w, h))).collect()
     } else { HashMap::new() };
 
-    println!("[RustyMirror:RS] phase 3a: {}/{} HEIC converted in {:.1}s",
+    log::debug!("[RustyMirror:RS] phase 3a: {}/{} HEIC converted in {:.1}s",
         conversions.len(), heic_count, t3.elapsed().as_secs_f32());
 
     let t3b = std::time::Instant::now();
@@ -571,7 +571,7 @@ where
     }
 
     for (tmp, _, _) in conversions.values() { cleanup_temp(tmp); }
-    println!("[RustyMirror:RS] phase 3b: {} HEIC pHashes in {:.1}s", heic_extra.len(), t3b.elapsed().as_secs_f32());
+    log::debug!("[RustyMirror:RS] phase 3b: {} HEIC pHashes in {:.1}s", heic_extra.len(), t3b.elapsed().as_secs_f32());
 
     if let Some(ref c) = cache {
         let heic_updates: Vec<(String, String, CachedFile)> = heic_extra.iter()
@@ -645,7 +645,7 @@ where
         })
         .collect();
 
-    println!("[RustyMirror:RS] phase 3c: comparing {} pHashes", ph_pairs.len());
+    log::debug!("[RustyMirror:RS] phase 3c: comparing {} pHashes", ph_pairs.len());
     let t3c = std::time::Instant::now();
     let n = ph_pairs.len();
     let mut ph_grouped = vec![false; n];
@@ -698,7 +698,7 @@ where
                 phase: "Comparing similar images…".into() });
         }
     }
-    println!("[RustyMirror:RS] phase 3c done in {:.1}s", t3c.elapsed().as_secs_f32());
+    log::debug!("[RustyMirror:RS] phase 3c done in {:.1}s", t3c.elapsed().as_secs_f32());
 
     // ── Phase 4: timestamp tag (fallback) ─────────────────────────────────────
     // Accumulates pHashes for sameDate members with NULL phash in older cache entries.
@@ -749,7 +749,7 @@ where
         samedate_group_indices.push(indices.to_vec());
         groups.push(DuplicateGroup { kind: SimilarityKind::SameDate, entries, similarity });
     }
-    println!("[RustyMirror:RS] phase 4: {} timestamp groups", groups.len() - before);
+    log::debug!("[RustyMirror:RS] phase 4: {} timestamp groups", groups.len() - before);
 
     // Persist on-demand pHashes to cache
     if let Some(ref c) = cache {
@@ -768,7 +768,7 @@ where
                 })
             }).collect();
         if !updates.is_empty() {
-            println!("[RustyMirror:RS] phase 4: writing {} on-demand pHashes to cache", updates.len());
+            log::debug!("[RustyMirror:RS] phase 4: writing {} on-demand pHashes to cache", updates.len());
             let _ = c.put_batch(&updates);
         }
     }
@@ -780,7 +780,7 @@ where
     // are removed from their original sameDate group; groups that become empty
     // or have only one member left are discarded.
     if cross_date_phash && samedate_group_indices.len() >= 2 {
-        println!("[RustyMirror:RS] phase 5: cross-group pHash across {} sameDate groups", samedate_group_indices.len());
+        log::debug!("[RustyMirror:RS] phase 5: cross-group pHash across {} sameDate groups", samedate_group_indices.len());
 
         let min_hamming: u32 = 16;
 
@@ -904,14 +904,14 @@ where
                 groups.retain(|_| { let keep = !groups_to_remove.contains(&i); i += 1; keep });
             }
 
-            println!("[RustyMirror:RS] phase 5: {} cross-group clusters, {} sameDate groups removed, {} partially pruned",
+            log::debug!("[RustyMirror:RS] phase 5: {} cross-group clusters, {} sameDate groups removed, {} partially pruned",
                 new_groups.len(),
                 fully_absorbed,
                 absorbed_paths.iter().filter(|s| !s.is_empty()).count().saturating_sub(fully_absorbed));
 
             groups.extend(new_groups);
         } else {
-            println!("[RustyMirror:RS] phase 5: no cross-group clusters found");
+            log::debug!("[RustyMirror:RS] phase 5: no cross-group clusters found");
         }
     }
 
@@ -920,7 +920,7 @@ where
             .cmp(&b.entries.first().map(|e| e.modified.as_str()))
     });
 
-    println!("[RustyMirror:RS] complete: {} groups", groups.len());
+    log::debug!("[RustyMirror:RS] complete: {} groups", groups.len());
     Ok(groups)
 }
 

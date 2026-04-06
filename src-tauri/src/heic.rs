@@ -24,17 +24,17 @@ fn find_magick(resource_dir: Option<&Path>) -> Option<PathBuf> {
         candidates.push(PathBuf::from("src-tauri").join("resources").join("magick.exe"));
 
         for candidate in &candidates {
-            println!("[RustyMirror:RS] checking magick at: {}", candidate.display());
+            log::debug!("[RustyMirror:RS] checking magick at: {}", candidate.display());
             if candidate.exists() {
-                println!("[RustyMirror:RS] magick found: {}", candidate.display());
+                log::debug!("[RustyMirror:RS] magick found: {}", candidate.display());
                 return Some(candidate.clone());
             }
         }
         if which_exists("magick") {
-            println!("[RustyMirror:RS] magick found in PATH");
+            log::debug!("[RustyMirror:RS] magick found in PATH");
             return Some(PathBuf::from("magick"));
         }
-        println!("[RustyMirror:RS] magick NOT found");
+        log::debug!("[RustyMirror:RS] magick NOT found");
         None
     }
     #[cfg(target_os = "macos")]
