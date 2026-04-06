@@ -66,7 +66,7 @@ import { useScanStore } from '../store/scan'
 const store = useScanStore()
 
 const isScanning = computed(() =>
-  store.progress.total === 0 ||
+  store.progress.total > 0 &&
   store.progress.scanned < store.progress.total
 )
 
