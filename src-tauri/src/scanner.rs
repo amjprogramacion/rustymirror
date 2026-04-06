@@ -830,22 +830,62 @@ where
         let m = flat.len();
         let mut sd_grouped = vec![false; m];
 
-        // For each sameDate group: which flat indices were absorbed by a cross-group cluster
-        let mut absorbed_by_group: Vec<std::collections::HashSet<usize>> =
-            vec![std::collections::HashSet::new(); samedate_group_indices.len()];
+        // Pre-compute pairwise distance matrix for moderate m (same strategy as phase 3c).
+        // Entries where either element has no pHash are left as u32::MAX (sentinel = no data).
+        let dist_matrix_5: Option<Vec<u32>> = if m > 1 && m <= MATRIX_LIMIT {
+            let size = m * (m - 1) / 2;
+            let mut mat = vec![u32::MAX; size];
+            for a in 0..m {
+                if ph_flat[a].is_none() { continue; }
+                let base = a * m - a * (a + 1) / 2;
+                for b in (a + 1)..m {
+                    if let (Some(pa), Some(pb)) = (&ph_flat[a], &ph_flat[b]) {
+                        mat[base + (b - a - 1)] = pa.dist(pb);
+                    }
+                }
+            }
+            Some(mat)
+        } else {
+            None
+        };
+
+        // Returns the Hamming distance between ph_flat[a] and ph_flat[b], or None if
+        // either has no pHash. Uses the pre-computed matrix when available.
+        let pair_dist_5 = |a: usize, b: usize| -> Option<u32> {
+            let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+            if let Some(ref mat) = dist_matrix_5 {
+                let d = mat[lo * m - lo * (lo + 1) / 2 + (hi - lo - 1)];
+                if d == u32::MAX { None } else { Some(d) }
+            } else {
+                match (&ph_flat[lo], &ph_flat[hi]) {
+                    (Some(pa), Some(pb)) => Some(pa.dist(pb)),
+                    _ => None,
+                }
+            }
+        };
+
+        // For each sameDate group: flat indices absorbed into a cross-group cluster.
+        // Vec<Vec> instead of Vec<HashSet> — sd_grouped prevents any element from
+        // being added to more than one cluster, so duplicates are impossible.
+        let mut absorbed_by_group: Vec<Vec<usize>> =
+            vec![Vec::new(); samedate_group_indices.len()];
 
         let mut new_groups: Vec<DuplicateGroup> = Vec::new();
 
         for a in 0..m {
-            if sd_grouped[a] { continue; }
-            let ph_a = match &ph_flat[a] { Some(ph) => ph, None => continue };
+            if sd_grouped[a] || ph_flat[a].is_none() { continue; }
 
             let mut cluster = vec![a];
+            // Track seed-to-member max during formation; non-seed pairs are
+            // augmented in the post-loop below.
+            let mut max_dist = 0u32;
+
             for b in (a + 1)..m {
                 if sd_grouped[b] { continue; }
                 if flat[a].1 == flat[b].1 { continue; } // skip same-group pairs
-                if let Some(ph_b) = &ph_flat[b] {
-                    if ph_a.dist(ph_b) <= min_hamming {
+                if let Some(d) = pair_dist_5(a, b) {
+                    if d <= min_hamming {
+                        if d > max_dist { max_dist = d; }
                         cluster.push(b);
                         sd_grouped[b] = true;
                     }
@@ -853,20 +893,16 @@ where
             }
 
             if cluster.len() < 2 { continue; }
-
-            // Must span at least two different sameDate groups
-            let groups_in_cluster: std::collections::HashSet<usize> =
-                cluster.iter().map(|&idx| flat[idx].1).collect();
-            if groups_in_cluster.len() < 2 { continue; }
+            // Because same-group pairs are skipped, any accepted b is from a
+            // different sameDate group than a. cluster.len() >= 2 therefore
+            // already guarantees the cluster spans >= 2 groups — no HashSet needed.
 
             sd_grouped[a] = true;
 
-            // Worst-case distance across the cluster
-            let mut max_dist = 0u32;
-            for x in 0..cluster.len() {
-                for y in (x+1)..cluster.len() {
-                    if let (Some(px), Some(py)) = (&ph_flat[cluster[x]], &ph_flat[cluster[y]]) {
-                        let d = px.dist(py);
+            // Augment max_dist with non-seed pairwise distances.
+            for x in 1..cluster.len() {
+                for y in (x + 1)..cluster.len() {
+                    if let Some(d) = pair_dist_5(cluster[x], cluster[y]) {
                         if d > max_dist { max_dist = d; }
                     }
                 }
@@ -880,7 +916,7 @@ where
 
             // Mark absorbed members per source group so we can prune them
             for &idx in &cluster {
-                absorbed_by_group[flat[idx].1].insert(idx);
+                absorbed_by_group[flat[idx].1].push(idx);
             }
 
             let mut entries: Vec<ImageEntry> = cluster.iter()
@@ -903,7 +939,8 @@ where
             let samedate_start = before;
             let num_samedate = samedate_group_indices.len();
 
-            // Build set of paths absorbed from each sameDate group
+            // Build set of paths absorbed from each sameDate group (HashSet<String>
+            // for O(1) membership test during retain).
             let absorbed_paths: Vec<std::collections::HashSet<String>> = (0..num_samedate)
                 .map(|g| {
                     absorbed_by_group[g].iter()
@@ -912,8 +949,10 @@ where
                 })
                 .collect();
 
-            // Patch existing sameDate groups in-place
-            let mut groups_to_remove: std::collections::HashSet<usize> = std::collections::HashSet::new();
+            // Vec<bool> instead of HashSet<usize> — group positions are contiguous
+            // indices bounded by groups.len(), so a flag array gives O(1) lookup
+            // with better cache behaviour.
+            let mut remove_flags = vec![false; groups.len()];
             for g in 0..num_samedate {
                 if absorbed_paths[g].is_empty() { continue; }
                 let group_pos = samedate_start + g;
@@ -922,17 +961,17 @@ where
                 groups[group_pos].entries.retain(|e| !absorbed_paths[g].contains(&e.path));
                 // If fewer than 2 members remain, mark for removal
                 if groups[group_pos].entries.len() < 2 {
-                    groups_to_remove.insert(group_pos);
+                    remove_flags[group_pos] = true;
                 } else {
                     // Re-mark original among remaining entries
                     mark_original(&mut groups[group_pos].entries);
                 }
             }
 
-            let fully_absorbed = groups_to_remove.len();
-            if !groups_to_remove.is_empty() {
+            let fully_absorbed = remove_flags.iter().filter(|&&f| f).count();
+            if fully_absorbed > 0 {
                 let mut i = 0usize;
-                groups.retain(|_| { let keep = !groups_to_remove.contains(&i); i += 1; keep });
+                groups.retain(|_| { let keep = !remove_flags[i]; i += 1; keep });
             }
 
             log::debug!("[RustyMirror:RS] phase 5: {} cross-group clusters, {} sameDate groups removed, {} partially pruned",
