@@ -25,17 +25,16 @@
       <section class="sidebar-section">
         <p class="section-label">Folders</p>
 
+        <button class="btn btn-secondary btn-full" @click="pickFolder">
+          + Add folder
+        </button>
+
         <ul class="folder-list" v-if="store.folders.length">
           <li v-for="folder in store.folders" :key="folder" class="folder-item">
             <span class="folder-path" :title="folder">{{ folder }}</span>
             <button class="btn-remove" @click="store.removeFolder(folder)" title="Remove folder">✕</button>
           </li>
         </ul>
-        <p class="empty-hint" v-else>No folders added yet</p>
-
-        <button class="btn btn-secondary btn-full" @click="pickFolder">
-          + Add folder
-        </button>
       </section>
 
       <div class="sidebar-divider" />
@@ -152,17 +151,16 @@
       <section class="sidebar-section">
         <p class="section-label">Folders</p>
 
+        <button class="btn btn-secondary btn-full" @click="pickMetaFolder">
+          + Add folder
+        </button>
+
         <ul class="folder-list" v-if="meta.folders.length">
           <li v-for="folder in meta.folders" :key="folder" class="folder-item">
             <span class="folder-path" :title="folder">{{ folder }}</span>
             <button class="btn-remove" @click="meta.removeFolder(folder)" title="Remove folder">✕</button>
           </li>
         </ul>
-        <p class="empty-hint" v-else>No folders added yet</p>
-
-        <button class="btn btn-secondary btn-full" @click="pickMetaFolder">
-          + Add folder
-        </button>
       </section>
 
       <div class="sidebar-divider" />
