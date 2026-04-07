@@ -1,9 +1,9 @@
 <template>
   <!-- Scanning / geocoding modal -->
-  <div class="scan-overlay" v-if="meta.scanning || meta.geocoding">
+  <div class="scan-overlay" v-if="meta.scanning || (meta.geocoding && prefetchFilters)">
     <div class="scan-card">
       <div class="spinner" />
-      <template v-if="meta.scanning">
+      <template v-if="meta.scanning && !meta.geocoding">
         <p class="scan-title">Scanning images…</p>
         <div class="bar-track"><div class="bar-indeterminate" /></div>
       </template>
@@ -131,10 +131,12 @@ import { ref, onBeforeUnmount, watch, nextTick } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { useMetadataStore } from '../store/metadata'
 import { useScanStore } from '../store/scan'
+import { useSettings } from '../composables/useSettings'
 import { fileExt, fileName, formatSize, formatDate } from '../utils/formatters'
 
 const meta      = useMetadataStore()
 const scanStore = useScanStore()
+const { prefetchFilters } = useSettings()
 const gridEl    = ref(null)
 const THUMB_ERROR = '__error__'
 const HEIC_EXTS   = new Set(['heic', 'heif'])

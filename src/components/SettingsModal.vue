@@ -10,162 +10,227 @@
             <button class="modal-close" @click="$emit('update:modelValue', false)" title="Close">✕</button>
           </div>
 
-          <!-- General -->
-          <section class="settings-section">
-            <p class="settings-label">General</p>
-            <div class="settings-row">
-              <span class="settings-row-label">Max scan history entries</span>
-              <input
-                type="number"
-                class="settings-input"
-                v-model.number="maxHistory"
-                min="1"
-                max="50"
-              />
-            </div>
-            <div class="settings-row">
-              <span class="settings-row-label">Concurrent thumbnail loads</span>
-              <input
-                type="number"
-                class="settings-input"
-                v-model.number="thumbConcurrency"
-                min="1"
-                max="16"
-              />
-            </div>
-            <div class="settings-row">
-              <span class="settings-row-label">Cross-date similarity (phase 5)</span>
-              <label class="toggle">
-                <input type="checkbox" v-model="crossDatePhash" />
-                <span class="toggle-track"><span class="toggle-thumb" /></span>
-              </label>
-            </div>
-            <p class="settings-hint">Re-compare sameDate groups by pHash · does not apply to cached scans</p>
-            <div class="settings-row">
-              <span class="settings-row-label">Fast mode (EXIF thumbnail)</span>
-              <label class="toggle">
-                <input type="checkbox" v-model="fastMode" />
-                <span class="toggle-track"><span class="toggle-thumb" /></span>
-              </label>
-            </div>
-            <p class="settings-hint">Uses the embedded EXIF thumbnail for perceptual hashing (~2× faster on cold scans, slightly less precise)</p>
-          </section>
+          <!-- Body: tabs + content -->
+          <div class="modal-body">
 
-          <div class="settings-divider" />
-
-          <!-- Data -->
-          <section class="settings-section">
-            <p class="settings-label">Data</p>
-            <div class="settings-row">
-              <span class="settings-row-label">Scan history</span>
+            <!-- Left tab rail -->
+            <nav class="tab-rail">
               <button
-                class="btn-setting"
-                :class="{ 'btn-setting--active': history.entries.length > 0 }"
-                :disabled="history.entries.length === 0"
-                @click="history.clearHistory()"
+                v-for="tab in tabs"
+                :key="tab.id"
+                class="tab-item"
+                :class="{ 'tab-item--active': activeTab === tab.id }"
+                @click="activeTab = tab.id"
               >
-                Clear ({{ history.entries.length }})
+                {{ tab.label }}
               </button>
-            </div>
-            <div class="settings-row">
-              <span class="settings-row-label">
-                Hash cache
-                <span class="cache-hint" v-if="cacheSize > 0">{{ formatSize(cacheSize) }}</span>
-              </span>
-              <button
-                class="btn-setting"
-                :class="{ 'btn-setting--active': cacheSize > 0 }"
-                :disabled="cacheSize === 0"
-                @click="clearCache"
-              >
-                Clear
-              </button>
-            </div>
-            <div class="settings-row">
-              <span class="settings-row-label">
-                Thumbnail cache
-                <span class="cache-hint" v-if="thumbCacheSize > 0">{{ formatSize(thumbCacheSize) }}</span>
-              </span>
-              <button
-                class="btn-setting"
-                :class="{ 'btn-setting--active': thumbCacheSize > 0 }"
-                :disabled="thumbCacheSize === 0"
-                @click="clearThumbCache"
-              >
-                Clear
-              </button>
-            </div>
-          </section>
+            </nav>
 
-          <div class="settings-divider" />
+            <!-- Right content -->
+            <div class="tab-content">
 
-          <!-- Updates -->
-          <section class="settings-section">
-            <p class="settings-label">Updates</p>
-            <div class="settings-row">
-              <span class="settings-row-label">Check on startup</span>
-              <label class="toggle">
-                <input type="checkbox" v-model="autoCheck" />
-                <span class="toggle-track"><span class="toggle-thumb" /></span>
-              </label>
-            </div>
-            <div class="settings-row">
-              <span class="settings-row-label" :class="{ 'settings-row-label--dim': !autoCheck }">Notify if update found</span>
-              <label class="toggle" :class="{ 'toggle--disabled': !autoCheck }">
-                <input type="checkbox" v-model="notifyOnUpdate" :disabled="!autoCheck" />
-                <span class="toggle-track"><span class="toggle-thumb" /></span>
-              </label>
-            </div>
-            <div class="settings-row">
-              <span class="settings-row-label update-status">
-                <span v-if="updateStatus === 'idle'">Not checked yet</span>
-                <span v-else-if="updateStatus === 'dev'" class="status-checking">Not available in dev mode</span>
-                <span v-else-if="updateStatus === 'checking'" class="status-checking">Checking…</span>
-                <span v-else-if="updateStatus === 'up-to-date'" class="status-ok">Up to date</span>
-                <span v-else-if="updateStatus === 'available'" class="status-available">Update available: {{ latestVersion }}</span>
-                <span v-else-if="updateStatus === 'downloading'" class="status-checking">
-                  Downloading{{ downloadProgress >= 0 ? ` ${downloadProgress}%` : '…' }}
-                </span>
-                <span v-else-if="updateStatus === 'ready'" class="status-ok">Installed — restart to apply</span>
-                <span v-else-if="updateStatus === 'error'" class="status-error">Error</span>
-              </span>
-              <button
-                class="btn-setting btn-setting--active"
-                :disabled="updateStatus === 'checking'"
-                @click="checkForUpdates()"
-              >
-                {{ updateStatus === 'checking' ? 'Checking…' : 'Check now' }}
-              </button>
-            </div>
-            <div v-if="updateStatus === 'error' && errorMessage" class="update-error-detail">
-              {{ errorMessage }}
-            </div>
-            <div v-if="updateStatus === 'available'" class="settings-row">
-              <button class="btn-setting btn-setting--update btn-setting--full" @click="installUpdate">
-                Install {{ latestVersion }}
-              </button>
-            </div>
-            <div v-if="updateStatus === 'downloading'" class="update-progress-wrap">
-              <div class="update-progress-bar" :style="{ width: downloadProgress >= 0 ? `${downloadProgress}%` : '100%' }" />
-            </div>
-            <div v-if="updateStatus === 'ready'" class="settings-row">
-              <button class="btn-setting btn-setting--update btn-setting--full" @click="restartApp">
-                Restart now
-              </button>
-            </div>
-          </section>
+              <!-- ── General ── -->
+              <template v-if="activeTab === 'general'">
+                <section class="settings-section">
+                  <p class="settings-label">Interface</p>
+                  <div class="settings-row">
+                    <span class="settings-row-label">Max scan history entries</span>
+                    <input
+                      type="number"
+                      class="settings-input"
+                      v-model.number="maxHistory"
+                      min="1"
+                      max="50"
+                    />
+                  </div>
+                  <div class="settings-row">
+                    <span class="settings-row-label">Concurrent thumbnail loads</span>
+                    <input
+                      type="number"
+                      class="settings-input"
+                      v-model.number="thumbConcurrency"
+                      min="1"
+                      max="16"
+                    />
+                  </div>
+                </section>
 
-          <div class="settings-divider" />
+                <div class="settings-divider" />
 
-          <!-- About -->
-          <section class="settings-section">
-            <p class="settings-label">About</p>
-            <div class="about-block">
-              <span class="about-name">RustyMirror</span>
-              <span class="about-version">v{{ version }}</span>
-              <p class="about-desc">Duplicate image finder powered by perceptual hashing.</p>
+                <section class="settings-section">
+                  <p class="settings-label">Updates</p>
+                  <div class="settings-row">
+                    <span class="settings-row-label">Check on startup</span>
+                    <label class="toggle">
+                      <input type="checkbox" v-model="autoCheck" />
+                      <span class="toggle-track"><span class="toggle-thumb" /></span>
+                    </label>
+                  </div>
+                  <div class="settings-row">
+                    <span class="settings-row-label" :class="{ 'settings-row-label--dim': !autoCheck }">Notify if update found</span>
+                    <label class="toggle" :class="{ 'toggle--disabled': !autoCheck }">
+                      <input type="checkbox" v-model="notifyOnUpdate" :disabled="!autoCheck" />
+                      <span class="toggle-track"><span class="toggle-thumb" /></span>
+                    </label>
+                  </div>
+                  <div class="settings-row">
+                    <span class="settings-row-label update-status">
+                      <span v-if="updateStatus === 'idle'">Not checked yet</span>
+                      <span v-else-if="updateStatus === 'dev'" class="status-checking">Not available in dev mode</span>
+                      <span v-else-if="updateStatus === 'checking'" class="status-checking">Checking…</span>
+                      <span v-else-if="updateStatus === 'up-to-date'" class="status-ok">Up to date</span>
+                      <span v-else-if="updateStatus === 'available'" class="status-available">Update available: {{ latestVersion }}</span>
+                      <span v-else-if="updateStatus === 'downloading'" class="status-checking">
+                        Downloading{{ downloadProgress >= 0 ? ` ${downloadProgress}%` : '…' }}
+                      </span>
+                      <span v-else-if="updateStatus === 'ready'" class="status-ok">Installed — restart to apply</span>
+                      <span v-else-if="updateStatus === 'error'" class="status-error">Error</span>
+                    </span>
+                    <button
+                      class="btn-setting btn-setting--active"
+                      :disabled="updateStatus === 'checking'"
+                      @click="checkForUpdates()"
+                    >
+                      {{ updateStatus === 'checking' ? 'Checking…' : 'Check now' }}
+                    </button>
+                  </div>
+                  <div v-if="updateStatus === 'error' && errorMessage" class="update-error-detail">
+                    {{ errorMessage }}
+                  </div>
+                  <div v-if="updateStatus === 'available'" class="settings-row">
+                    <button class="btn-setting btn-setting--update btn-setting--full" @click="installUpdate">
+                      Install {{ latestVersion }}
+                    </button>
+                  </div>
+                  <div v-if="updateStatus === 'downloading'" class="update-progress-wrap">
+                    <div class="update-progress-bar" :style="{ width: downloadProgress >= 0 ? `${downloadProgress}%` : '100%' }" />
+                  </div>
+                  <div v-if="updateStatus === 'ready'" class="settings-row">
+                    <button class="btn-setting btn-setting--update btn-setting--full" @click="restartApp">
+                      Restart now
+                    </button>
+                  </div>
+                </section>
+
+                <div class="settings-divider" />
+
+                <section class="settings-section">
+                  <p class="settings-label">About</p>
+                  <div class="about-block">
+                    <span class="about-name">RustyMirror</span>
+                    <span class="about-version">v{{ version }}</span>
+                    <p class="about-desc">Duplicate image finder powered by perceptual hashing.</p>
+                  </div>
+                </section>
+              </template>
+
+              <!-- ── Duplicates tool ── -->
+              <template v-else-if="activeTab === 'duplicates'">
+                <section class="settings-section">
+                  <p class="settings-label">Scan options</p>
+                  <div class="settings-row">
+                    <span class="settings-row-label">Cross-date similarity (phase 5)</span>
+                    <label class="toggle">
+                      <input type="checkbox" v-model="crossDatePhash" />
+                      <span class="toggle-track"><span class="toggle-thumb" /></span>
+                    </label>
+                  </div>
+                  <p class="settings-hint">Re-compare sameDate groups by pHash · does not apply to cached scans</p>
+                  <div class="settings-row">
+                    <span class="settings-row-label">Fast mode (EXIF thumbnail)</span>
+                    <label class="toggle">
+                      <input type="checkbox" v-model="fastMode" />
+                      <span class="toggle-track"><span class="toggle-thumb" /></span>
+                    </label>
+                  </div>
+                  <p class="settings-hint">Uses the embedded EXIF thumbnail for perceptual hashing (~2× faster on cold scans, slightly less precise)</p>
+                </section>
+
+                <div class="settings-divider" />
+
+                <section class="settings-section">
+                  <p class="settings-label">Data</p>
+                  <div class="settings-row">
+                    <span class="settings-row-label">Scan history</span>
+                    <button
+                      class="btn-setting"
+                      :class="{ 'btn-setting--active': history.entries.length > 0 }"
+                      :disabled="history.entries.length === 0"
+                      @click="history.clearHistory()"
+                    >
+                      Clear ({{ history.entries.length }})
+                    </button>
+                  </div>
+                  <div class="settings-row">
+                    <span class="settings-row-label">
+                      Hash cache
+                      <span class="cache-hint" v-if="cacheSize > 0">{{ formatSize(cacheSize) }}</span>
+                    </span>
+                    <button
+                      class="btn-setting"
+                      :class="{ 'btn-setting--active': cacheSize > 0 }"
+                      :disabled="cacheSize === 0"
+                      @click="clearCache"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <div class="settings-row">
+                    <span class="settings-row-label">
+                      Thumbnail cache
+                      <span class="cache-hint" v-if="thumbCacheSize > 0">{{ formatSize(thumbCacheSize) }}</span>
+                    </span>
+                    <button
+                      class="btn-setting"
+                      :class="{ 'btn-setting--active': thumbCacheSize > 0 }"
+                      :disabled="thumbCacheSize === 0"
+                      @click="clearThumbCache"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </section>
+              </template>
+
+              <!-- ── Metadata tool ── -->
+              <template v-else-if="activeTab === 'metadata'">
+                <section class="settings-section">
+                  <p class="settings-label">Scan options</p>
+                  <div class="settings-row">
+                    <span class="settings-row-label">Prefetch filters</span>
+                    <label class="toggle">
+                      <input type="checkbox" v-model="prefetchFilters" />
+                      <span class="toggle-track"><span class="toggle-thumb" /></span>
+                    </label>
+                  </div>
+                  <p class="settings-hint">Waits for all location lookups to finish before showing results — slower scan but filter dropdowns are fully populated from the start. When off, options appear progressively as queries complete.</p>
+                </section>
+
+                <div class="settings-divider" />
+
+                <section class="settings-section">
+                  <p class="settings-label">Data</p>
+                  <div class="settings-row">
+                    <span class="settings-row-label">
+                      Geo cache
+                      <span class="cache-hint" v-if="meta.geoCacheCount > 0">
+                        {{ meta.geoCacheCount }} entries · {{ formatSize(meta.geoCacheBytes) }}
+                      </span>
+                    </span>
+                    <button
+                      class="btn-setting"
+                      :class="{ 'btn-setting--active': meta.geoCacheCount > 0 }"
+                      :disabled="meta.geoCacheCount === 0"
+                      @click="meta.clearGeoCache()"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </section>
+              </template>
+
             </div>
-          </section>
+          </div>
 
         </div>
       </div>
@@ -176,6 +241,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useHistoryStore } from '../store/history'
+import { useMetadataStore } from '../store/metadata'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
 import { useSettings } from '../composables/useSettings'
@@ -184,10 +250,18 @@ import { formatSize } from '../utils/formatters'
 defineProps({ modelValue: Boolean })
 defineEmits(['update:modelValue'])
 
+const tabs = [
+  { id: 'general',    label: 'General' },
+  { id: 'duplicates', label: 'Duplicates tool' },
+  { id: 'metadata',   label: 'Metadata tool' },
+]
+const activeTab = ref('general')
+
 const history = useHistoryStore()
+const meta    = useMetadataStore()
 const version = ref(import.meta.env.VITE_APP_VERSION ?? '0.1.0')
 
-const { maxHistory, thumbConcurrency, crossDatePhash, fastMode, autoUpdate: autoCheck, notifyOnUpdate } = useSettings()
+const { maxHistory, thumbConcurrency, crossDatePhash, fastMode, autoUpdate: autoCheck, notifyOnUpdate, prefetchFilters } = useSettings()
 
 const { cacheSize, thumbCacheSize, loadCacheSizes, clearCache, clearThumbCache } = useCacheSize()
 const { status: updateStatus, latestVersion, downloadProgress, errorMessage, checkForUpdates, installUpdate, restartApp } = useUpdater()
@@ -212,10 +286,12 @@ onMounted(loadCacheSizes)
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
-  width: 600px;
+  width: 640px;
   max-width: calc(100vw - 32px);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Header ── */
@@ -225,6 +301,7 @@ onMounted(loadCacheSizes)
   justify-content: space-between;
   padding: var(--space-4) var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .modal-title {
@@ -244,6 +321,54 @@ onMounted(loadCacheSizes)
 .modal-close:hover {
   color: var(--text-primary);
   background: var(--bg-card);
+}
+
+/* ── Body layout ── */
+.modal-body {
+  display: flex;
+  min-height: 320px;
+}
+
+/* ── Tab rail (left) ── */
+.tab-rail {
+  width: 148px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+  padding: var(--space-3) var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tab-item {
+  text-align: left;
+  padding: 7px var(--space-3);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab-item:hover {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+.tab-item--active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ── Tab content (right) ── */
+.tab-content {
+  flex: 1;
+  overflow-y: auto;
+  min-width: 0;
 }
 
 /* ── Sections ── */

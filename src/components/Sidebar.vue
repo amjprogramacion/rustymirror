@@ -177,6 +177,7 @@
         </button>
       </section>
 
+      <template v-if="meta.scanDone">
       <div class="sidebar-divider" />
 
       <!-- Sorting -->
@@ -264,6 +265,7 @@
           </div>
         </div>
       </section>
+      </template>
     </template>
 
     <!-- Cache buttons — pinned to bottom -->

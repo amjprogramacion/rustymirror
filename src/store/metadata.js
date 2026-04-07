@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { load } from '@tauri-apps/plugin-store'
+import { useSettings } from '../composables/useSettings'
 
 const STORE_FILE = 'rustymirror.json'
 const GEO_CACHE_KEY = 'geoCache'
@@ -181,15 +182,23 @@ export const useMetadataStore = defineStore('metadata', {
       try {
         const images = await invoke('scan_for_metadata', { paths: this.folders })
         this.images = images
-        this.scanDone = true
 
         try {
           const checks = await Promise.all(this.folders.map(f => invoke('is_network_path', { path: f })))
           this.networkFolders = new Set(this.folders.filter((_, i) => checks[i]))
         } catch { /* ignore */ }
 
-        // Geocode in background — does not block the UI
-        this.geocodeAll()
+        const { prefetchFilters } = useSettings()
+        if (prefetchFilters.value) {
+          // Prefetch ON: wait for all geocoding before marking scan as done.
+          // scanning stays true → Stop button remains active during geocoding.
+          await this.geocodeAll()
+          this.scanDone = true
+        } else {
+          // Prefetch OFF: show results immediately, geocode in background.
+          this.scanDone = true
+          this.geocodeAll()
+        }
       } catch (e) {
         if (!String(e).includes('stopped')) this.error = String(e)
       } finally {

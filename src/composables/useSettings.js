@@ -8,6 +8,7 @@ const fastMode         = ref(localStorage.getItem('rustymirror_fast_mode')      
 const autoUpdate       = ref(localStorage.getItem('rustymirror_auto_update')      !== 'false')
 const notifyOnUpdate   = ref(localStorage.getItem('rustymirror_notify_update')    !== 'false')
 const sidebarWidth     = ref(parseInt(localStorage.getItem('rustymirror_sidebar_width') ?? '240', 10))
+const prefetchFilters  = ref(localStorage.getItem('rustymirror_prefetch_filters') !== 'false')
 
 // ── Auto-persist on change ────────────────────────────────────────────────────
 watch(maxHistory,       v => localStorage.setItem('rustymirror_max_history',       String(v)))
@@ -17,7 +18,8 @@ watch(fastMode,         v => localStorage.setItem('rustymirror_fast_mode',      
 watch(autoUpdate,       v => localStorage.setItem('rustymirror_auto_update',       String(v)))
 watch(notifyOnUpdate,   v => localStorage.setItem('rustymirror_notify_update',     String(v)))
 watch(sidebarWidth,     v => localStorage.setItem('rustymirror_sidebar_width',     String(v)))
+watch(prefetchFilters,  v => localStorage.setItem('rustymirror_prefetch_filters',  String(v)))
 
 export function useSettings() {
-  return { maxHistory, thumbConcurrency, crossDatePhash, fastMode, autoUpdate, notifyOnUpdate, sidebarWidth }
+  return { maxHistory, thumbConcurrency, crossDatePhash, fastMode, autoUpdate, notifyOnUpdate, sidebarWidth, prefetchFilters }
 }
