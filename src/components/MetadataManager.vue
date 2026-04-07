@@ -1,8 +1,18 @@
 <template>
-  <!-- Scanning state -->
-  <div class="scanning-state" v-if="meta.scanning">
-    <div class="spinner" />
-    <p>Scanning…</p>
+  <!-- Scanning / geocoding modal -->
+  <div class="scan-overlay" v-if="meta.scanning || meta.geocoding">
+    <div class="scan-card">
+      <div class="spinner" />
+      <template v-if="meta.scanning">
+        <p class="scan-title">Scanning images…</p>
+        <div class="bar-track"><div class="bar-indeterminate" /></div>
+      </template>
+      <template v-else>
+        <p class="scan-title">Fetching locations…</p>
+        <p class="scan-subtitle">{{ meta.images.length.toLocaleString() }} images found</p>
+        <div class="bar-track"><div class="bar-indeterminate" /></div>
+      </template>
+    </div>
   </div>
 
   <!-- Empty state -->
@@ -193,15 +203,56 @@ async function openFolder(path) { await invoke('open_folder', { path }) }
 
 <style scoped>
 /* ── States ── */
-.scanning-state {
+.scan-overlay {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+}
+
+.scan-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: var(--space-3);
-  color: var(--text-muted);
+  padding: var(--space-6);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  width: 320px;
+}
+
+.scan-title {
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.scan-subtitle {
   font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.bar-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius-pill);
+  overflow: hidden;
+}
+
+@keyframes indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+.bar-indeterminate {
+  height: 100%;
+  width: 25%;
+  background: var(--color-accent);
+  border-radius: var(--border-radius-pill);
+  animation: indeterminate 1.4s ease-in-out infinite;
 }
 
 .empty-state {
@@ -215,8 +266,8 @@ async function openFolder(path) { await invoke('open_folder', { path }) }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner {
-  width: 24px; height: 24px;
-  border: 2px solid #333;
+  width: 32px; height: 32px;
+  border: 3px solid var(--border-color);
   border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
