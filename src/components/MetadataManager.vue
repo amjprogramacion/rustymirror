@@ -1,4 +1,5 @@
 <template>
+<div class="meta-manager-root">
   <!-- Scanning / geocoding modal -->
   <div class="scan-overlay" v-if="meta.scanning || (meta.geocoding && prefetchFilters)">
     <div class="scan-card">
@@ -124,6 +125,9 @@
       </div>
     </div>
   </template>
+
+  <MetadataBottomPanel />
+</div>
 </template>
 
 <script setup>
@@ -133,6 +137,7 @@ import { useMetadataStore } from '../store/metadata'
 import { useScanStore } from '../store/scan'
 import { useSettings } from '../composables/useSettings'
 import { fileExt, fileName, formatSize, formatDate } from '../utils/formatters'
+import MetadataBottomPanel from './MetadataBottomPanel.vue'
 
 const meta      = useMetadataStore()
 const scanStore = useScanStore()
@@ -495,5 +500,13 @@ async function openFolder(path) { await invoke('open_folder', { path }) }
 .card:hover .card-checkbox input[type="checkbox"],
 .card-checkbox input[type="checkbox"]:checked {
   opacity: 1;
+}
+
+.meta-manager-root {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 </style>

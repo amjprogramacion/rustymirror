@@ -9,7 +9,6 @@
   </div>
   <Lightbox />
   <MetadataPanel />
-  <MetadataBottomPanel />
   <UpdateToast />
 </template>
 
@@ -21,7 +20,6 @@ import ResultsArea from './components/ResultsArea.vue'
 import MetadataManager from './components/MetadataManager.vue'
 import Lightbox from './components/Lightbox.vue'
 import MetadataPanel from './components/MetadataPanel.vue'
-import MetadataBottomPanel from './components/MetadataBottomPanel.vue'
 import UpdateToast from './components/UpdateToast.vue'
 import { useUpdater } from './composables/useUpdater'
 import { useMode } from './composables/useMode'

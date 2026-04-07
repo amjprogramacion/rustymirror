@@ -1,7 +1,7 @@
 <template>
   <Transition name="mbp-slide">
     <div
-      v-if="store.metadataPanel && activeMode === 'metadata'"
+      v-if="store.metadataPanel"
       class="mbp-panel"
       :style="{ height: panelHeight + 'px' }"
       @keydown.escape="store.closeMetadataPanel()"
@@ -233,13 +233,11 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useScanStore } from '../store/scan'
-import { useMode } from '../composables/useMode'
 import MapPreview from './MapPreview.vue'
 import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
 import { useGpsEditor } from '../composables/useGpsEditor'
 
 const store = useScanStore()
-const { activeMode } = useMode()
 const HEIC = new Set(['heic', 'heif'])
 
 // ── Panel height resize ───────────────────────────────────────────────────────
@@ -344,7 +342,7 @@ const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime ||
 <style scoped>
 /* ── Panel ── */
 .mbp-panel {
-  position: fixed;
+  position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
@@ -547,7 +545,7 @@ const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime ||
 
 /* Location section — wide, row layout (inputs left + map right) */
 .mbp-section--location {
-  flex: 1 0 420px;
+  flex: 1 0 300px;
   flex-direction: row;
   padding: 0;
   gap: 0;
