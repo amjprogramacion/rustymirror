@@ -238,6 +238,7 @@
             <div class="select-field">
               <select class="sort-select filter-select" v-model="meta.filterLocation">
                 <option value="">All</option>
+                <option value="__no_location__">Without location</option>
                 <option v-for="loc in meta.availableLocations" :key="loc" :value="loc">{{ loc }}</option>
               </select>
               <SelectChevron />

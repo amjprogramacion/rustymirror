@@ -59,7 +59,9 @@ export const useMetadataStore = defineStore('metadata', {
         if (from && dateStr < from) return false
         if (to   && dateStr > to)   return false
         // Location
-        if (loc && (state.locationNames[e.path] ?? '') !== loc) return false
+        if (loc === '__no_location__') {
+          if (state.locationNames[e.path]) return false
+        } else if (loc && (state.locationNames[e.path] ?? '') !== loc) return false
         // Device
         if (dev && (e.device ?? '') !== dev) return false
         return true
