@@ -366,7 +366,7 @@ async function openFolder(path) { await invoke('open_folder', { path }) }
 
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(8, 1fr);
   gap: var(--space-3);
   will-change: scroll-position;
 }
