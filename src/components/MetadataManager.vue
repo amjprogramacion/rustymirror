@@ -188,8 +188,10 @@ function setupObserver(root) {
   })
 }
 
-// Close the metadata panel whenever the sort changes
+// Close the metadata panel on sort, filter, or new scan
 watch(() => [meta.sortBy, meta.sortDir], () => scanStore.closeMetadataPanel())
+watch(() => [meta.filterDateFrom, meta.filterDateTo, meta.filterLocation, meta.filterDevice], () => scanStore.closeMetadataPanel())
+watch(() => meta.scanning, (scanning) => { if (scanning) scanStore.closeMetadataPanel() })
 
 // When visible images change (filter/sort), cancel pending thumb loads and
 // re-register the observer so newly visible cards get prioritised.
