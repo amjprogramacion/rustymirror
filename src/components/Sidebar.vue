@@ -198,8 +198,8 @@
           </div>
           <div class="select-field">
             <select class="sort-select filter-select" v-model="meta.sortDir">
-              <option value="asc">Ascending ↑</option>
-              <option value="desc">Descending ↓</option>
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
             </select>
             <SelectChevron />
           </div>
@@ -210,47 +210,59 @@
 
       <!-- Filtering -->
       <section class="sidebar-section">
-        <p class="section-label">Filtering</p>
+        <p class="section-label">
+          Filtering
+          <button
+            v-if="meta.filterDateFrom || meta.filterDateTo || meta.filterLocation || meta.filterDevice"
+            class="filter-clear-all"
+            @click="meta.filterDateFrom = ''; meta.filterDateTo = ''; meta.filterLocation = ''; meta.filterDevice = ''"
+          >clear all</button>
+        </p>
 
         <!-- Date range -->
-        <div class="filter-row">
-          <input type="date" class="filter-input" v-model="meta.filterDateFrom" title="From date" />
-          <button v-if="meta.filterDateFrom" class="filter-clear-sq" @click="meta.filterDateFrom = ''" title="Clear">
-            <ClearIcon />
-          </button>
-          <span class="filter-date-sep">–</span>
-          <input type="date" class="filter-input" v-model="meta.filterDateTo" title="To date" />
-          <button v-if="meta.filterDateTo" class="filter-clear-sq" @click="meta.filterDateTo = ''" title="Clear">
-            <ClearIcon />
-          </button>
+        <div class="filter-labeled-row">
+          <span class="filter-label">Date</span>
+          <div class="filter-row">
+            <input type="date" class="filter-input" v-model="meta.filterDateFrom" title="From" placeholder="From" :style="{ color: meta.filterDateFrom ? 'inherit' : 'transparent' }" />
+            <input type="date" class="filter-input" v-model="meta.filterDateTo" title="To" placeholder="To" :style="{ color: meta.filterDateTo ? 'inherit' : 'transparent' }" />
+            <button v-if="meta.filterDateFrom || meta.filterDateTo" class="filter-clear-sq" @click="meta.filterDateFrom = ''; meta.filterDateTo = ''" title="Clear">
+              <ClearIcon />
+            </button>
+          </div>
         </div>
 
         <!-- Location -->
-        <div class="filter-row">
-          <div class="select-field">
-            <select class="sort-select filter-select" v-model="meta.filterLocation">
-              <option value="">All locations</option>
-              <option v-for="loc in meta.availableLocations" :key="loc" :value="loc">{{ loc }}</option>
-            </select>
-            <SelectChevron />
+        <div class="filter-labeled-row">
+          <span class="filter-label">Location</span>
+          <div class="filter-row">
+            <div class="select-field">
+              <select class="sort-select filter-select" v-model="meta.filterLocation">
+                <option value="">All</option>
+                <option v-for="loc in meta.availableLocations" :key="loc" :value="loc">{{ loc }}</option>
+              </select>
+              <SelectChevron />
+            </div>
+            <button v-if="meta.filterLocation" class="filter-clear-sq" @click="meta.filterLocation = ''" title="Clear">
+              <ClearIcon />
+            </button>
           </div>
-          <button v-if="meta.filterLocation" class="filter-clear-sq" @click="meta.filterLocation = ''" title="Clear">
-            <ClearIcon />
-          </button>
         </div>
 
         <!-- Device -->
-        <div class="filter-row">
-          <div class="select-field">
-            <select class="sort-select filter-select" v-model="meta.filterDevice">
-              <option value="">All devices</option>
-              <option v-for="dev in meta.availableDevices" :key="dev" :value="dev">{{ dev }}</option>
-            </select>
-            <SelectChevron />
+        <div class="filter-labeled-row">
+          <span class="filter-label">Device</span>
+          <div class="filter-row">
+            <div class="select-field">
+              <select class="sort-select filter-select" v-model="meta.filterDevice">
+                <option value="">All</option>
+                <option v-for="dev in meta.availableDevices" :key="dev" :value="dev">{{ dev }}</option>
+              </select>
+              <SelectChevron />
+            </div>
+            <button v-if="meta.filterDevice" class="filter-clear-sq" @click="meta.filterDevice = ''" title="Clear">
+              <ClearIcon />
+            </button>
           </div>
-          <button v-if="meta.filterDevice" class="filter-clear-sq" @click="meta.filterDevice = ''" title="Clear">
-            <ClearIcon />
-          </button>
         </div>
       </section>
     </template>
@@ -549,6 +561,19 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
+.filter-clear-all {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.filter-clear-all:hover { opacity: 0.75; }
+
 /* ── Folder list ── */
 .folder-list {
   list-style: none;
@@ -684,10 +709,19 @@ onBeforeUnmount(() => {
   color: #fff;
 }
 
-.filter-date-sep {
-  font-size: var(--font-size-xs);
+.filter-labeled-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.filter-labeled-row:last-child { margin-bottom: 0; }
+
+.filter-label {
+  font-size: 10px;
   color: var(--text-muted);
-  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .filter-input {
