@@ -13,6 +13,9 @@ use crate::types::{AnalyzeProgress, DuplicateGroup, ScanProgress};
 /// Wrapped in Mutex<Arc<...>> so we can replace it for each new scan.
 pub struct ScanState(pub Mutex<Arc<AtomicBool>>);
 
+/// Same pattern for the metadata scan.
+pub struct MetaScanState(pub Mutex<Arc<AtomicBool>>);
+
 /// Caches the file list from directory_fingerprint so scan_directories can
 /// reuse it without a second SMB traversal (avoids count discrepancy on NAS).
 pub struct FileListCache(pub Mutex<Option<(Vec<String>, Vec<std::path::PathBuf>)>>);
@@ -99,6 +102,12 @@ pub async fn scan_directories(
 pub fn stop_scan(scan_state: State<'_, ScanState>) {
     log::debug!("[RustyMirror:RS] stop requested");
     scan_state.0.lock().unwrap().store(true, Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub fn stop_meta_scan(meta_scan_state: State<'_, MetaScanState>) {
+    log::debug!("[RustyMirror:RS] meta scan stop requested");
+    meta_scan_state.0.lock().unwrap().store(true, Ordering::Relaxed);
 }
 
 #[tauri::command]
@@ -591,7 +600,13 @@ pub fn is_debug_build() -> bool {
 /// Scans directories and returns all images with basic file metadata.
 /// Used by the metadata editor mode.
 #[tauri::command]
-pub async fn scan_for_metadata(paths: Vec<String>) -> Result<Vec<crate::types::ImageEntry>, String> {
+pub async fn scan_for_metadata(
+    paths: Vec<String>,
+    meta_scan_state: State<'_, MetaScanState>,
+) -> Result<Vec<crate::types::ImageEntry>, String> {
+    let stop = Arc::new(AtomicBool::new(false));
+    *meta_scan_state.0.lock().unwrap() = stop.clone();
+
     tokio::task::spawn_blocking(move || {
         use rayon::prelude::*;
 
@@ -601,6 +616,7 @@ pub async fn scan_for_metadata(paths: Vec<String>) -> Result<Vec<crate::types::I
         let mut entries: Vec<crate::types::ImageEntry> = images
             .into_par_iter()
             .filter_map(|p| {
+                if stop.load(Ordering::Relaxed) { return None; }
                 let meta = std::fs::metadata(&p).ok()?;
                 let size_bytes = meta.len();
                 let modified = meta.modified().ok()

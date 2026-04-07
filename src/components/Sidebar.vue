@@ -169,11 +169,11 @@
       <section class="sidebar-section">
         <button
           class="btn btn-full"
-          :class="meta.scanning ? 'btn-danger' : 'btn-success'"
-          :disabled="!meta.scanning && meta.folders.length === 0"
-          @click="meta.scanning ? null : meta.startScan()"
+          :class="(meta.scanning || meta.geocoding) ? 'btn-danger' : 'btn-success'"
+          :disabled="!meta.scanning && !meta.geocoding && meta.folders.length === 0"
+          @click="(meta.scanning || meta.geocoding) ? meta.stopScan() : meta.startScan()"
         >
-          {{ meta.scanning ? 'Scanning…' : 'Scan' }}
+          {{ meta.scanning ? 'Stop scan' : meta.geocoding ? 'Stop scan' : 'Scan' }}
         </button>
       </section>
 
@@ -300,6 +300,17 @@
         Clear thumbnail cache
         <span class="cache-size" v-if="thumbCacheSize > 0">{{ formatSize(thumbCacheSize) }}</span>
       </button>
+      <button
+        v-if="activeMode !== 'duplicates'"
+        class="btn btn-cache btn-full btn-sm"
+        :class="{ 'btn-cache--active': meta.geoCacheCount > 0 }"
+        @click="meta.clearGeoCache()"
+        :disabled="meta.geoCacheCount === 0"
+        :title="`Location cache: ${meta.geoCacheCount} entr${meta.geoCacheCount === 1 ? 'y' : 'ies'} · ${formatSize(meta.geoCacheBytes)}`"
+      >
+        Clear location cache
+        <span class="cache-size" v-if="meta.geoCacheCount > 0">{{ formatSize(meta.geoCacheBytes) }}</span>
+      </button>
     </section>
 
     <!-- Resize handle -->
@@ -346,6 +357,7 @@ onMounted(async () => {
     const isDebug = await invoke('is_debug_build')
     devSuffix.value = isDebug ? '.dev' : '.dev-release'
   }
+  meta.loadGeoCacheCount()
 })
 const showSettings = ref(false)
 

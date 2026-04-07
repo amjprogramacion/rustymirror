@@ -6,7 +6,7 @@ mod metadata;
 mod scanner;
 mod types;
 
-use commands::{FileListCache, ScanState};
+use commands::{FileListCache, MetaScanState, ScanState};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 
@@ -26,6 +26,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(ScanState(Mutex::new(Arc::new(AtomicBool::new(false)))))
+        .manage(MetaScanState(Mutex::new(Arc::new(AtomicBool::new(false)))))
         .manage(FileListCache(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             commands::scan_directories,
@@ -46,6 +47,7 @@ pub fn run() {
             commands::read_metadata,
             commands::write_metadata,
             commands::scan_for_metadata,
+            commands::stop_meta_scan,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

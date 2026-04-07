@@ -1,10 +1,44 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
+import { load } from '@tauri-apps/plugin-store'
+
+const STORE_FILE = 'rustymirror.json'
+const GEO_CACHE_KEY = 'geoCache'
+
+let _geocodeAbortController = null
+let _store = null
+
+async function getStore() {
+  if (!_store) _store = await load(STORE_FILE, { autoSave: true })
+  return _store
+}
+
+async function loadGeoCache() {
+  try {
+    const store = await getStore()
+    return (await store.get(GEO_CACHE_KEY)) ?? {}
+  } catch { return {} }
+}
+
+async function saveGeoCache(cache) {
+  try {
+    const store = await getStore()
+    await store.set(GEO_CACHE_KEY, cache)
+  } catch { /* ignore */ }
+}
+
+function geoCacheStats(cache) {
+  const count = Object.keys(cache).length
+  const bytes = new TextEncoder().encode(JSON.stringify(cache)).length
+  return { count, bytes }
+}
 
 export const useMetadataStore = defineStore('metadata', {
   state: () => ({
     folders: [],
     scanning: false,
+    geoCacheCount: 0,
+    geoCacheBytes: 0,
     scanDone: false,
     images: [],
     searchQuery: '',
@@ -142,6 +176,7 @@ export const useMetadataStore = defineStore('metadata', {
       this.filterLocation = ''
       this.filterDevice   = ''
       this.error = null
+      _geocodeAbortController = null
 
       try {
         const images = await invoke('scan_for_metadata', { paths: this.folders })
@@ -156,9 +191,17 @@ export const useMetadataStore = defineStore('metadata', {
         // Geocode in background — does not block the UI
         this.geocodeAll()
       } catch (e) {
-        this.error = String(e)
+        if (!String(e).includes('stopped')) this.error = String(e)
       } finally {
         this.scanning = false
+      }
+    },
+
+    async stopScan() {
+      try { await invoke('stop_meta_scan') } catch { /* ignore */ }
+      if (_geocodeAbortController) {
+        _geocodeAbortController.abort()
+        _geocodeAbortController = null
       }
     },
 
@@ -173,30 +216,53 @@ export const useMetadataStore = defineStore('metadata', {
         groups[key].paths.push(img.path)
       }
 
-      const pending = Object.values(groups)
+      if (!Object.keys(groups).length) return
+
+      // Fill from persistent cache first — skip any group already known
+      const geoCache = await loadGeoCache()
+      const pending = []
+      for (const [key, group] of Object.entries(groups)) {
+        if (key in geoCache) {
+          for (const p of group.paths) this.locationNames[p] = geoCache[key]
+        } else {
+          pending.push({ key, ...group })
+        }
+      }
+
       if (!pending.length) return
 
+      const abort = new AbortController()
+      _geocodeAbortController = abort
       this.geocoding = true
       try {
-        for (const { lat, lon, paths } of pending) {
+        for (const { key, lat, lon, paths } of pending) {
+          if (abort.signal.aborted) break
           try {
             const res = await fetch(
               `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
-              { headers: { 'User-Agent': 'RustyMirror/1.0 (desktop app)' } }
+              { headers: { 'User-Agent': 'RustyMirror/1.0 (desktop app)' }, signal: abort.signal }
             )
             const data = await res.json()
             const addr = data.address ?? {}
             const city = addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.county ?? null
             const name = [city, addr.country].filter(Boolean).join(', ') || ''
             for (const p of paths) this.locationNames[p] = name
-          } catch {
+            geoCache[key] = name
+            const stats = geoCacheStats(geoCache)
+            this.geoCacheCount = stats.count
+            this.geoCacheBytes = stats.bytes
+          } catch (e) {
+            if (e.name === 'AbortError') break
             for (const p of paths) this.locationNames[p] = ''
           }
+          if (abort.signal.aborted) break
           // Nominatim ToS: max 1 req/s
           await new Promise(r => setTimeout(r, 1100))
         }
       } finally {
         this.geocoding = false
+        _geocodeAbortController = null
+        await saveGeoCache(geoCache)
       }
     },
 
@@ -205,6 +271,23 @@ export const useMetadataStore = defineStore('metadata', {
         if (path.startsWith(f)) return true
       }
       return false
+    },
+
+    async loadGeoCacheCount() {
+      const cache = await loadGeoCache()
+      const stats = geoCacheStats(cache)
+      this.geoCacheCount = stats.count
+      this.geoCacheBytes = stats.bytes
+    },
+
+    async clearGeoCache() {
+      try {
+        const store = await getStore()
+        await store.set(GEO_CACHE_KEY, {})
+      } catch { /* ignore */ }
+      this.geoCacheCount = 0
+      this.geoCacheBytes = 0
+      this.locationNames = {}
     },
   },
 })
