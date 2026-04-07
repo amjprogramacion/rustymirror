@@ -611,6 +611,44 @@ pub async fn scan_for_metadata(paths: Vec<String>) -> Result<Vec<crate::types::I
 
                 let (width, height) = image::image_dimensions(&p).unwrap_or((0, 0));
 
+                // Read lightweight EXIF for sort fields (BufReader avoids loading the full file)
+                let (date_taken, gps_latitude, gps_longitude, device) =
+                    std::fs::File::open(&p)
+                        .ok()
+                        .and_then(|f| {
+                            exif::Reader::new()
+                                .read_from_container(&mut std::io::BufReader::new(f))
+                                .ok()
+                        })
+                        .map(|exif| {
+                            let str_ascii = |tag: exif::Tag| -> Option<String> {
+                                exif.get_field(tag, exif::In::PRIMARY).and_then(|f| {
+                                    if let exif::Value::Ascii(ref parts) = f.value {
+                                        parts.iter()
+                                            .filter_map(|p| std::str::from_utf8(p).ok())
+                                            .map(|s| s.trim_matches('\0').trim().to_string())
+                                            .find(|s| !s.is_empty())
+                                    } else { None }
+                                })
+                            };
+                            let date_taken = str_ascii(exif::Tag::DateTimeOriginal)
+                                .map(crate::metadata::exif_date_to_iso);
+                            let make  = str_ascii(exif::Tag::Make);
+                            let model = str_ascii(exif::Tag::Model);
+                            let device = match (make, model) {
+                                (Some(mk), Some(md)) => Some(format!("{} {}", mk, md)),
+                                (Some(mk), None)     => Some(mk),
+                                (None,     Some(md)) => Some(md),
+                                _                    => None,
+                            };
+                            let lat = crate::metadata::parse_gps_coord(
+                                &exif, exif::Tag::GPSLatitude, exif::Tag::GPSLatitudeRef);
+                            let lon = crate::metadata::parse_gps_coord(
+                                &exif, exif::Tag::GPSLongitude, exif::Tag::GPSLongitudeRef);
+                            (date_taken, lat, lon, device)
+                        })
+                        .unwrap_or((None, None, None, None));
+
                 Some(crate::types::ImageEntry {
                     path: p.to_string_lossy().to_string(),
                     size_bytes,
@@ -618,6 +656,10 @@ pub async fn scan_for_metadata(paths: Vec<String>) -> Result<Vec<crate::types::I
                     height,
                     modified,
                     is_original: false,
+                    date_taken,
+                    gps_latitude,
+                    gps_longitude,
+                    device,
                 })
             })
             .collect();

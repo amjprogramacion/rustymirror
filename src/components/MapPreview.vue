@@ -39,8 +39,9 @@ const TILES = {
 }
 
 const props = defineProps({
-  lat: { type: Number, required: true },
-  lon: { type: Number, required: true },
+  lat:             { type: Number,  required: true },
+  lon:             { type: Number,  required: true },
+  scrollWheelZoom: { type: Boolean, default: false },
 })
 
 const mapEl      = ref(null)
@@ -53,7 +54,7 @@ function initMap() {
   if (!mapEl.value || map) return
   map = L.map(mapEl.value, {
     zoomControl: false,
-    scrollWheelZoom: false,
+    scrollWheelZoom: props.scrollWheelZoom,
     attributionControl: false,
   }).setView([props.lat, props.lon], 14)
 

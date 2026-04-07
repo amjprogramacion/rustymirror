@@ -419,7 +419,7 @@ fn replace_app1_in_jpeg(jpeg: &[u8], tiff_bytes: &[u8]) -> Result<Vec<u8>> {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /// "2023:06:15 14:30:00" → "2023-06-15T14:30:00"
-fn exif_date_to_iso(s: String) -> String {
+pub(crate) fn exif_date_to_iso(s: String) -> String {
     if s.len() < 19 { return s; }
     let b = s.as_bytes();
     // Expect format YYYY:MM:DD HH:MM:SS
@@ -446,7 +446,7 @@ fn iso_to_exif_date(s: &str) -> String {
 }
 
 /// Parse GPS coordinate from DMS rationals + reference direction.
-fn parse_gps_coord(
+pub(crate) fn parse_gps_coord(
     exif: &exif::Exif,
     coord_tag: exif::Tag,
     ref_tag: exif::Tag,

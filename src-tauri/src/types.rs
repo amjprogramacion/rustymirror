@@ -9,7 +9,7 @@ pub enum SimilarityKind {
     SameDate,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageEntry {
     pub path: String,
@@ -19,6 +19,15 @@ pub struct ImageEntry {
     /// ISO-8601 string so Vue can parse it easily
     pub modified: String,
     pub is_original: bool,
+    // Populated only by scan_for_metadata (used for sorting in metadata mode)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date_taken: Option<String>,    // EXIF DateTimeOriginal, ISO-8601
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gps_latitude: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gps_longitude: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,        // "Make Model"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

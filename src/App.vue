@@ -9,22 +9,34 @@
   </div>
   <Lightbox />
   <MetadataPanel />
+  <MetadataBottomPanel />
   <UpdateToast />
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { onMounted, watch } from 'vue'
 import ModeRail from './components/ModeRail.vue'
 import Sidebar from './components/Sidebar.vue'
 import ResultsArea from './components/ResultsArea.vue'
 import MetadataManager from './components/MetadataManager.vue'
 import Lightbox from './components/Lightbox.vue'
 import MetadataPanel from './components/MetadataPanel.vue'
+import MetadataBottomPanel from './components/MetadataBottomPanel.vue'
 import UpdateToast from './components/UpdateToast.vue'
 import { useUpdater } from './composables/useUpdater'
 import { useMode } from './composables/useMode'
+import { useScanStore } from './store/scan'
 
 const { activeMode } = useMode()
+const scanStore = useScanStore()
+
+// Each tool keeps its own independent metadata panel state.
+// When switching modes: stash the current panel, restore the one for the new mode.
+const panelStash = {}
+watch(activeMode, (newMode, oldMode) => {
+  panelStash[oldMode] = scanStore.metadataPanel
+  scanStore.$patch({ metadataPanel: panelStash[newMode] ?? null })
+})
 
 const { autoCheck, checkForUpdates } = useUpdater()
 

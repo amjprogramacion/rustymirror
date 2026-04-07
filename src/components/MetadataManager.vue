@@ -164,6 +164,9 @@ function setupObserver(root) {
   })
 }
 
+// Close the metadata panel whenever the sort changes
+watch(() => [meta.sortBy, meta.sortDir], () => scanStore.closeMetadataPanel())
+
 // Watch the ref directly: fires the moment the v-else block mounts and
 // assigns gridEl. requestAnimationFrame ensures layout is complete before
 // we query card positions.
@@ -179,7 +182,7 @@ function onCardClick(entry, idx) {
   if (meta.multiSelect) {
     meta.toggleSelected(entry.path)
   } else {
-    scanStore.openLightbox(meta.filteredImages, idx)
+    scanStore.openMetadataPanel(entry)
   }
 }
 

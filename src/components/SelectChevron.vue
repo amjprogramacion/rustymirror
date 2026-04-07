@@ -1,0 +1,24 @@
+<template>
+  <svg
+    class="select-chevron"
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+</template>
+
+<style scoped>
+.select-chevron {
+  width: 20px;
+  height: 20px;
+  color: #fff;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+</style>

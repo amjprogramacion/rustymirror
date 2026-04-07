@@ -224,13 +224,13 @@ async function openFolder(path) {
 .group-count { font-size: var(--font-size-xs); color: var(--text-muted); }
 
 .cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
 }
 
 .card {
-  width: 100%;
+  width: 190px;
   border-radius: var(--border-radius-md);
   background: var(--bg-card);
   border: 1px solid var(--border-color);

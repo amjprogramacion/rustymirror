@@ -197,6 +197,7 @@ fn make_record(path: &Path, cache: Option<&crate::cache::Cache>, fast_mode: bool
                     height: cached.height,
                     modified: cached.modified,
                     is_original: false,
+                    ..Default::default()
                 },
                 ex_hash: cached.blake3,
                 ts_tag: extract_timestamp_tag(path),
@@ -235,6 +236,7 @@ fn make_record(path: &Path, cache: Option<&crate::cache::Cache>, fast_mode: bool
             size_bytes, width, height,
             modified: modified.clone(),
             is_original: false,
+            ..Default::default()
         },
         ex_hash: ex_hash.clone(),
         ts_tag: extract_timestamp_tag(path),
@@ -358,6 +360,7 @@ where
                                 height:      entry.data.height,
                                 modified:    entry.data.modified.clone(),
                                 is_original: false,
+                                ..Default::default()
                             },
                             ex_hash:     entry.data.blake3.clone(),
                             ts_tag:      extract_timestamp_tag(path),

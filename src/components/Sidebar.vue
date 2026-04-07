@@ -178,6 +178,81 @@
           {{ meta.scanning ? 'Scanning…' : 'Scan' }}
         </button>
       </section>
+
+      <div class="sidebar-divider" />
+
+      <!-- Sorting -->
+      <section class="sidebar-section">
+        <p class="section-label">
+          Sorting
+          <span v-if="meta.geocoding && meta.sortBy === 'location'" class="sort-geocoding-hint">
+            · fetching locations…
+          </span>
+        </p>
+        <div class="sort-selects">
+          <div class="select-field">
+            <select class="sort-select filter-select" v-model="meta.sortBy">
+              <option v-for="opt in sortOptions" :key="opt.key" :value="opt.key">{{ opt.label }}</option>
+            </select>
+            <SelectChevron />
+          </div>
+          <div class="select-field">
+            <select class="sort-select filter-select" v-model="meta.sortDir">
+              <option value="asc">Ascending ↑</option>
+              <option value="desc">Descending ↓</option>
+            </select>
+            <SelectChevron />
+          </div>
+        </div>
+      </section>
+
+      <div class="sidebar-divider" />
+
+      <!-- Filtering -->
+      <section class="sidebar-section">
+        <p class="section-label">Filtering</p>
+
+        <!-- Date range -->
+        <div class="filter-row">
+          <input type="date" class="filter-input" v-model="meta.filterDateFrom" title="From date" />
+          <button v-if="meta.filterDateFrom" class="filter-clear-sq" @click="meta.filterDateFrom = ''" title="Clear">
+            <ClearIcon />
+          </button>
+          <span class="filter-date-sep">–</span>
+          <input type="date" class="filter-input" v-model="meta.filterDateTo" title="To date" />
+          <button v-if="meta.filterDateTo" class="filter-clear-sq" @click="meta.filterDateTo = ''" title="Clear">
+            <ClearIcon />
+          </button>
+        </div>
+
+        <!-- Location -->
+        <div class="filter-row">
+          <div class="select-field">
+            <select class="sort-select filter-select" v-model="meta.filterLocation">
+              <option value="">All locations</option>
+              <option v-for="loc in meta.availableLocations" :key="loc" :value="loc">{{ loc }}</option>
+            </select>
+            <SelectChevron />
+          </div>
+          <button v-if="meta.filterLocation" class="filter-clear-sq" @click="meta.filterLocation = ''" title="Clear">
+            <ClearIcon />
+          </button>
+        </div>
+
+        <!-- Device -->
+        <div class="filter-row">
+          <div class="select-field">
+            <select class="sort-select filter-select" v-model="meta.filterDevice">
+              <option value="">All devices</option>
+              <option v-for="dev in meta.availableDevices" :key="dev" :value="dev">{{ dev }}</option>
+            </select>
+            <SelectChevron />
+          </div>
+          <button v-if="meta.filterDevice" class="filter-clear-sq" @click="meta.filterDevice = ''" title="Clear">
+            <ClearIcon />
+          </button>
+        </div>
+      </section>
     </template>
 
     <!-- Cache buttons — pinned to bottom -->
@@ -236,10 +311,18 @@ import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
 import { SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../constants'
 import SettingsModal from './SettingsModal.vue'
+import SelectChevron from './SelectChevron.vue'
+import ClearIcon from './ClearIcon.vue'
 
 const { activeMode } = useMode()
 const store = useScanStore()
 const meta = useMetadataStore()
+
+const sortOptions = [
+  { key: 'date',     label: 'Date'     },
+  { key: 'location', label: 'Location' },
+  { key: 'device',   label: 'Device'   },
+]
 const history = useHistoryStore()
 const { status: updateStatus } = useUpdater()
 const baseVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0'
@@ -462,6 +545,8 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.6px;
+  display: flex;
+  align-items: center;
 }
 
 /* ── Folder list ── */
@@ -505,6 +590,129 @@ onBeforeUnmount(() => {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* ── Sort selects ── */
+.sort-selects {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+}
+
+.sort-select {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: var(--font-size-xs);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+  appearance: auto;
+  transition: border-color var(--transition);
+}
+.sort-select:focus {
+  border-color: var(--color-accent);
+}
+
+/* ── Filter controls ── */
+.filter-clear-btn {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity var(--transition);
+}
+.filter-clear-btn:hover { opacity: 1; }
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-row .filter-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-select {
+  appearance: none;
+  padding-right: 28px;
+}
+
+.select-field :deep(.select-chevron) {
+  position: absolute;
+  right: 8px;
+}
+
+.select-field {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.select-field .sort-select {
+  width: 100%;
+  padding-right: 28px;
+}
+
+.filter-clear-sq {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  align-self: stretch;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.filter-clear-sq:hover {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #fff;
+}
+
+.filter-date-sep {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.filter-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 11px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition);
+  box-sizing: border-box;
+}
+.filter-input:focus { border-color: var(--color-accent); }
+.filter-input::-webkit-calendar-picker-indicator { filter: invert(0.6); cursor: pointer; }
+
+.sort-geocoding-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 /* ── Buttons ── */
