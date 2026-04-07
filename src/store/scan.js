@@ -367,6 +367,17 @@ export const useScanStore = defineStore('scan', {
       return false
     },
 
+    // Drop all pending (not yet in-flight) thumbnail requests
+    clearThumbQueue() {
+      this._thumbQueue = []
+    },
+
+    // Remove a single path from the pending queue (if not yet in-flight)
+    dequeueThumbnail(path) {
+      const idx = this._thumbQueue.indexOf(path)
+      if (idx !== -1) this._thumbQueue.splice(idx, 1)
+    },
+
     // Enqueue a thumbnail load, respecting global concurrency (max 4 at once)
     enqueueThumbnail(path) {
       if (path in this.thumbCache) return

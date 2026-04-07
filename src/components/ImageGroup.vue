@@ -107,11 +107,17 @@ onMounted(() => {
 
   observer = new IntersectionObserver((entries) => {
     for (const e of entries) {
-      if (!e.isIntersecting) continue
       const path = e.target.dataset.cardPath
-      if (!path || path in store.thumbCache) continue
-      observer.unobserve(e.target)
-      store.enqueueThumbnail(path)
+      if (!path) continue
+      if (path in store.thumbCache) {
+        observer.unobserve(e.target)
+        continue
+      }
+      if (e.isIntersecting) {
+        store.enqueueThumbnail(path)
+      } else {
+        store.dequeueThumbnail(path)
+      }
     }
   }, { rootMargin: '400px', threshold: 0 })
 
@@ -224,13 +230,12 @@ async function openFolder(path) {
 .group-count { font-size: var(--font-size-xs); color: var(--text-muted); }
 
 .cards {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
   gap: var(--space-3);
 }
 
 .card {
-  width: 190px;
   border-radius: var(--border-radius-md);
   background: var(--bg-card);
   border: 1px solid var(--border-color);

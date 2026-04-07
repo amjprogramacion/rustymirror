@@ -127,7 +127,7 @@
 </template>
 
 <script setup>
-import { ref, onBeforeUnmount, watch } from 'vue'
+import { ref, onBeforeUnmount, watch, nextTick } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { useMetadataStore } from '../store/metadata'
 import { useScanStore } from '../store/scan'
@@ -156,14 +156,21 @@ function setupObserver(root) {
 
   observer = new IntersectionObserver((entries) => {
     for (const e of entries) {
-      if (!e.isIntersecting) continue
       const path = e.target.dataset.cardPath
-      if (!path || path in thumbCache || path in directSrcCache) continue
-      observer.unobserve(e.target)
-      if (needsRust(path)) {
-        scanStore.enqueueThumbnail(path)
+      if (!path) continue
+      if (path in thumbCache || path in directSrcCache) {
+        observer.unobserve(e.target)
+        continue
+      }
+      if (e.isIntersecting) {
+        if (needsRust(path)) {
+          scanStore.enqueueThumbnail(path)
+        } else {
+          scanStore.setDirectSrc(path, convertFileSrc(path))
+          observer.unobserve(e.target)
+        }
       } else {
-        scanStore.setDirectSrc(path, convertFileSrc(path))
+        scanStore.dequeueThumbnail(path)
       }
     }
   }, { root, rootMargin: '400px', threshold: 0 })
@@ -176,6 +183,16 @@ function setupObserver(root) {
 
 // Close the metadata panel whenever the sort changes
 watch(() => [meta.sortBy, meta.sortDir], () => scanStore.closeMetadataPanel())
+
+// When visible images change (filter/sort), cancel pending thumb loads and
+// re-register the observer so newly visible cards get prioritised.
+watch(
+  () => meta.filteredImages,
+  () => {
+    scanStore.clearThumbQueue()
+    nextTick(() => { if (gridEl.value) setupObserver(gridEl.value) })
+  }
+)
 
 // Watch the ref directly: fires the moment the v-else block mounts and
 // assigns gridEl. requestAnimationFrame ensures layout is complete before

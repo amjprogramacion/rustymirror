@@ -155,6 +155,10 @@ watch(() => store.scanDone, (done) => {
   if (done) setTimeout(focusFirstCard, 100)
 })
 
+watch(() => store.filteredGroups, () => {
+  store.clearThumbQueue()
+})
+
 function onWindowKeydown(e) {
   if (store.lightbox) return
   if (showConfirm.value) return
