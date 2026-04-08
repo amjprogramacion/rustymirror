@@ -33,8 +33,13 @@
       <button
         class="btn btn-ghost"
         :disabled="meta.selectedCount === 0"
-        @click="meta.clearSelection()"
+        @click="meta.clearSelection(); meta.multiSelect = false"
       >Deselect all</button>
+      <button
+        class="btn btn-edit-exif"
+        :disabled="meta.selectedCount < 2"
+        @click="openBatchEdit"
+      >Edit EXIF</button>
 
       <span class="image-count">{{ meta.filteredImages.length }} image{{ meta.filteredImages.length !== 1 ? 's' : '' }}</span>
 
@@ -186,6 +191,12 @@ function setupObserver(root) {
     const path = el.dataset.cardPath
     if (path && !(path in thumbCache) && !(path in directSrcCache)) observer.observe(el)
   })
+}
+
+function openBatchEdit() {
+  const selected = meta.filteredImages.filter(e => meta.selected.has(e.path))
+  if (selected.length < 2) return
+  scanStore.openBatchEditPanel(selected)
 }
 
 // Close the metadata panel on sort, filter, or new scan
@@ -503,6 +514,19 @@ async function openFolder(path) { await invoke('open_folder', { path }) }
 .card-checkbox input[type="checkbox"]:checked {
   opacity: 1;
 }
+
+.btn-edit-exif {
+  padding: 5px 12px;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+  transition: opacity var(--transition);
+}
+.btn-edit-exif:hover:not(:disabled) { opacity: 0.85; }
+.btn-edit-exif:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .meta-manager-root {
   flex: 1;

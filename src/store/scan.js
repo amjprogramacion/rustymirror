@@ -326,6 +326,15 @@ export const useScanStore = defineStore('scan', {
         if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, loading: false, error: String(e) }
       }
     },
+    async openBatchEditPanel(entries) {
+      this.metadataPanel = { batch: true, entries, allMetadata: null, loading: true, saving: false, error: null, dirty: false }
+      try {
+        const allMetadata = await Promise.all(entries.map(e => invoke('read_metadata', { path: e.path })))
+        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, allMetadata, loading: false }
+      } catch (e) {
+        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, loading: false, error: String(e) }
+      }
+    },
     closeMetadataPanel() {
       this.metadataPanel = null
     },
@@ -337,6 +346,16 @@ export const useScanStore = defineStore('scan', {
         // Refresh metadata from disk after write
         const metadata = await invoke('read_metadata', { path: this.metadataPanel.entry.path })
         this.metadataPanel = { ...this.metadataPanel, metadata, saving: false, dirty: false }
+      } catch (e) {
+        this.metadataPanel = { ...this.metadataPanel, saving: false, error: String(e) }
+      }
+    },
+    async saveBatchMetadata(update) {
+      if (!this.metadataPanel?.batch) return
+      this.metadataPanel = { ...this.metadataPanel, saving: true, error: null }
+      try {
+        await Promise.all(this.metadataPanel.entries.map(e => invoke('write_metadata', { path: e.path, update })))
+        this.metadataPanel = { ...this.metadataPanel, saving: false, dirty: false }
       } catch (e) {
         this.metadataPanel = { ...this.metadataPanel, saving: false, error: String(e) }
       }

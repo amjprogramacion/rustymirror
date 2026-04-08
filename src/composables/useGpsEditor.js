@@ -35,27 +35,6 @@ export function useGpsEditor(meta, onDirty) {
     return null
   }
 
-  function parseCombinedGps(raw) {
-    if (!raw || !raw.trim()) return null
-    const pattern = /(\d+(?:\.\d+)?)\s*[°d]\s*(?:(\d+(?:\.\d+)?)\s*['′]\s*(?:(\d+(?:\.\d+)?)\s*["″]\s*)?)?([NSEWnsew])/g
-    const matches = [...raw.matchAll(pattern)]
-    if (matches.length < 2) return null
-
-    let lat = null, lon = null
-    for (const m of matches) {
-      const deg = parseFloat(m[1])
-      const min = m[2] ? parseFloat(m[2]) : 0
-      const sec = m[3] ? parseFloat(m[3]) : 0
-      const dir = m[4].toUpperCase()
-      let dec = deg + min / 60 + sec / 3600
-      if (dir === 'S' || dir === 'W') dec = -dec
-      if ('NS'.includes(dir)) lat = dec
-      else lon = dec
-    }
-
-    return (lat !== null && lon !== null) ? { lat, lon } : null
-  }
-
   // ── Computed ───────────────────────────────────────────────────────────────
   const showCombinedInput = computed(() =>
     meta.value?.gpsLatitude == null &&
@@ -178,4 +157,25 @@ export function useGpsEditor(meta, onDirty) {
     resetGps,
     validateGps,
   }
+}
+
+// Stand-alone export so batch-edit can parse combined GPS strings without
+// instantiating the full composable.
+export function parseCombinedGps(raw) {
+  if (!raw || !raw.trim()) return null
+  const pattern = /(\d+(?:\.\d+)?)\s*[°d]\s*(?:(\d+(?:\.\d+)?)\s*['′]\s*(?:(\d+(?:\.\d+)?)\s*["″]\s*)?)?([NSEWnsew])/g
+  const matches = [...raw.matchAll(pattern)]
+  if (matches.length < 2) return null
+  let lat = null, lon = null
+  for (const m of matches) {
+    const deg = parseFloat(m[1])
+    const min = m[2] ? parseFloat(m[2]) : 0
+    const sec = m[3] ? parseFloat(m[3]) : 0
+    const dir = m[4].toUpperCase()
+    let dec = deg + min / 60 + sec / 3600
+    if (dir === 'S' || dir === 'W') dec = -dec
+    if ('NS'.includes(dir)) lat = dec
+    else lon = dec
+  }
+  return (lat !== null && lon !== null) ? { lat, lon } : null
 }

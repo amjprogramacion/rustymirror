@@ -11,8 +11,8 @@
 
       <!-- Header row -->
       <div class="mbp-header">
-        <!-- Left: thumbnail + file info -->
-        <div class="mbp-left">
+        <!-- Single mode: thumbnail + file info -->
+        <div class="mbp-left" v-if="!isBatch">
           <div class="mbp-thumb-wrap">
             <img
               v-if="thumbSrc"
@@ -27,6 +27,14 @@
           <div class="mbp-file-info">
             <p class="mbp-filename" :title="entry.path">{{ fileName(entry.path) }}</p>
             <p class="mbp-filepath" :title="entry.path">{{ folderPath(entry.path) }}</p>
+          </div>
+        </div>
+        <!-- Batch mode: icon + count -->
+        <div class="mbp-left" v-else>
+          <div class="mbp-batch-icon">✦</div>
+          <div class="mbp-file-info">
+            <p class="mbp-filename">Editing {{ panel.entries.length }} images</p>
+            <p class="mbp-filepath">Batch EXIF edit</p>
           </div>
         </div>
 
@@ -44,34 +52,48 @@
         {{ panel.error }}
       </div>
 
-      <!-- Horizontal sections -->
-      <div v-else-if="meta" class="mbp-sections-wrap">
+      <!-- ── Unified sections (single + batch) ── -->
+      <div v-else-if="meta || (isBatch && batchAgg)" class="mbp-sections-wrap">
         <div class="mbp-sections">
 
-          <!-- File + Camera -->
+          <!-- File & Camera -->
           <div class="mbp-section">
             <div class="mbp-section-title">File &amp; Camera</div>
             <div class="mbp-rows">
-              <div class="mbp-row"><span class="mbp-label">Size</span><span class="mbp-value">{{ formatSize(meta.fileSize) }}</span></div>
-              <div class="mbp-row" v-if="meta.width > 0"><span class="mbp-label">Dims</span><span class="mbp-value">{{ meta.width }}×{{ meta.height }}</span></div>
-              <template v-if="hasCameraInfo">
-                <div class="mbp-row" v-if="meta.make || meta.model">
-                  <span class="mbp-label">Device</span>
-                  <span class="mbp-value">{{ [meta.make, meta.model].filter(Boolean).join(' ') }}</span>
-                </div>
-                <div class="mbp-row" v-if="meta.lensModel">
-                  <span class="mbp-label">Lens</span>
-                  <span class="mbp-value">{{ meta.lensModel }}</span>
-                </div>
-                <div class="mbp-row" v-if="meta.software">
-                  <span class="mbp-label">Software</span>
-                  <span class="mbp-value">{{ meta.software }}</span>
-                </div>
-              </template>
+              <div class="mbp-row">
+                <span class="mbp-label">Size</span>
+                <span class="mbp-value" v-if="!isBatch">{{ formatSize(meta.fileSize) }}</span>
+                <span class="mbp-value" v-else-if="batchAgg.fileSize !== MIXED">{{ formatSize(batchAgg.fileSize) }}</span>
+                <span class="mbp-value mbp-value--muted" v-else>Various values</span>
+              </div>
+              <div class="mbp-row" v-if="!isBatch ? meta.width > 0 : batchAgg.width != null">
+                <span class="mbp-label">Dims</span>
+                <span class="mbp-value" v-if="!isBatch">{{ meta.width }}×{{ meta.height }}</span>
+                <span class="mbp-value" v-else-if="batchAgg.width !== MIXED">{{ batchAgg.width }}×{{ batchAgg.height }}</span>
+                <span class="mbp-value mbp-value--muted" v-else>Various values</span>
+              </div>
+              <div class="mbp-row" v-if="!isBatch ? (meta.make || meta.model) : (batchAgg.make != null || batchAgg.model != null)">
+                <span class="mbp-label">Device</span>
+                <span class="mbp-value" v-if="!isBatch">{{ [meta.make, meta.model].filter(Boolean).join(' ') }}</span>
+                <span class="mbp-value" v-else-if="batchAgg.make !== MIXED && batchAgg.model !== MIXED">{{ [batchAgg.make, batchAgg.model].filter(Boolean).join(' ') }}</span>
+                <span class="mbp-value mbp-value--muted" v-else>Various values</span>
+              </div>
+              <div class="mbp-row" v-if="!isBatch ? meta.lensModel : batchAgg.lensModel != null">
+                <span class="mbp-label">Lens</span>
+                <span class="mbp-value" v-if="!isBatch">{{ meta.lensModel }}</span>
+                <span class="mbp-value" v-else-if="batchAgg.lensModel !== MIXED">{{ batchAgg.lensModel }}</span>
+                <span class="mbp-value mbp-value--muted" v-else>Various values</span>
+              </div>
+              <div class="mbp-row" v-if="!isBatch ? meta.software : batchAgg.software != null">
+                <span class="mbp-label">Software</span>
+                <span class="mbp-value" v-if="!isBatch">{{ meta.software }}</span>
+                <span class="mbp-value" v-else-if="batchAgg.software !== MIXED">{{ batchAgg.software }}</span>
+                <span class="mbp-value mbp-value--muted" v-else>Various values</span>
+              </div>
             </div>
           </div>
 
-          <!-- Date -->
+          <!-- Date taken -->
           <div class="mbp-section">
             <div class="mbp-section-title">Date taken</div>
             <div class="mbp-edit-rows">
@@ -80,130 +102,114 @@
                   class="mbp-input"
                   type="datetime-local"
                   step="1"
-                  :value="isoToDatetimeLocal(edit.dateTimeOriginal)"
-                  @change="e => { edit.dateTimeOriginal = datetimeLocalToIso(e.target.value); panel.dirty = true }"
+                  :value="isoToDatetimeLocal(isBatch ? batchEdit.dateTimeOriginal : edit.dateTimeOriginal)"
+                  :placeholder="isBatch && batchAgg.dateTimeOriginal === MIXED ? 'Various values' : ''"
+                  @change="e => { const v = datetimeLocalToIso(e.target.value); isBatch ? (batchEdit.dateTimeOriginal = v) : (edit.dateTimeOriginal = v); panel.dirty = true }"
                 />
               </label>
+              <p v-if="isBatch && batchAgg.dateTimeOriginal === MIXED && !batchEdit.dateTimeOriginal" class="mbp-various-hint">Various values — leave empty to keep each file's date</p>
             </div>
           </div>
 
           <!-- Location -->
           <div class="mbp-section mbp-section--location">
-            <!-- Left: title + geocoded name + GPS inputs -->
             <div class="mbp-location-left">
               <div class="mbp-section-title">Location</div>
-              <div class="mbp-rows" v-if="hasGpsPreview">
-                <div class="mbp-row" v-if="locationLoading">
-                  <span class="mbp-label">Location</span>
-                  <span class="mbp-value mbp-value--muted">Fetching…</span>
+
+              <!-- Single mode: geocoded name + combined/split inputs -->
+              <template v-if="!isBatch">
+                <div class="mbp-rows" v-if="hasGpsPreview">
+                  <div class="mbp-row" v-if="locationLoading">
+                    <span class="mbp-label">Location</span>
+                    <span class="mbp-value mbp-value--muted">Fetching…</span>
+                  </div>
+                  <div class="mbp-row" v-else-if="locationName">
+                    <span class="mbp-label">Location</span>
+                    <span class="mbp-value">{{ locationName }}</span>
+                  </div>
                 </div>
-                <div class="mbp-row" v-else-if="locationName">
-                  <span class="mbp-label">Location</span>
-                  <span class="mbp-value">{{ locationName }}</span>
+                <div v-if="showCombinedInput" class="mbp-edit-rows">
+                  <label class="mbp-edit-row">
+                    <input class="mbp-input" type="text" v-model="gpsCombinedRaw" @input="onCombinedInput" :class="{ 'mbp-input--error': gpsCombinedError }" placeholder="39°48'43.1&quot;N 0°25'29.1&quot;W" />
+                  </label>
+                  <p v-if="gpsCombinedError" class="mbp-gps-error">{{ gpsCombinedError }}</p>
                 </div>
-              </div>
-              <!-- Combined input -->
-              <div v-if="showCombinedInput" class="mbp-edit-rows">
-                <label class="mbp-edit-row">
-                  <input
-                    class="mbp-input"
-                    type="text"
-                    v-model="gpsCombinedRaw"
-                    @input="onCombinedInput"
-                    :class="{ 'mbp-input--error': gpsCombinedError }"
-                    placeholder="39°48'43.1&quot;N 0°25'29.1&quot;W"
-                  />
-                </label>
-                <p v-if="gpsCombinedError" class="mbp-gps-error">{{ gpsCombinedError }}</p>
-              </div>
-              <!-- Split inputs -->
-              <div v-else class="mbp-gps-col">
-                <label class="mbp-edit-row">
-                  <span class="mbp-label">Latitude</span>
-                  <input
-                    class="mbp-input"
-                    type="text"
-                    v-model="gpsLatitudeRaw"
-                    @input="onGpsInput('lat')"
-                    @blur="normalizeGpsInput('lat')"
-                    :class="{ 'mbp-input--error': gpsLatError }"
-                    placeholder="40.71600"
-                  />
-                </label>
-                <label class="mbp-edit-row">
-                  <span class="mbp-label">Longitude</span>
-                  <input
-                    class="mbp-input"
-                    type="text"
-                    v-model="gpsLongitudeRaw"
-                    @input="onGpsInput('lon')"
-                    @blur="normalizeGpsInput('lon')"
-                    :class="{ 'mbp-input--error': gpsLonError }"
-                    placeholder="-74.00600"
-                  />
-                </label>
-                <p v-if="gpsLatError || gpsLonError" class="mbp-gps-error">
-                  {{ gpsLatError || gpsLonError }}
-                </p>
-              </div>
+                <div v-else class="mbp-gps-col">
+                  <label class="mbp-edit-row">
+                    <span class="mbp-label">Latitude</span>
+                    <input class="mbp-input" type="text" v-model="gpsLatitudeRaw" @input="onGpsInput('lat')" @blur="normalizeGpsInput('lat')" :class="{ 'mbp-input--error': gpsLatError }" placeholder="40.71600" />
+                  </label>
+                  <label class="mbp-edit-row">
+                    <span class="mbp-label">Longitude</span>
+                    <input class="mbp-input" type="text" v-model="gpsLongitudeRaw" @input="onGpsInput('lon')" @blur="normalizeGpsInput('lon')" :class="{ 'mbp-input--error': gpsLonError }" placeholder="-74.00600" />
+                  </label>
+                  <p v-if="gpsLatError || gpsLonError" class="mbp-gps-error">{{ gpsLatError || gpsLonError }}</p>
+                </div>
+              </template>
+
+              <!-- Batch mode: always combined input -->
+              <template v-else>
+                <div class="mbp-edit-rows">
+                  <label class="mbp-edit-row">
+                    <input class="mbp-input" type="text" v-model="batchGpsCombinedRaw" @input="onBatchGpsInput" :class="{ 'mbp-input--error': batchGpsCombinedError }" :placeholder="batchAgg.gps.mixed ? 'Various values' : '39°48\'43.1&quot;N 0°25\'29.1&quot;W'" />
+                  </label>
+                  <p v-if="batchGpsCombinedError" class="mbp-gps-error">{{ batchGpsCombinedError }}</p>
+                  <p v-if="batchAgg.gps.mixed && !batchGpsCombinedRaw" class="mbp-various-hint">Various values — leave empty to keep each file's location</p>
+                </div>
+              </template>
             </div>
-            <!-- Right: map filling full height -->
-            <div v-if="hasGpsPreview" class="mbp-location-map">
-              <MapPreview :lat="previewLat" :lon="previewLon" :scroll-wheel-zoom="true" />
+
+            <!-- Map -->
+            <div class="mbp-location-map" v-if="!isBatch ? hasGpsPreview : batchHasGpsPreview">
+              <MapPreview
+                :lat="isBatch ? batchPreviewLat : previewLat"
+                :lon="isBatch ? batchPreviewLon : previewLon"
+                :scroll-wheel-zoom="true"
+              />
             </div>
           </div>
 
           <!-- Exposure -->
-          <div class="mbp-section" v-if="hasExposureInfo">
+          <div class="mbp-section" v-if="!isBatch ? hasExposureInfo : hasExposureInfoBatch">
             <div class="mbp-section-title">Exposure</div>
             <div class="mbp-rows">
-              <div class="mbp-row" v-if="meta.exposureTime"><span class="mbp-label">Shutter</span><span class="mbp-value">{{ meta.exposureTime }}</span></div>
-              <div class="mbp-row" v-if="meta.fNumber"><span class="mbp-label">Aperture</span><span class="mbp-value">{{ meta.fNumber }}</span></div>
-              <div class="mbp-row" v-if="meta.isoSpeed"><span class="mbp-label">ISO</span><span class="mbp-value">{{ meta.isoSpeed }}</span></div>
-              <div class="mbp-row" v-if="meta.focalLength"><span class="mbp-label">Focal length</span><span class="mbp-value">{{ meta.focalLength }}</span></div>
-              <div class="mbp-row" v-if="meta.flash"><span class="mbp-label">Flash</span><span class="mbp-value">{{ meta.flash }}</span></div>
-              <div class="mbp-row" v-if="meta.whiteBalance"><span class="mbp-label">White balance</span><span class="mbp-value">{{ meta.whiteBalance }}</span></div>
-              <div class="mbp-row" v-if="meta.exposureMode"><span class="mbp-label">Exp. mode</span><span class="mbp-value">{{ meta.exposureMode }}</span></div>
-              <div class="mbp-row" v-if="meta.meteringMode"><span class="mbp-label">Metering</span><span class="mbp-value">{{ meta.meteringMode }}</span></div>
+              <template v-for="row in exposureRows" :key="row.label">
+                <div class="mbp-row" v-if="row.visible">
+                  <span class="mbp-label">{{ row.label }}</span>
+                  <span class="mbp-value" v-if="row.value !== MIXED">{{ row.value }}</span>
+                  <span class="mbp-value mbp-value--muted" v-else>Various values</span>
+                </div>
+              </template>
             </div>
           </div>
 
-          <!-- Details (editable) -->
+          <!-- Details -->
           <div class="mbp-section mbp-section--details">
             <div class="mbp-section-title">Details</div>
             <div class="mbp-edit-rows">
               <label class="mbp-edit-row">
                 <span class="mbp-label">Description</span>
-                <input
-                  class="mbp-input"
-                  type="text"
-                  v-model="edit.imageDescription"
-                  @input="panel.dirty = true"
-                  placeholder="Add a description…"
-                />
+                <input class="mbp-input" type="text"
+                  :value="isBatch ? batchEdit.imageDescription : edit.imageDescription"
+                  @input="e => { isBatch ? (batchEdit.imageDescription = e.target.value) : (edit.imageDescription = e.target.value); panel.dirty = true }"
+                  :placeholder="isBatch && batchAgg.imageDescription === MIXED ? 'Various values' : 'Add a description…'" />
               </label>
               <label class="mbp-edit-row">
                 <span class="mbp-label">Artist</span>
-                <input
-                  class="mbp-input"
-                  type="text"
-                  v-model="edit.artist"
-                  @input="panel.dirty = true"
-                  placeholder="Photographer name…"
-                />
+                <input class="mbp-input" type="text"
+                  :value="isBatch ? batchEdit.artist : edit.artist"
+                  @input="e => { isBatch ? (batchEdit.artist = e.target.value) : (edit.artist = e.target.value); panel.dirty = true }"
+                  :placeholder="isBatch && batchAgg.artist === MIXED ? 'Various values' : 'Photographer name…'" />
               </label>
               <label class="mbp-edit-row">
                 <span class="mbp-label">Copyright</span>
-                <input
-                  class="mbp-input"
-                  type="text"
-                  v-model="edit.copyright"
-                  @input="panel.dirty = true"
-                  placeholder="© Year Name…"
-                />
+                <input class="mbp-input" type="text"
+                  :value="isBatch ? batchEdit.copyright : edit.copyright"
+                  @input="e => { isBatch ? (batchEdit.copyright = e.target.value) : (edit.copyright = e.target.value); panel.dirty = true }"
+                  :placeholder="isBatch && batchAgg.copyright === MIXED ? 'Various values' : '© Year Name…'" />
               </label>
             </div>
-            <p class="mbp-save-notice" v-if="!panel.dirty && !panel.saving && !saveError">
+            <p class="mbp-save-notice" v-if="!isBatch && !panel.dirty && !panel.saving && !saveError">
               Changes are written directly to the file's EXIF data.
             </p>
           </div>
@@ -215,9 +221,10 @@
           <div class="mbp-float-bar" v-if="panel.dirty || panel.saving">
             <p v-if="saveError" class="mbp-save-error">{{ saveError }}</p>
             <div class="mbp-actions">
-              <button class="mbp-btn mbp-btn-ghost" @click="resetEdit" :disabled="panel.saving">Reset</button>
-              <button class="mbp-btn mbp-btn-primary" @click="save" :disabled="panel.saving">
+              <button class="mbp-btn mbp-btn-ghost" @click="isBatch ? resetBatch() : resetEdit()" :disabled="panel.saving">Reset</button>
+              <button class="mbp-btn mbp-btn-primary" @click="isBatch ? saveBatch() : save()" :disabled="panel.saving">
                 <span v-if="panel.saving">Saving…</span>
+                <span v-else-if="isBatch">Save to {{ panel.entries.length }} images</span>
                 <span v-else>Save changes</span>
               </button>
             </div>
@@ -233,12 +240,15 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useScanStore } from '../store/scan'
+import { useMetadataStore } from '../store/metadata'
 import MapPreview from './MapPreview.vue'
 import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
-import { useGpsEditor } from '../composables/useGpsEditor'
+import { useGpsEditor, parseCombinedGps } from '../composables/useGpsEditor'
 
-const store = useScanStore()
-const HEIC = new Set(['heic', 'heif'])
+const store     = useScanStore()
+const metaStore = useMetadataStore()
+const HEIC      = new Set(['heic', 'heif'])
+const MIXED     = '__mixed__'
 
 // ── Panel height resize ───────────────────────────────────────────────────────
 const MIN_HEIGHT = 200
@@ -270,6 +280,136 @@ const entry = computed(() => panel.value?.entry ?? {})
 const meta  = computed(() => panel.value?.metadata ?? null)
 
 const saveError = ref(null)
+
+// ── Batch / single mode ───────────────────────────────────────────────────────
+const isBatch = computed(() => panel.value?.batch === true)
+
+// ── Batch: GPS helpers ────────────────────────────────────────────────────────
+function decimalToDms(decimal, type) {
+  const sign = decimal < 0
+  const abs  = Math.abs(decimal)
+  const deg  = Math.floor(abs)
+  const mf   = (abs - deg) * 60
+  const min  = Math.floor(mf)
+  const sec  = ((mf - min) * 60).toFixed(1)
+  const dir  = type === 'lat' ? (sign ? 'S' : 'N') : (sign ? 'W' : 'E')
+  return `${deg}°${min}'${sec}"${dir}`
+}
+function formatBatchGps(lat, lon) {
+  return `${decimalToDms(lat, 'lat')} ${decimalToDms(lon, 'lon')}`
+}
+
+// ── Batch: aggregated values ──────────────────────────────────────────────────
+const batchAgg = computed(() => {
+  if (!isBatch.value || !panel.value?.allMetadata) return null
+  const all     = panel.value.allMetadata
+  const entries = panel.value.entries
+
+  function agg(fn) {
+    const vals  = all.map(fn)
+    const first = vals[0]
+    return vals.every(v => v === first) ? (first ?? null) : MIXED
+  }
+
+  // GPS: compare geocoded location names from the metadata store
+  const names    = entries.map(e => metaStore.locationNames[e.path] ?? null)
+  const lats     = all.map(m => m.gpsLatitude)
+  const hasAny   = lats.some(l => l != null)
+  const allHave  = hasAny && lats.every(l => l != null)
+  let gps
+  if (!hasAny) {
+    gps = { mixed: false, lat: null, lon: null }
+  } else if (!allHave) {
+    gps = { mixed: true, lat: null, lon: null }
+  } else {
+    const first    = names[0]
+    const allSame  = first != null && first !== '' && names.every(n => n === first)
+    gps = allSame
+      ? { mixed: false, lat: all[0].gpsLatitude, lon: all[0].gpsLongitude }
+      : { mixed: true,  lat: null, lon: null }
+  }
+
+  return {
+    // File & Camera
+    fileSize:     agg(m => m.fileSize  ?? null),
+    width:        agg(m => m.width     || null),
+    height:       agg(m => m.height    || null),
+    make:         agg(m => m.make      ?? null),
+    model:        agg(m => m.model     ?? null),
+    lensModel:    agg(m => m.lensModel ?? null),
+    software:     agg(m => m.software  ?? null),
+    // Exposure
+    exposureTime: agg(m => m.exposureTime ?? null),
+    fNumber:      agg(m => m.fNumber      ?? null),
+    isoSpeed:     agg(m => m.isoSpeed     ?? null),
+    focalLength:  agg(m => m.focalLength  ?? null),
+    flash:        agg(m => m.flash        ?? null),
+    whiteBalance: agg(m => m.whiteBalance ?? null),
+    exposureMode: agg(m => m.exposureMode ?? null),
+    meteringMode: agg(m => m.meteringMode ?? null),
+    // Editable
+    dateTimeOriginal: agg(m => m.dateTimeOriginal ?? null),
+    imageDescription: agg(m => m.imageDescription ?? null),
+    artist:           agg(m => m.artist           ?? null),
+    copyright:        agg(m => m.copyright        ?? null),
+    gps,
+  }
+})
+
+// ── Batch: edit state ─────────────────────────────────────────────────────────
+const batchEdit = ref({ dateTimeOriginal: null, imageDescription: null, artist: null, copyright: null })
+const batchGpsCombinedRaw   = ref('')
+const batchGpsCombinedError = ref(null)
+
+function resetBatch() {
+  const agg = batchAgg.value
+  if (!agg || !panel.value) return
+  batchEdit.value = {
+    dateTimeOriginal: agg.dateTimeOriginal === MIXED ? null : agg.dateTimeOriginal,
+    imageDescription: agg.imageDescription === MIXED ? null : agg.imageDescription,
+    artist:           agg.artist           === MIXED ? null : agg.artist,
+    copyright:        agg.copyright        === MIXED ? null : agg.copyright,
+  }
+  batchGpsCombinedRaw.value   = (!agg.gps.mixed && agg.gps.lat != null) ? formatBatchGps(agg.gps.lat, agg.gps.lon) : ''
+  batchGpsCombinedError.value = null
+  panel.value.dirty           = false
+  saveError.value             = null
+}
+
+watch(batchAgg, (agg) => { if (agg) resetBatch() }, { immediate: true })
+
+function onBatchGpsInput() {
+  batchGpsCombinedError.value = null
+  if (panel.value) panel.value.dirty = true
+}
+
+const batchGpsParsed    = computed(() => parseCombinedGps(batchGpsCombinedRaw.value))
+const batchPreviewLat   = computed(() => batchGpsParsed.value?.lat ?? null)
+const batchPreviewLon   = computed(() => batchGpsParsed.value?.lon ?? null)
+const batchHasGpsPreview = computed(() => batchPreviewLat.value != null && batchPreviewLon.value != null)
+
+async function saveBatch() {
+  saveError.value             = null
+  batchGpsCombinedError.value = null
+
+  let lat = null, lon = null
+  if (batchGpsCombinedRaw.value.trim()) {
+    const parsed = parseCombinedGps(batchGpsCombinedRaw.value)
+    if (!parsed) { batchGpsCombinedError.value = 'Invalid coordinates'; return }
+    lat = parsed.lat
+    lon = parsed.lon
+  }
+
+  await store.saveBatchMetadata({
+    dateTimeOriginal: batchEdit.value.dateTimeOriginal || null,
+    imageDescription: batchEdit.value.imageDescription || null,
+    artist:           batchEdit.value.artist           || null,
+    copyright:        batchEdit.value.copyright        || null,
+    gpsLatitude:      lat,
+    gpsLongitude:     lon,
+  })
+  if (panel.value?.error) saveError.value = panel.value.error
+}
 
 // ── GPS editor ────────────────────────────────────────────────────────────────
 const {
@@ -337,6 +477,33 @@ const thumbSrc = computed(() => {
 
 const hasCameraInfo   = computed(() => meta.value && (meta.value.make || meta.value.model || meta.value.lensModel || meta.value.software))
 const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime || meta.value.fNumber || meta.value.isoSpeed || meta.value.focalLength))
+
+const hasExposureInfoBatch = computed(() => {
+  const a = batchAgg.value
+  return a && [a.exposureTime, a.fNumber, a.isoSpeed, a.focalLength, a.flash, a.whiteBalance, a.exposureMode, a.meteringMode].some(v => v != null)
+})
+
+// Unified exposure row list — works for both single and batch
+const exposureRows = computed(() => {
+  const a = batchAgg.value
+  const m = meta.value
+  function row(label, singleVal, batchField) {
+    const bv = a?.[batchField]
+    const visible = isBatch.value ? bv != null : !!singleVal
+    const value   = isBatch.value ? bv : singleVal
+    return { label, value, visible }
+  }
+  return [
+    row('Shutter',       m?.exposureTime, 'exposureTime'),
+    row('Aperture',      m?.fNumber,      'fNumber'),
+    row('ISO',           m?.isoSpeed,     'isoSpeed'),
+    row('Focal length',  m?.focalLength,  'focalLength'),
+    row('Flash',         m?.flash,        'flash'),
+    row('White balance', m?.whiteBalance, 'whiteBalance'),
+    row('Exp. mode',     m?.exposureMode, 'exposureMode'),
+    row('Metering',      m?.meteringMode, 'meteringMode'),
+  ]
+})
 </script>
 
 <style scoped>
@@ -751,5 +918,26 @@ const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime ||
   color: var(--text-muted);
   opacity: 0.7;
   margin-top: var(--space-1);
+}
+
+/* ── Batch mode ── */
+.mbp-batch-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: var(--border-radius-sm);
+  background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.15);
+  border: 1px solid var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-accent);
+  font-size: 16px;
+}
+
+.mbp-various-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
 }
 </style>

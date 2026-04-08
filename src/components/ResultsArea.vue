@@ -20,7 +20,7 @@
       <button
         class="btn btn-ghost"
         :disabled="store.selectedCount === 0"
-        @click="store.clearSelection()"
+        @click="store.clearSelection(); store.multiSelect = false"
       >Deselect all</button>
       <button
         class="btn btn-danger"
