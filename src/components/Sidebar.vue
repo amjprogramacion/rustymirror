@@ -135,6 +135,11 @@
                     <path d="M4.2 0L0 6h3.2L2.8 11 7 5H3.8L4.2 0z" fill="#f5c542"/>
                   </svg>
                 </span>
+                <span v-if="entry.crossDatePhash !== false" class="history-cross-badge" title="Cross-date similarity (phase 5)">
+                  <svg viewBox="0 0 11 11" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 5.5h9M5.5 1v9M2.5 2.5l6 6M8.5 2.5l-6 6" stroke="#7ecfff" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                </span>
                 <span class="history-threshold">{{ entry.threshold ?? 90 }}%</span>
               </div>
             </div>
@@ -394,9 +399,10 @@ function loadFromHistory(entry) {
   // Already showing this exact entry — nothing to do
   if (entry.id === store.activeHistoryEntryId) return
 
-  // Restore the fastMode that was used when this entry was originally scanned,
-  // regardless of what the current Settings toggle says.
+  // Restore the fastMode and crossDatePhash that were used when this entry was
+  // originally scanned, regardless of what the current Settings toggles say.
   store.fastModeOverride = entry.fastMode ?? false
+  store.crossDatePhashOverride = entry.crossDatePhash ?? true
   store.scanLabel = 'Loading scan…'
   store.startScan()
 }
@@ -921,6 +927,21 @@ onBeforeUnmount(() => {
   width: 7px;
   height: 11px;
   transform: rotate(15deg);
+}
+
+.history-cross-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: transparent;
+  border-radius: 50%;
+}
+
+.history-cross-badge svg {
+  width: 11px;
+  height: 11px;
 }
 
 /* ── Cache size badge ── */

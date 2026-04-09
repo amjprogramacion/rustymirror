@@ -40,6 +40,9 @@ export const useScanStore = defineStore('scan', {
     // When set (by loadFromHistory), overrides the localStorage fast mode setting
     // for exactly one scan. Consumed and reset to null at the start of startScan.
     fastModeOverride: null,
+    // When set (by loadFromHistory), overrides the localStorage cross-date phash setting
+    // for exactly one scan. Consumed and reset to null at the start of startScan.
+    crossDatePhashOverride: null,
   }),
 
   getters: {
@@ -50,7 +53,7 @@ export const useScanStore = defineStore('scan', {
       const isSameDateOnly   = g => g.kind === 'sameDate' && g.similarity == null
 
       // ── Filter by kind ──────────────────────────────────────────────────────
-      // 'similar' filter shows: exact + similar + sameDate-with-similarity
+      // 'similar' filter shows: similar + sameDate-with-similarity
       // 'sameDate' filter shows: only sameDate-without-similarity
       // 'exact'   filter shows: only exact
       // 'all'     filter shows: everything
@@ -60,7 +63,7 @@ export const useScanStore = defineStore('scan', {
       } else if (state.filter === 'exact') {
         filtered = state.groups.filter(g => g.kind === 'exact')
       } else if (state.filter === 'similar') {
-        filtered = state.groups.filter(g => g.kind === 'exact' || g.kind === 'similar' || isSameDateSimilar(g))
+        filtered = state.groups.filter(g => g.kind === 'similar' || isSameDateSimilar(g))
       } else if (state.filter === 'sameDate') {
         filtered = state.groups.filter(g => isSameDateOnly(g))
       } else {
@@ -234,13 +237,18 @@ export const useScanStore = defineStore('scan', {
         const history = useHistoryStore()
         const hammingThreshold = Math.round((100 - this.similarityThreshold) / 100 * 64)
 
-        // Resolve fastMode before the try block so it is visible in all branches below.
-        // Uses the one-shot override set by loadFromHistory, or falls back to the setting.
+        // Resolve fastMode and crossDatePhash before the try block so they are visible
+        // in all branches below. Uses one-shot overrides set by loadFromHistory, or
+        // falls back to the current settings.
         const settings = useSettings()
         const fastMode = this.fastModeOverride !== null
           ? this.fastModeOverride
           : settings.fastMode.value
         this.fastModeOverride = null
+        const crossDatePhash = this.crossDatePhashOverride !== null
+          ? this.crossDatePhashOverride
+          : settings.crossDatePhash.value
+        this.crossDatePhashOverride = null
 
         logger.info('computing directory fingerprint...')
         let groups = null
@@ -251,7 +259,7 @@ export const useScanStore = defineStore('scan', {
           fingerprint = await invoke('directory_fingerprint', { paths: this.folders })
           this.fingerprinting = false
           logger.info(`fingerprint: ${fingerprint.slice(0, 12)}...`)
-          const cached = history.getCached(this.folders, fingerprint, this.similarityThreshold, fastMode)
+          const cached = history.getCached(this.folders, fingerprint, this.similarityThreshold, fastMode, crossDatePhash)
           if (cached) {
             logger.info(`cache hit — skipping scan (${cached.length} groups)`)
             groups = cached
@@ -264,7 +272,6 @@ export const useScanStore = defineStore('scan', {
         if (!groups) {
           logger.info('invoking scan_directories...')
           logger.info(`similarity threshold: ${this.similarityThreshold}% -> hamming ${hammingThreshold}`)
-          const crossDatePhash = settings.crossDatePhash.value
           groups = await invoke('scan_directories', { paths: this.folders, hammingThreshold, crossDatePhash, fastMode })
           logger.info(`scan returned ${groups?.length} groups`)
         }
@@ -279,7 +286,7 @@ export const useScanStore = defineStore('scan', {
 
         if (!this._scanCancelled) {
           const imageCount = groups.reduce((n, g) => n + g.entries.length, 0)
-          const entryId = await history.addEntry(this.folders, groups.length, imageCount, groups, fingerprint, this.similarityThreshold, fastMode, durationMs)
+          const entryId = await history.addEntry(this.folders, groups.length, imageCount, groups, fingerprint, this.similarityThreshold, fastMode, crossDatePhash, durationMs)
 
           this.groups = groups
           this.scanDone = true
@@ -493,8 +500,7 @@ export const useScanStore = defineStore('scan', {
       logger.info(`groups after delete: ${this.groups.length}`)
 
       const history = useHistoryStore()
-      const foldersKey = [...this.folders].sort().join('|')
-      const histEntry = history.entries.find(e => [...e.folders].sort().join('|') === foldersKey)
+      const histEntry = history.entries.find(e => e.id === this.activeHistoryEntryId)
       if (histEntry) {
         histEntry.fingerprint = null
         histEntry.groups = this.groups

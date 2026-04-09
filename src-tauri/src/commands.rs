@@ -320,7 +320,31 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
 
         log::debug!("[RustyMirror:RS] thumb MISS (jpg/net): {}", path);
 
-        let img   = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+        let img = match image::load_from_memory(&bytes) {
+            Ok(img) => img,
+            Err(e) => {
+                // The image crate failed to decode the file (unusual PNG variant,
+                // unsupported bit depth, etc.). Return the raw bytes as a data URI
+                // so the browser can still try to render it natively.
+                log::warn!("[RustyMirror:RS] thumb decode failed ({}): {} — returning raw", e, path);
+                let ext = std::path::Path::new(&path)
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                let mime = match ext.as_str() {
+                    "png"        => "image/png",
+                    "gif"        => "image/gif",
+                    "webp"       => "image/webp",
+                    "bmp"        => "image/bmp",
+                    "tiff"|"tif" => "image/tiff",
+                    _            => "image/jpeg",
+                };
+                return Ok(format!("data:{};base64,{}",
+                    mime,
+                    base64::engine::general_purpose::STANDARD.encode(&bytes)));
+            }
+        };
         let img   = apply_exif_orientation(&bytes, img);
         let thumb = img.resize(180, 180, FilterType::Nearest);
         let mut buf = Cursor::new(Vec::<u8>::new());

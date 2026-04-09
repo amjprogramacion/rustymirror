@@ -16,10 +16,10 @@ function foldersKey(folders) {
   return [...folders].sort().join('|')
 }
 
-// Cache key includes threshold and fastMode so that each combination produces
-// a separate history entry (fast and precise scans may return different groups).
-function cacheKey(folders, threshold, fastMode) {
-  return `${foldersKey(folders)}@@${threshold}@@${fastMode ? 'fast' : 'precise'}`
+// Cache key includes threshold, fastMode and crossDatePhash so that each combination
+// produces a separate history entry (different options may return different groups).
+function cacheKey(folders, threshold, fastMode, crossDatePhash) {
+  return `${foldersKey(folders)}@@${threshold}@@${fastMode ? 'fast' : 'precise'}@@${crossDatePhash ? 'cross' : 'nocross'}`
 }
 
 export const useHistoryStore = defineStore('history', {
@@ -39,10 +39,10 @@ export const useHistoryStore = defineStore('history', {
       }
     },
 
-    async addEntry(folders, duplicates, imageCount, groups, fingerprint, threshold, fastMode, durationMs) {
+    async addEntry(folders, duplicates, imageCount, groups, fingerprint, threshold, fastMode, crossDatePhash, durationMs) {
       // Preserve original date, id and duration when the same scan is re-run (cache hit).
-      const key = cacheKey(folders, threshold, fastMode)
-      const existing = this.entries.find(e => cacheKey(e.folders, e.threshold ?? 90, e.fastMode ?? false) === key)
+      const key = cacheKey(folders, threshold, fastMode, crossDatePhash)
+      const existing = this.entries.find(e => cacheKey(e.folders, e.threshold ?? 90, e.fastMode ?? false, e.crossDatePhash ?? true) === key)
 
       const entry = {
         // Keep original id so activeHistoryEntryId remains valid across cache hits.
@@ -58,10 +58,11 @@ export const useHistoryStore = defineStore('history', {
         groups: groups ?? [],
         threshold: threshold ?? 90,
         fastMode: fastMode ?? false,
+        crossDatePhash: crossDatePhash ?? true,
       }
 
       const existingIdx = this.entries.findIndex(
-        e => cacheKey(e.folders, e.threshold ?? 90, e.fastMode ?? false) === key
+        e => cacheKey(e.folders, e.threshold ?? 90, e.fastMode ?? false, e.crossDatePhash ?? true) === key
       )
       if (existingIdx >= 0) {
         // Update in-place — preserves original position in the list.
@@ -77,10 +78,10 @@ export const useHistoryStore = defineStore('history', {
       return entry.id
     },
 
-    // Returns cached groups only if folders, fingerprint, threshold AND fastMode all match.
-    getCached(folders, fingerprint, threshold, fastMode) {
-      const key = cacheKey(folders, threshold, fastMode)
-      const entry = this.entries.find(e => cacheKey(e.folders, e.threshold ?? 90, e.fastMode ?? false) === key)
+    // Returns cached groups only if folders, fingerprint, threshold, fastMode AND crossDatePhash all match.
+    getCached(folders, fingerprint, threshold, fastMode, crossDatePhash) {
+      const key = cacheKey(folders, threshold, fastMode, crossDatePhash)
+      const entry = this.entries.find(e => cacheKey(e.folders, e.threshold ?? 90, e.fastMode ?? false, e.crossDatePhash ?? true) === key)
       if (!entry || !entry.fingerprint || !entry.groups?.length) return null
       if (entry.fingerprint !== fingerprint) return null
       return entry.groups
