@@ -45,34 +45,25 @@
       <!-- Metadata content -->
       <div v-else-if="meta" class="mp-content" :style="panel.dirty || panel.saving ? 'padding-bottom: 64px' : ''">
 
-        <!-- File + Camera side by side -->
-        <div class="mp-pair">
-          <div class="mp-section mp-section--half">
-            <button class="mp-section-title" @click="toggle('file')">
-              File <ChevronIcon :open="!collapsed.file" />
-            </button>
-            <div class="mp-rows" v-show="!collapsed.file">
-              <div class="mp-row"><span class="mp-label">Size</span><span class="mp-value">{{ formatSize(meta.fileSize) }}</span></div>
-              <div class="mp-row" v-if="meta.width > 0"><span class="mp-label">Dims</span><span class="mp-value">{{ meta.width }}×{{ meta.height }}</span></div>
+        <!-- File & Camera -->
+        <div class="mp-section">
+          <button class="mp-section-title" @click="toggle('file')">
+            File &amp; Camera <ChevronIcon :open="!collapsed.file" />
+          </button>
+          <div class="mp-rows" v-show="!collapsed.file">
+            <div class="mp-row"><span class="mp-label">Size</span><span class="mp-value">{{ formatSize(meta.fileSize) }}</span></div>
+            <div class="mp-row" v-if="meta.width > 0"><span class="mp-label">Dims</span><span class="mp-value">{{ meta.width }}×{{ meta.height }}</span></div>
+            <div class="mp-row" v-if="meta.make || meta.model">
+              <span class="mp-label">Device</span>
+              <span class="mp-value">{{ [meta.make, meta.model].filter(Boolean).join(' ') }}</span>
             </div>
-          </div>
-          <div class="mp-section mp-section--half" v-if="hasCameraInfo">
-            <button class="mp-section-title" @click="toggle('camera')">
-              Camera <ChevronIcon :open="!collapsed.camera" />
-            </button>
-            <div class="mp-rows" v-show="!collapsed.camera">
-              <div class="mp-row" v-if="meta.make || meta.model">
-                <span class="mp-label">Device</span>
-                <span class="mp-value">{{ [meta.make, meta.model].filter(Boolean).join(' ') }}</span>
-              </div>
-              <div class="mp-row" v-if="meta.lensModel">
-                <span class="mp-label">Lens</span>
-                <span class="mp-value">{{ meta.lensModel }}</span>
-              </div>
-              <div class="mp-row" v-if="meta.software">
-                <span class="mp-label">Software</span>
-                <span class="mp-value">{{ meta.software }}</span>
-              </div>
+            <div class="mp-row" v-if="meta.lensModel">
+              <span class="mp-label">Lens</span>
+              <span class="mp-value">{{ meta.lensModel }}</span>
+            </div>
+            <div class="mp-row" v-if="meta.software">
+              <span class="mp-label">Software</span>
+              <span class="mp-value">{{ meta.software }}</span>
             </div>
           </div>
         </div>
@@ -334,9 +325,9 @@ const entry  = computed(() => panel.value?.entry ?? {})
 const meta   = computed(() => panel.value?.metadata ?? null)
 
 // ── Section collapse state ────────────────────────────────────────────────────
-const collapsed = ref({ file: false, camera: false, date: false, location: false, exposure: true, details: true })
+const collapsed = ref({ file: false, date: false, location: false, exposure: true, details: true })
 function toggle(key) { collapsed.value[key] = !collapsed.value[key] }
-watch(meta, (m) => { if (m) collapsed.value = { file: false, camera: false, date: false, location: false, exposure: true, details: true } })
+watch(meta, (m) => { if (m) collapsed.value = { file: false, date: false, location: false, exposure: true, details: true } })
 
 const notification = ref(null)
 let   notifyTimer  = null
@@ -413,14 +404,13 @@ const thumbSrc = computed(() => {
   return store.directSrcCache[p] ?? convertFileSrc(p)
 })
 
-const hasCameraInfo   = computed(() => meta.value && (meta.value.make || meta.value.model || meta.value.lensModel || meta.value.software))
 const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime || meta.value.fNumber || meta.value.isoSpeed || meta.value.focalLength))
 </script>
 
 <style scoped>
 .mp-panel {
   position: fixed;
-  top: 0;
+  top: 44px;
   right: 0;
   bottom: 0;
   z-index: 150;
@@ -630,28 +620,6 @@ const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime ||
   border-bottom: none;
 }
 
-/* ── Side-by-side pair (File + Camera) ── */
-.mp-pair {
-  display: flex;
-  align-items: stretch;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.mp-section--half {
-  flex: 1;
-  min-width: 0;
-  border-bottom: none;
-  padding: 0 var(--space-3);
-}
-
-.mp-section--half:first-child {
-  border-right: 1px solid var(--border-color);
-}
-
-/* Tighter label width inside half columns */
-.mp-section--half .mp-label {
-  width: 52px;
-}
 
 .mp-section-title {
   display: flex;
