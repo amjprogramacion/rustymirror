@@ -28,6 +28,7 @@
             :src="store.directSrcCache[entry.path]"
             class="thumb"
             draggable="false"
+            @error="onDirectSrcError(entry.path)"
           />
           <img
             v-else-if="store.thumbCache[entry.path] && store.thumbCache[entry.path] !== THUMB_ERROR"
@@ -84,12 +85,17 @@ const props = defineProps({ group: { type: Object, required: true } })
 const store = useScanStore()
 const THUMB_ERROR = '__error__'
 const HEIC_EXTS = new Set(['heic', 'heif'])
+// PNGs are always processed via Rust to avoid WebView2 rendering issues with
+// certain PNG variants (16-bit depth, Display P3 / ICC color profiles, etc.).
+// Rust decodes and re-encodes as a plain JPEG thumbnail, which WebView2 handles fine.
+const RUST_THUMB_EXTS = new Set(['png'])
 
 let observer = null
 const groupEl = ref(null)
 
 function needsRust(path) {
-  return HEIC_EXTS.has(fileExt(path)) || store.isNetworkPath(path)
+  const ext = fileExt(path)
+  return HEIC_EXTS.has(ext) || RUST_THUMB_EXTS.has(ext) || store.isNetworkPath(path)
 }
 
 onMounted(() => {
@@ -135,6 +141,15 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => observer?.disconnect())
+
+// Called when the browser fails to load a file via convertFileSrc (e.g. very
+// large PNG, unusual color profile, WebView2 rendering issue). Clear the direct
+// src so the template falls through to the thumb path, then ask Rust to decode
+// and serve the file — Rust now falls back to raw bytes if it can't resize.
+function onDirectSrcError(path) {
+  store.directSrcCache[path] = null
+  store.enqueueThumbnail(path)
+}
 
 const focusedPath = ref(null)
 

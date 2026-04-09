@@ -346,6 +346,9 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
             }
         };
         let img   = apply_exif_orientation(&bytes, img);
+        // Normalise to 8-bit RGB before resize: JPEG does not support 16-bit colour
+        // depth, so 48-bit (16bpc) PNGs would cause write_to to fail otherwise.
+        let img   = image::DynamicImage::ImageRgb8(img.into_rgb8());
         let thumb = img.resize(180, 180, FilterType::Nearest);
         let mut buf = Cursor::new(Vec::<u8>::new());
         thumb.write_to(&mut buf, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;

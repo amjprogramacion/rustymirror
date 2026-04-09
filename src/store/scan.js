@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { logger } from '../utils/logger'
 import { useHistoryStore } from './history'
@@ -17,6 +17,7 @@ export const useScanStore = defineStore('scan', {
     _etaSamples: [],
     groups: [],
     filter: 'all',
+    extFilter: '',
     searchQuery: '',
     similarityThreshold: 90,
     multiSelect: false,
@@ -68,6 +69,14 @@ export const useScanStore = defineStore('scan', {
         filtered = state.groups.filter(g => isSameDateOnly(g))
       } else {
         filtered = state.groups.filter(g => g.kind === state.filter)
+      }
+
+      // ── Extension filter ────────────────────────────────────────────────────
+      if (state.extFilter) {
+        const ext = state.extFilter.toLowerCase()
+        filtered = filtered.filter(g =>
+          g.entries.some(e => (e.path.split('.').pop()?.toLowerCase() ?? '') === ext)
+        )
       }
 
       // ── Search ──────────────────────────────────────────────────────────────
@@ -152,6 +161,18 @@ export const useScanStore = defineStore('scan', {
       return counts
     },
 
+    // Sorted list of unique file extensions present across all current groups.
+    availableExtensions(state) {
+      const exts = new Set()
+      for (const g of state.groups) {
+        for (const e of g.entries) {
+          const ext = e.path.split('.').pop()?.toLowerCase()
+          if (ext) exts.add(ext)
+        }
+      }
+      return [...exts].sort()
+    },
+
     selectedCount(state) {
       return state.selected.size
     },
@@ -208,6 +229,7 @@ export const useScanStore = defineStore('scan', {
       this.scanDone = false
       this.groups = []
       this.filter = 'all'
+      this.extFilter = ''
       this.selected = new Set()
       this.searchQuery = ''
       this._thumbQueue = []
@@ -440,6 +462,7 @@ export const useScanStore = defineStore('scan', {
     // Enqueue a thumbnail load, respecting global concurrency (max 4 at once)
     enqueueThumbnail(path) {
       if (path in this.thumbCache) return
+      if (this.directSrcCache[path]) return   // already has a working direct URL
       if (this._thumbQueue.includes(path)) return
       this._thumbQueue.push(path)
       this._flushThumbQueue()
@@ -450,6 +473,7 @@ export const useScanStore = defineStore('scan', {
       while (this._thumbActive < MAX && this._thumbQueue.length > 0) {
         const path = this._thumbQueue.shift()
         if (path in this.thumbCache) continue
+        if (this.directSrcCache[path]) continue  // already resolved via convertFileSrc
         this._thumbActive++
         invoke('get_thumbnail', { path })
           .then(src => {
@@ -458,7 +482,16 @@ export const useScanStore = defineStore('scan', {
           })
           .catch((e) => {
             console.warn('Thumbnail generation failed:', path, e)
-            this.thumbCache[path] = '__error__'
+            // PNGs and HEIC are always routed through Rust — don't fall back to
+            // convertFileSrc for them (that's exactly what we're trying to avoid).
+            // For other formats on local paths, let the browser try natively.
+            const ext = path.split('.').pop()?.toLowerCase() ?? ''
+            const rustOnly = ext === 'heic' || ext === 'heif' || ext === 'png'
+            if (!rustOnly && !this.isNetworkPath(path)) {
+              this.directSrcCache[path] = convertFileSrc(path)
+            } else {
+              this.thumbCache[path] = '__error__'
+            }
           })
           .finally(() => {
             this._thumbActive--
