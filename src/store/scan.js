@@ -18,6 +18,8 @@ export const useScanStore = defineStore('scan', {
     groups: [],
     filter: 'all',
     extFilter: '',
+    dupSortBy: 'group',
+    dupSortDir: 'desc',
     searchQuery: '',
     similarityThreshold: 90,
     multiSelect: false,
@@ -91,35 +93,41 @@ export const useScanStore = defineStore('scan', {
       }
 
       // ── Sort ────────────────────────────────────────────────────────────────
-      // Order:
-      //   1. exact
-      //   2. similar (desc by similarity%)
-      //   3. sameDate with similarity (desc by similarity%)
-      //   4. sameDate without similarity
-      // Ties within any bucket: oldest entry date ascending
       const sortKey = g => {
-        if (g.kind === 'exact')              return 0
-        if (g.kind === 'similar')            return 1
-        if (isSameDateSimilar(g))            return 2
+        if (g.kind === 'exact')   return 0
+        if (g.kind === 'similar') return 1
+        if (isSameDateSimilar(g)) return 2
         return 3 // sameDate without similarity
       }
 
-      filtered.sort((a, b) => {
-        const ka = sortKey(a)
-        const kb = sortKey(b)
-        if (ka !== kb) return ka - kb
-
-        // Within buckets 1 and 2 (similar / sameDate-similar): desc by similarity
-        if ((ka === 1 || ka === 2) && a.similarity != null && b.similarity != null) {
-          const simDiff = (b.similarity ?? 0) - (a.similarity ?? 0)
-          if (simDiff !== 0) return simDiff
-        }
-
-        // Tiebreak: oldest entry date ascending
-        const aDate = a.entries[0]?.modified ?? ''
-        const bDate = b.entries[0]?.modified ?? ''
-        return aDate < bDate ? -1 : aDate > bDate ? 1 : 0
-      })
+      if (state.dupSortBy === 'group') {
+        // desc: exact → similar → sameDate-similar → sameDate
+        // asc:  sameDate → sameDate-similar → similar → exact
+        const dir = state.dupSortDir === 'asc' ? -1 : 1
+        filtered.sort((a, b) => {
+          const ka = sortKey(a)
+          const kb = sortKey(b)
+          if (ka !== kb) return (ka - kb) * dir
+          if ((ka === 1 || ka === 2) && a.similarity != null && b.similarity != null) {
+            return (b.similarity ?? 0) - (a.similarity ?? 0)
+          }
+          return 0
+        })
+      } else {
+        // Date or title: pure sort, kind order is ignored
+        const dir = state.dupSortDir === 'desc' ? -1 : 1
+        filtered.sort((a, b) => {
+          if (state.dupSortBy === 'title') {
+            const aName = (a.entries[0]?.path.split(/[/\\]/).pop() ?? '').toLowerCase()
+            const bName = (b.entries[0]?.path.split(/[/\\]/).pop() ?? '').toLowerCase()
+            return aName < bName ? -dir : aName > bName ? dir : 0
+          }
+          // date: dateTaken, fall back to modified
+          const aDate = a.entries[0]?.dateTaken || a.entries[0]?.modified || ''
+          const bDate = b.entries[0]?.dateTaken || b.entries[0]?.modified || ''
+          return aDate < bDate ? -dir : aDate > bDate ? dir : 0
+        })
+      }
 
       // ── Within-group entry order ─────────────────────────────────────────────
       // Original first, then copies:
@@ -230,6 +238,8 @@ export const useScanStore = defineStore('scan', {
       this.groups = []
       this.filter = 'all'
       this.extFilter = ''
+      this.dupSortBy = 'group'
+      this.dupSortDir = 'desc'
       this.selected = new Set()
       this.searchQuery = ''
       this._thumbQueue = []

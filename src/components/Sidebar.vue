@@ -76,8 +76,29 @@
         </button>
       </section>
 
-      <!-- Filter pills — only after scan -->
+      <!-- Sort + Filter — only after scan -->
       <template v-if="store.scanDone">
+        <div class="sidebar-divider" />
+        <section class="sidebar-section">
+          <p class="section-label">Sort</p>
+          <div class="sort-selects">
+            <div class="select-field">
+              <select class="sort-select filter-select" v-model="store.dupSortBy">
+                <option value="group">Group</option>
+                <option value="date">Date</option>
+                <option value="title">Title</option>
+              </select>
+              <SelectChevron />
+            </div>
+            <div class="select-field">
+              <select class="sort-select filter-select" v-model="store.dupSortDir">
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+              <SelectChevron />
+            </div>
+          </div>
+        </section>
         <div class="sidebar-divider" />
         <section class="sidebar-section">
           <p class="section-label">Filter</p>
@@ -203,7 +224,7 @@
       <!-- Sorting -->
       <section class="sidebar-section">
         <p class="section-label">
-          Sorting
+          Sort
           <span v-if="meta.geocoding && meta.sortBy === 'location'" class="sort-geocoding-hint">
             · fetching locations…
           </span>
@@ -230,7 +251,7 @@
       <!-- Filtering -->
       <section class="sidebar-section">
         <p class="section-label">
-          Filtering
+          Filter
           <button
             v-if="meta.filterDateFrom || meta.filterDateTo || meta.filterLocation || meta.filterDevice"
             class="filter-clear-all"
