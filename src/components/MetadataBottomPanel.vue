@@ -264,7 +264,10 @@ const MIXED     = '__mixed__'
 
 // ── Panel height resize ───────────────────────────────────────────────────────
 const MIN_HEIGHT = 200
-const panelHeight = ref(300)
+const panelHeight = computed({
+  get: () => store.metadataPanelHeight,
+  set: v => { store.metadataPanelHeight = v }
+})
 
 function startResize(e) {
   const startY = e.clientY

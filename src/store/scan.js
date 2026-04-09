@@ -28,6 +28,7 @@ export const useScanStore = defineStore('scan', {
     directSrcCache: {},
     // Metadata panel: null when closed, { entry, metadata, loading, saving, error, dirty } when open
     metadataPanel: null,
+    metadataPanelHeight: 300,
     heicThumbGenerated: 0,
     _thumbQueue: [],
     _thumbActive: 0,

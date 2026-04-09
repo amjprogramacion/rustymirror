@@ -63,7 +63,7 @@
     </div>
 
     <!-- Grid -->
-    <div class="grid-scroll" ref="gridEl">
+    <div class="grid-scroll" ref="gridEl" :style="scanStore.metadataPanel ? { paddingBottom: (scanStore.metadataPanelHeight + 16) + 'px' } : {}">
       <div v-if="meta.filteredImages.length === 0" class="no-results">
         <template v-if="meta.searchQuery">
           No images match <em>"{{ meta.searchQuery }}"</em>.
@@ -429,7 +429,7 @@ async function openFolder(path) { await invoke('open_folder', { path }) }
 .grid-scroll {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-4) var(--space-4) 32px var(--space-4);
+  padding: var(--space-4);
 }
 
 .no-results {
