@@ -135,8 +135,9 @@
       <!-- Recent scans -->
       <template v-if="history.entries.length > 0">
         <div class="sidebar-divider" />
-        <section class="sidebar-section">
+        <section class="sidebar-section history-section">
           <p class="section-label">Recent scans</p>
+          <div class="history-entries-scroll">
           <div
             v-for="entry in history.entries"
             :key="entry.id"
@@ -180,6 +181,7 @@
               </div>
             </div>
           </div>
+          </div><!-- end history-entries-scroll -->
         </section>
       </template>
     </template>
@@ -310,7 +312,7 @@
     </template>
 
     <!-- Cache buttons — pinned to bottom -->
-    <div class="sidebar-spacer" />
+    <div class="sidebar-spacer" v-if="!(activeMode === 'duplicates' && history.entries.length > 0)" />
     <div class="sidebar-divider" />
     <section class="sidebar-section sidebar-bottom">
       <button
@@ -511,8 +513,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
 /* ── Resize handle ── */
@@ -989,6 +990,24 @@ onBeforeUnmount(() => {
 
 /* ── Bottom section ── */
 .sidebar-spacer { flex: 1; }
+
+/* Recent scans: grows to fill remaining space, entries scroll internally */
+.history-section {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.history-entries-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
 .sidebar-bottom { padding-top: var(--space-3); padding-bottom: var(--space-3); }
 .btn-sm { padding: 5px var(--space-3); font-size: 11px; }
 
