@@ -93,6 +93,16 @@
               <span class="pill-count">{{ store.groupCounts[f.value] }}</span>
             </button>
           </div>
+          <select
+            v-if="store.availableExtensions.length > 1"
+            class="sort-select filter-select ext-filter-select"
+            v-model="store.extFilter"
+          >
+            <option value="">All types</option>
+            <option v-for="ext in store.availableExtensions" :key="ext" :value="ext">
+              .{{ ext }}
+            </option>
+          </select>
         </section>
       </template>
 
@@ -982,6 +992,11 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
+}
+
+.ext-filter-select {
+  margin-top: var(--space-2);
+  width: 100%;
 }
 
 .pill {
