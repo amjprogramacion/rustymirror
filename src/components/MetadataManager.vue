@@ -28,7 +28,7 @@
       <button
         class="btn btn-ghost"
         :class="{ active: meta.multiSelect }"
-        @click="meta.multiSelect = !meta.multiSelect"
+        @click="toggleMultiSelect"
       >Multi-select</button>
       <button
         class="btn btn-ghost"
@@ -136,7 +136,7 @@
 </template>
 
 <script setup>
-import { ref, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onBeforeUnmount, watch, nextTick } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { useMetadataStore } from '../store/metadata'
 import { useScanStore } from '../store/scan'
@@ -193,11 +193,48 @@ function setupObserver(root) {
   })
 }
 
+function toggleMultiSelect() {
+  const enabling = !meta.multiSelect
+  meta.multiSelect = enabling
+  if (enabling) {
+    const panel = scanStore.metadataPanel
+    if (panel && !panel.batch && panel.entry?.path) {
+      meta.toggleSelected(panel.entry.path)
+    }
+  }
+}
+
 function openBatchEdit() {
   const selected = meta.filteredImages.filter(e => meta.selected.has(e.path))
   if (selected.length < 2) return
   scanStore.openBatchEditPanel(selected)
 }
+
+// Reactive key that changes whenever the selected set changes (add, remove, swap)
+const selectedKey = computed(() => {
+  const arr = []
+  meta.selected.forEach(p => arr.push(p))
+  return arr.sort().join('|')
+})
+
+// While the batch panel is open, keep it in sync with selection changes
+watch(selectedKey, () => {
+  const panel = scanStore.metadataPanel
+  if (!panel || panel.saving) return
+
+  const count = meta.selectedCount
+  if (count === 0) {
+    scanStore.closeMetadataPanel()
+  } else if (count === 1) {
+    if (panel.batch) {
+      const entry = meta.filteredImages.find(e => meta.selected.has(e.path))
+      if (entry) scanStore.openMetadataPanel(entry)
+    }
+  } else {
+    const entries = meta.filteredImages.filter(e => meta.selected.has(e.path))
+    scanStore.openBatchEditPanel(entries)
+  }
+})
 
 // Close the metadata panel on sort, filter, or new scan
 watch(() => [meta.sortBy, meta.sortDir], () => scanStore.closeMetadataPanel())
