@@ -1,6 +1,6 @@
 <template>
   <Transition name="mp-slide">
-    <div v-if="store.metadataPanel && activeMode === 'duplicates'" class="mp-panel" :style="{ width: panelWidth + 'px' }" @keydown.escape="store.closeMetadataPanel()">
+    <div v-if="store.metadataPanel" class="mp-panel" :style="{ width: panelWidth + 'px' }" @keydown.escape="store.closeMetadataPanel()">
       <!-- Resize handle -->
       <div class="mp-resize-handle" @mousedown.prevent="startResize" />
 
@@ -270,7 +270,6 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useScanStore } from '../store/scan'
-import { useMode } from '../composables/useMode'
 import MapPreview from './MapPreview.vue'
 import ChevronIcon from './ChevronIcon.vue'
 import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
@@ -278,7 +277,6 @@ import { useGpsEditor } from '../composables/useGpsEditor'
 import { MP_MIN_WIDTH, MP_MIN_THUMB_HEIGHT } from '../constants'
 
 const store = useScanStore()
-const { activeMode } = useMode()
 const HEIC  = new Set(['heic', 'heif'])
 
 const panelWidth  = ref(MP_MIN_WIDTH)

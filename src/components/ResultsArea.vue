@@ -129,6 +129,7 @@
       </div>
     </div>
   </Transition>
+  <MetadataPanel />
 </template>
 
 <script setup>
@@ -138,6 +139,7 @@ import { listen } from '@tauri-apps/api/event'
 import { useScanStore } from '../store/scan'
 import ImageGroup from './ImageGroup.vue'
 import ScanProgress from './ScanProgress.vue'
+import MetadataPanel from './MetadataPanel.vue'
 import { fileName } from '../utils/formatters'
 import { DELETE_MAX_PREVIEW } from '../constants'
 
