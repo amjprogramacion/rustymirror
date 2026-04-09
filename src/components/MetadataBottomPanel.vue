@@ -322,10 +322,11 @@ const batchAgg = computed(() => {
   } else if (!allHave) {
     gps = { mixed: true, lat: null, lon: null }
   } else {
-    const first    = names[0]
-    const allSame  = first != null && first !== '' && names.every(n => n === first)
-    gps = allSame
-      ? { mixed: false, lat: all[0].gpsLatitude, lon: all[0].gpsLongitude }
+    const baseLat = all[0].gpsLatitude
+    const baseLon = all[0].gpsLongitude
+    const coordsSame = all.every(m => m.gpsLatitude === baseLat && m.gpsLongitude === baseLon)
+    gps = coordsSame
+      ? { mixed: false, lat: baseLat, lon: baseLon }
       : { mixed: true,  lat: null, lon: null }
   }
 
