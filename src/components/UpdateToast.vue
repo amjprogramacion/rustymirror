@@ -20,7 +20,8 @@
       <div v-if="updateStatus === 'downloading'" class="update-toast-progress">
         <div class="update-toast-progress-bar" :style="{ width: downloadProgress >= 0 ? `${downloadProgress}%` : '100%' }" />
       </div>
-      <div v-else class="update-toast-actions">
+      <div v-if="releaseNotes && updateStatus === 'available'" class="update-toast-notes" v-html="formattedNotes" />
+      <div v-if="updateStatus !== 'downloading'" class="update-toast-actions">
         <template v-if="updateStatus === 'ready'">
           <button class="toast-btn toast-btn-primary" @click="restartApp">Restart now</button>
           <button class="toast-btn toast-btn-dismiss" @click="showNotification = false">Later</button>
@@ -35,9 +36,23 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useUpdater } from '../composables/useUpdater'
 
-const { showNotification, latestVersion, status: updateStatus, downloadProgress, installUpdate, restartApp } = useUpdater()
+const { showNotification, latestVersion, releaseNotes, status: updateStatus, downloadProgress, installUpdate, restartApp } = useUpdater()
+
+const formattedNotes = computed(() => {
+  if (!releaseNotes.value) return ''
+  return releaseNotes.value
+    .split('\n')
+    .map(line => {
+      if (line.startsWith('### ')) return `<span class="notes-group">${line.slice(4)}</span>`
+      if (line.startsWith('- '))   return `<span class="notes-item">• ${line.slice(2)}</span>`
+      return null
+    })
+    .filter(Boolean)
+    .join('')
+})
 </script>
 
 <style scoped>
@@ -99,6 +114,39 @@ const { showNotification, latestVersion, status: updateStatus, downloadProgress,
   background: #f5c542;
   border-radius: 2px;
   transition: width 0.3s ease;
+}
+
+.update-toast-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border-radius: var(--border-radius-sm);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.update-toast-notes :deep(.notes-group) {
+  display: block;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.update-toast-notes :deep(.notes-group:first-child) {
+  margin-top: 0;
+}
+
+.update-toast-notes :deep(.notes-item) {
+  display: block;
+  color: var(--text-muted);
+  padding-left: 4px;
 }
 
 .update-toast-actions {

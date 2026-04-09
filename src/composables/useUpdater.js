@@ -7,6 +7,7 @@ import { useSettings } from './useSettings'
 const { autoUpdate: autoCheck, notifyOnUpdate } = useSettings()
 const status           = ref('idle') // idle | checking | up-to-date | available | downloading | ready | error
 const latestVersion    = ref(null)
+const releaseNotes     = ref(null)
 const downloadProgress = ref(0)
 const showNotification = ref(false)
 const errorMessage     = ref('')
@@ -21,12 +22,14 @@ async function checkForUpdates({ notify = false, silent = false } = {}) {
   }
   status.value = 'checking'
   latestVersion.value = null
+  releaseNotes.value = null
   showNotification.value = false
   pendingUpdate = null
   try {
     const update = await check()
     if (update) {
       latestVersion.value = update.version
+      releaseNotes.value = update.body ?? null
       status.value = 'available'
       pendingUpdate = update
       if (notify && notifyOnUpdate.value) showNotification.value = true
@@ -73,7 +76,7 @@ async function restartApp() {
 
 export function useUpdater() {
   return {
-    autoCheck, notifyOnUpdate, status, latestVersion, downloadProgress, showNotification, errorMessage,
+    autoCheck, notifyOnUpdate, status, latestVersion, releaseNotes, downloadProgress, showNotification, errorMessage,
     checkForUpdates, installUpdate, restartApp,
   }
 }
