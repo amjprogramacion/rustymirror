@@ -81,28 +81,33 @@
         <div class="sidebar-divider" />
         <section class="sidebar-section">
           <p class="section-label">Filter</p>
-          <div class="filter-pills">
-            <button
-              v-for="f in filters"
-              :key="f.value"
-              class="pill"
-              :class="{ active: store.filter === f.value }"
-              @click="store.filter = f.value"
-            >
-              {{ f.label }}
-              <span class="pill-count">{{ store.groupCounts[f.value] }}</span>
-            </button>
+          <div class="filter-labeled-row">
+            <span class="filter-label">Group</span>
+            <div class="filter-pills">
+              <button
+                v-for="f in filters"
+                :key="f.value"
+                class="pill"
+                :class="{ active: store.filter === f.value }"
+                @click="store.filter = f.value"
+              >
+                {{ f.label }}
+                <span class="pill-count">{{ store.groupCounts[f.value] }}</span>
+              </button>
+            </div>
           </div>
-          <select
-            v-if="store.availableExtensions.length > 1"
-            class="sort-select filter-select ext-filter-select"
-            v-model="store.extFilter"
-          >
-            <option value="">All types</option>
-            <option v-for="ext in store.availableExtensions" :key="ext" :value="ext">
-              .{{ ext }}
-            </option>
-          </select>
+          <div class="filter-labeled-row" v-if="store.availableExtensions.length > 1">
+            <span class="filter-label">Extension</span>
+            <select
+              class="sort-select filter-select"
+              v-model="store.extFilter"
+            >
+              <option value="">All</option>
+              <option v-for="ext in store.availableExtensions" :key="ext" :value="ext">
+                .{{ ext }}
+              </option>
+            </select>
+          </div>
         </section>
       </template>
 
@@ -994,10 +999,6 @@ onBeforeUnmount(() => {
   gap: var(--space-1);
 }
 
-.ext-filter-select {
-  margin-top: var(--space-2);
-  width: 100%;
-}
 
 .pill {
   flex: 1 1 calc(50% - var(--space-1));
