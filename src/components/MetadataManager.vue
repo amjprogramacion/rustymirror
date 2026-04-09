@@ -111,7 +111,7 @@
             <p class="meta-detail">
               {{ entry.width > 0 ? `${entry.width}x${entry.height}` : '--' }} · {{ formatSize(entry.sizeBytes) }}
             </p>
-            <p class="meta-detail">{{ formatDate(entry.modified) }}</p>
+            <p class="meta-detail">{{ formatDate(entry.dateTaken ?? entry.modified) }}</p>
             <div class="meta-actions">
               <div class="btn-group">
                 <button class="btn-open btn-explore" @click.stop="openFolder(entry.path)" title="Show in folder">Explore</button>

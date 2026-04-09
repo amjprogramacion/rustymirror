@@ -38,12 +38,12 @@ export function formatSize(b) {
 
 // ── Date formatting ───────────────────────────────────────────────────────────
 
-// ISO 8601 → "DD/MM/YYYY HH:MM" (UTC) — used for EXIF dates
+// ISO 8601 → "DD/MM/YYYY HH:MM:SS" — parsed from string to avoid timezone shifts
 export function formatDate(iso, fallback = '') {
   if (!iso || iso.startsWith('1970')) return fallback
-  const d = new Date(iso)
-  const pad = n => String(n).padStart(2, '0')
-  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/)
+  if (!m) return fallback
+  return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}:${m[6]}`
 }
 
 // ISO 8601 → "DD/MM/YYYY HH:MM" (local time) — used for scan history timestamps
