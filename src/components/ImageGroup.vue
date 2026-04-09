@@ -1,7 +1,7 @@
 <template>
   <div class="group" ref="groupEl">
     <div class="group-header">
-      <span class="kind-badge" :class="group.kind">
+      <span class="kind-badge" :class="[group.kind, { 'sameDate-pct': group.kind === 'sameDate' && group.similarity != null }]">
         {{ kindLabel(group.kind) }}
         <span v-if="group.similarity != null && group.kind !== 'exact'"
               class="similarity-pct">{{ group.similarity }}%</span>
@@ -233,9 +233,10 @@ async function openFolder(path) {
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
-.kind-badge.exact    { background: #2a3f6e; color: #7aabff; }
-.kind-badge.similar  { background: #3a2e1a; color: #f0a840; }
-.kind-badge.sameDate { background: #1e3a2a; color: #5fcf90; }
+.kind-badge.exact          { background: #2a3f6e; color: #7aabff; }
+.kind-badge.similar        { background: #1e3a2a; color: #5fcf90; }
+.kind-badge.sameDate       { background: #3a2e1a; color: #f0a840; }
+.kind-badge.sameDate-pct   { background: #1e3a2a; color: #5fcf90; }
 
 .similarity-pct {
   opacity: 0.8;
