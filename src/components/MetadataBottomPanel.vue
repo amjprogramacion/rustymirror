@@ -219,7 +219,6 @@
         <!-- Floating action bar -->
         <Transition name="mbp-bar">
           <div class="mbp-float-bar" v-if="panel.dirty || panel.saving">
-            <p v-if="saveError" class="mbp-save-error">{{ saveError }}</p>
             <div class="mbp-actions">
               <button class="mbp-btn mbp-btn-ghost" @click="isBatch ? resetBatch() : resetEdit()" :disabled="panel.saving">Reset</button>
               <button class="mbp-btn mbp-btn-primary" @click="isBatch ? saveBatch() : save()" :disabled="panel.saving">
@@ -230,7 +229,20 @@
             </div>
           </div>
         </Transition>
+
       </div>
+
+      <!-- Save notification (centered) -->
+      <Teleport to="body">
+        <Transition name="mbp-notify">
+          <div v-if="notification" class="mbp-notify-overlay" @click="notification = null">
+            <div class="mbp-notify-card" :class="`mbp-notify--${notification.type}`" @click.stop>
+              <span class="mbp-notify-icon">{{ notification.type === 'success' ? '✓' : '✕' }}</span>
+              <span class="mbp-notify-msg">{{ notification.message }}</span>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
 
     </div>
   </Transition>
@@ -279,7 +291,14 @@ const panel = computed(() => store.metadataPanel)
 const entry = computed(() => panel.value?.entry ?? {})
 const meta  = computed(() => panel.value?.metadata ?? null)
 
-const saveError = ref(null)
+const notification = ref(null)
+let   notifyTimer  = null
+
+function showNotification(type, message, duration = 2500) {
+  clearTimeout(notifyTimer)
+  notification.value = { type, message }
+  notifyTimer = setTimeout(() => { notification.value = null }, duration)
+}
 
 // ── Batch / single mode ───────────────────────────────────────────────────────
 const isBatch = computed(() => panel.value?.batch === true)
@@ -374,7 +393,6 @@ function resetBatch() {
   batchGpsCombinedRaw.value   = (!agg.gps.mixed && agg.gps.lat != null) ? formatBatchGps(agg.gps.lat, agg.gps.lon) : ''
   batchGpsCombinedError.value = null
   panel.value.dirty           = false
-  saveError.value             = null
 }
 
 watch(batchAgg, (agg) => { if (agg) resetBatch() }, { immediate: true })
@@ -390,7 +408,6 @@ const batchPreviewLon   = computed(() => batchGpsParsed.value?.lon ?? null)
 const batchHasGpsPreview = computed(() => batchPreviewLat.value != null && batchPreviewLon.value != null)
 
 async function saveBatch() {
-  saveError.value             = null
   batchGpsCombinedError.value = null
 
   let lat = null, lon = null
@@ -409,7 +426,11 @@ async function saveBatch() {
     gpsLatitude:      lat,
     gpsLongitude:     lon,
   })
-  if (panel.value?.error) saveError.value = panel.value.error
+  if (panel.value?.error) {
+    showNotification('error', panel.value.error, 4000)
+  } else {
+    showNotification('success', `Saved to ${panel.value?.entries?.length ?? ''} images`)
+  }
 }
 
 // ── GPS editor ────────────────────────────────────────────────────────────────
@@ -442,13 +463,11 @@ function resetEdit() {
   }
   resetGps(meta.value)
   if (panel.value) panel.value.dirty = false
-  saveError.value = null
 }
 
 watch(meta, (m) => { if (m) resetEdit() }, { immediate: true })
 
 async function save() {
-  saveError.value = null
   const { ok, lat, lon } = validateGps()
   if (!ok) return
 
@@ -460,7 +479,11 @@ async function save() {
     gpsLatitude:      lat,
     gpsLongitude:     lon,
   })
-  if (panel.value?.error) saveError.value = panel.value.error
+  if (panel.value?.error) {
+    showNotification('error', panel.value.error, 4000)
+  } else {
+    showNotification('success', 'Saved successfully')
+  }
 }
 
 // ── Thumbnail source ──────────────────────────────────────────────────────────
@@ -909,10 +932,45 @@ const exposureRows = computed(() => {
 }
 .mbp-btn-primary:hover:not(:disabled) { opacity: 0.85; }
 
-.mbp-save-error {
-  margin-bottom: var(--space-2);
-  font-size: 10px;
-  color: var(--color-danger);
+/* ── Save notification modal ── */
+.mbp-notify-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.mbp-notify-card {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border-radius: var(--border-radius-lg);
+  background: var(--bg-secondary);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  border: 1px solid var(--border-color);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+.mbp-notify-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+.mbp-notify--success { border-color: var(--color-success); color: var(--color-success); }
+.mbp-notify--error   { border-color: var(--color-danger);  color: var(--color-danger);  }
+
+.mbp-notify-enter-active,
+.mbp-notify-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.mbp-notify-enter-from,
+.mbp-notify-leave-to {
+  opacity: 0;
+  transform: scale(0.92);
 }
 
 .mbp-save-notice {

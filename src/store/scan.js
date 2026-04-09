@@ -355,9 +355,10 @@ export const useScanStore = defineStore('scan', {
       this.metadataPanel = { ...this.metadataPanel, saving: true, error: null }
       try {
         await Promise.all(this.metadataPanel.entries.map(e => invoke('write_metadata', { path: e.path, update })))
-        this.metadataPanel = { ...this.metadataPanel, saving: false, dirty: false }
+        const allMetadata = await Promise.all(this.metadataPanel.entries.map(e => invoke('read_metadata', { path: e.path })))
+        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, allMetadata, saving: false, dirty: false }
       } catch (e) {
-        this.metadataPanel = { ...this.metadataPanel, saving: false, error: String(e) }
+        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, saving: false, error: String(e) }
       }
     },
     lightboxNext() {
