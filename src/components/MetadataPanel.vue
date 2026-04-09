@@ -241,7 +241,7 @@
             </label>
           </div>
 
-          <p class="mp-save-notice" v-if="!panel.dirty && !panel.saving && !saveError">
+          <p class="mp-save-notice" v-if="!panel.dirty && !panel.saving">
             Changes are written directly to the file's EXIF data.
           </p>
         </div>
@@ -251,7 +251,6 @@
       <!-- Floating action bar -->
       <Transition name="mp-bar">
         <div class="mp-float-bar" v-if="panel.dirty || panel.saving">
-          <p v-if="saveError" class="mp-save-error">{{ saveError }}</p>
           <div class="mp-actions">
             <button class="mp-btn mp-btn-ghost" @click="resetEdit" :disabled="panel.saving">Reset</button>
             <button class="mp-btn mp-btn-primary" @click="save" :disabled="panel.saving">
@@ -264,6 +263,18 @@
 
     </div>
   </Transition>
+
+  <!-- Save notification (centered) -->
+  <Teleport to="body">
+    <Transition name="mp-notify">
+      <div v-if="notification" class="mp-notify-overlay" @click="notification = null">
+        <div class="mp-notify-card" :class="`mp-notify--${notification.type}`" @click.stop>
+          <span class="mp-notify-icon">{{ notification.type === 'success' ? '✓' : '✕' }}</span>
+          <span class="mp-notify-msg">{{ notification.message }}</span>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup>
@@ -327,7 +338,14 @@ const collapsed = ref({ file: false, camera: false, date: false, location: false
 function toggle(key) { collapsed.value[key] = !collapsed.value[key] }
 watch(meta, (m) => { if (m) collapsed.value = { file: false, camera: false, date: false, location: false, exposure: true, details: true } })
 
-const saveError = ref(null)
+const notification = ref(null)
+let   notifyTimer  = null
+
+function showNotification(type, message, duration = 2500) {
+  clearTimeout(notifyTimer)
+  notification.value = { type, message }
+  notifyTimer = setTimeout(() => { notification.value = null }, duration)
+}
 
 // ── GPS editor ────────────────────────────────────────────────────────────────
 const {
@@ -359,13 +377,11 @@ function resetEdit() {
   }
   resetGps(meta.value)
   if (panel.value) panel.value.dirty = false
-  saveError.value = null
 }
 
 watch(meta, (m) => { if (m) resetEdit() }, { immediate: true })
 
 async function save() {
-  saveError.value = null
   const { ok, lat, lon } = validateGps()
   if (!ok) return
 
@@ -377,7 +393,11 @@ async function save() {
     gpsLatitude:      lat,
     gpsLongitude:     lon,
   })
-  if (panel.value?.error) saveError.value = panel.value.error
+  if (panel.value?.error) {
+    showNotification('error', panel.value.error, 4000)
+  } else {
+    showNotification('success', 'Saved successfully')
+  }
 }
 
 // ── Thumbnail source ──────────────────────────────────────────────────────────
@@ -803,11 +823,37 @@ const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime ||
 }
 .mp-btn-primary:hover:not(:disabled) { opacity: 0.85; }
 
-.mp-save-error {
-  margin-top: var(--space-2);
-  font-size: 10px;
-  color: var(--color-danger);
+/* ── Save notification modal ── */
+.mp-notify-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
 }
+.mp-notify-card {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border-radius: var(--border-radius-lg);
+  background: var(--bg-secondary);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  border: 1px solid var(--border-color);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+.mp-notify-icon { font-size: 16px; line-height: 1; }
+.mp-notify--success { border-color: var(--color-success); color: var(--color-success); }
+.mp-notify--error   { border-color: var(--color-danger);  color: var(--color-danger);  }
+.mp-notify-enter-active,
+.mp-notify-leave-active { transition: opacity 0.2s ease, transform 0.2s ease; }
+.mp-notify-enter-from,
+.mp-notify-leave-to { opacity: 0; transform: scale(0.92); }
 
 .mp-save-notice {
   margin-top: var(--space-2);

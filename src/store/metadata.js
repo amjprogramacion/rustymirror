@@ -155,6 +155,22 @@ export const useMetadataStore = defineStore('metadata', {
       this.folders = this.folders.filter(f => f !== path)
     },
 
+    // Patch an entry in `images` with fresh values from a read_metadata result,
+    // so sorting/filtering reflect the saved changes immediately.
+    updateEntryFromMetadata(path, metadata) {
+      const idx = this.images.findIndex(e => e.path === path)
+      if (idx === -1) return
+      const entry = this.images[idx]
+      const device = [metadata.make, metadata.model].filter(Boolean).join(' ') || undefined
+      this.images[idx] = {
+        ...entry,
+        dateTaken:    metadata.dateTimeOriginal ?? entry.dateTaken,
+        gpsLatitude:  metadata.gpsLatitude  ?? null,
+        gpsLongitude: metadata.gpsLongitude ?? null,
+        device:       device ?? entry.device,
+      }
+    },
+
     toggleSelected(path) {
       if (this.selected.has(path)) this.selected.delete(path)
       else this.selected.add(path)

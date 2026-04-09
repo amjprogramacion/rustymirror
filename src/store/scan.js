@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { logger } from '../utils/logger'
 import { useHistoryStore } from './history'
+import { useMetadataStore } from './metadata'
 import { useSettings } from '../composables/useSettings'
 
 export const useScanStore = defineStore('scan', {
@@ -339,14 +340,37 @@ export const useScanStore = defineStore('scan', {
     closeMetadataPanel() {
       this.metadataPanel = null
     },
+    // Patch the matching entry inside groups[] after a metadata save
+    updateGroupEntry(path, metadata) {
+      const d      = new Date()
+      const pad    = n => String(n).padStart(2, '0')
+      const now    = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+      const device = [metadata.make, metadata.model].filter(Boolean).join(' ') || undefined
+      for (const group of this.groups) {
+        const idx = group.entries.findIndex(e => e.path === path)
+        if (idx !== -1) {
+          group.entries.splice(idx, 1, {
+            ...group.entries[idx],
+            modified:     now,
+            dateTaken:    metadata.dateTimeOriginal ?? group.entries[idx].dateTaken,
+            gpsLatitude:  metadata.gpsLatitude  ?? null,
+            gpsLongitude: metadata.gpsLongitude ?? null,
+            device:       device ?? group.entries[idx].device,
+          })
+          break
+        }
+      }
+    },
     async saveMetadata(update) {
       if (!this.metadataPanel) return
       this.metadataPanel = { ...this.metadataPanel, saving: true, error: null }
       try {
-        await invoke('write_metadata', { path: this.metadataPanel.entry.path, update })
-        // Refresh metadata from disk after write
-        const metadata = await invoke('read_metadata', { path: this.metadataPanel.entry.path })
+        const path = this.metadataPanel.entry.path
+        await invoke('write_metadata', { path, update })
+        const metadata = await invoke('read_metadata', { path })
         this.metadataPanel = { ...this.metadataPanel, metadata, saving: false, dirty: false }
+        useMetadataStore().updateEntryFromMetadata(path, metadata)
+        this.updateGroupEntry(path, metadata)
       } catch (e) {
         this.metadataPanel = { ...this.metadataPanel, saving: false, error: String(e) }
       }
@@ -357,7 +381,14 @@ export const useScanStore = defineStore('scan', {
       try {
         await Promise.all(this.metadataPanel.entries.map(e => invoke('write_metadata', { path: e.path, update })))
         const allMetadata = await Promise.all(this.metadataPanel.entries.map(e => invoke('read_metadata', { path: e.path })))
-        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, allMetadata, saving: false, dirty: false }
+        if (this.metadataPanel) {
+          this.metadataPanel = { ...this.metadataPanel, allMetadata, saving: false, dirty: false }
+          const metaStore = useMetadataStore()
+          this.metadataPanel.entries.forEach((e, i) => {
+            metaStore.updateEntryFromMetadata(e.path, allMetadata[i])
+            this.updateGroupEntry(e.path, allMetadata[i])
+          })
+        }
       } catch (e) {
         if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, saving: false, error: String(e) }
       }

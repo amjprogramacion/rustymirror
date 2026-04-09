@@ -38,7 +38,10 @@ export function formatSize(b) {
 
 // ── Date formatting ───────────────────────────────────────────────────────────
 
-// ISO 8601 → "DD/MM/YYYY HH:MM:SS" — parsed from string to avoid timezone shifts
+// ISO 8601 → "DD/MM/YYYY HH:MM:SS"
+// Always parsed directly from the string — never via Date — because dates
+// in this app (EXIF and filesystem alike) carry the local wall-clock time
+// regardless of any Z suffix, so timezone conversion must be skipped.
 export function formatDate(iso, fallback = '') {
   if (!iso || iso.startsWith('1970')) return fallback
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/)
