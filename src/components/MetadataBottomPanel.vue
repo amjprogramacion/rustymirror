@@ -822,7 +822,8 @@ const exposureRows = computed(() => {
 
 .mbp-input {
   width: 100%;
-  padding: 4px 7px;
+  height: 26px;
+  padding: 0 7px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
