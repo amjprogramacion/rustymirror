@@ -42,18 +42,18 @@
       </div>
 
       <!-- Loading state -->
-      <div v-if="panel.loading" class="mbp-loading">
+      <div v-show="panel.loading" class="mbp-loading">
         <span class="mbp-spinner" />
         <span>Reading metadata…</span>
       </div>
 
       <!-- Error state -->
-      <div v-else-if="panel.error" class="mbp-error">
+      <div v-show="panel.error && !panel.loading" class="mbp-error">
         {{ panel.error }}
       </div>
 
       <!-- ── Unified sections (single + batch) ── -->
-      <div v-else-if="meta || (isBatch && batchAgg)" class="mbp-sections-wrap">
+      <div v-show="!panel.loading && !panel.error && (meta || (isBatch && batchAgg))" class="mbp-sections-wrap">
         <div class="mbp-sections">
 
           <!-- File & Camera -->
@@ -160,11 +160,14 @@
             </div>
 
             <!-- Map -->
-            <div class="mbp-location-map" v-if="!isBatch ? hasGpsPreview : batchHasGpsPreview">
+            <div class="mbp-location-map">
               <MapPreview
-                :lat="isBatch ? batchPreviewLat : previewLat"
-                :lon="isBatch ? batchPreviewLon : previewLon"
+                :lat="isBatch ? batchPreviewLat : singleMapCenter.lat"
+                :lon="isBatch ? batchPreviewLon : singleMapCenter.lon"
                 :scroll-wheel-zoom="true"
+                :show-marker="isBatch ? ((!batchAgg.gps.mixed && batchAgg.gps.lat != null) || batchGpsParsed != null) : hasGpsPreview"
+                :reset-key="mapResetKey"
+                @set-location="onMapSetLocation"
               />
             </div>
           </div>
@@ -406,9 +409,29 @@ function onBatchGpsInput() {
 }
 
 const batchGpsParsed    = computed(() => parseCombinedGps(batchGpsCombinedRaw.value))
-const batchPreviewLat   = computed(() => batchGpsParsed.value?.lat ?? null)
-const batchPreviewLon   = computed(() => batchGpsParsed.value?.lon ?? null)
-const batchHasGpsPreview = computed(() => batchPreviewLat.value != null && batchPreviewLon.value != null)
+
+const SPAIN_CENTER = { lat: 40.416775, lon: -3.703790 }
+
+// Single mode: use GPS coords if available, Spain otherwise
+const singleMapCenter = computed(() => ({
+  lat: previewLat.value ?? SPAIN_CENTER.lat,
+  lon: previewLon.value ?? SPAIN_CENTER.lon,
+}))
+
+// Always show the map in batch mode: use typed coords → first image with GPS → Spain as fallback
+const batchMapCenter = computed(() => {
+  if (batchGpsParsed.value) return batchGpsParsed.value
+  const first = panel.value?.allMetadata?.find(m => m.gpsLatitude != null)
+  return first ? { lat: first.gpsLatitude, lon: first.gpsLongitude } : SPAIN_CENTER
+})
+
+const batchPreviewLat    = computed(() => batchMapCenter.value.lat)
+const batchPreviewLon    = computed(() => batchMapCenter.value.lon)
+const batchHasGpsPreview = computed(() => isBatch.value)
+
+// resetKey: increments when the map should fully reset (new image in single, panel open/close)
+const mapResetKey = ref(0)
+watch(meta, (m, prev) => { if (!isBatch.value && m !== prev) mapResetKey.value++ })
 
 async function saveBatch() {
   batchGpsCombinedError.value = null
@@ -447,6 +470,18 @@ const {
   onCombinedInput, onGpsInput, normalizeGpsInput,
   resetGps, validateGps,
 } = useGpsEditor(meta, () => { panel.value.dirty = true })
+
+function onMapSetLocation({ lat, lon }) {
+  if (isBatch.value) {
+    batchGpsCombinedRaw.value = `${lat.toFixed(6)} ${lon.toFixed(6)}`
+    onBatchGpsInput()
+  } else {
+    gpsLatitudeRaw.value  = lat.toFixed(6)
+    gpsLongitudeRaw.value = lon.toFixed(6)
+    onGpsInput('lat')
+    onGpsInput('lon')
+  }
+}
 
 // ── Editable fields ───────────────────────────────────────────────────────────
 const edit = ref({

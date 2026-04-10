@@ -163,6 +163,16 @@ export function useGpsEditor(meta, onDirty) {
 // instantiating the full composable.
 export function parseCombinedGps(raw) {
   if (!raw || !raw.trim()) return null
+
+  // Decimal format: "39.464953 -0.347070" or "39.464953, -0.347070"
+  const decMatch = raw.trim().match(/^(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)$/)
+  if (decMatch) {
+    const lat = parseFloat(decMatch[1])
+    const lon = parseFloat(decMatch[2])
+    if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) return { lat, lon }
+  }
+
+  // DMS format: "39°48'43.1"N 0°25'29.1"W"
   const pattern = /(\d+(?:\.\d+)?)\s*[°d]\s*(?:(\d+(?:\.\d+)?)\s*['′]\s*(?:(\d+(?:\.\d+)?)\s*["″]\s*)?)?([NSEWnsew])/g
   const matches = [...raw.matchAll(pattern)]
   if (matches.length < 2) return null

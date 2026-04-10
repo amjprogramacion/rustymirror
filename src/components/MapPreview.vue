@@ -15,6 +15,19 @@
     </button>
 
   </div>
+
+  <!-- Context menu -->
+  <Teleport to="body">
+    <div
+      v-if="ctxMenu.visible"
+      class="map-ctx-menu"
+      :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }"
+      @click.stop
+    >
+      <button class="map-ctx-item" @click="applyLocation">Set location here</button>
+    </div>
+  </Teleport>
+
 </template>
 
 <script setup>
@@ -38,17 +51,27 @@ const TILES = {
   sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
 }
 
+const ZOOM_GPS   = 16
+const ZOOM_WORLD = 5
+
 const props = defineProps({
   lat:             { type: Number,  required: true },
   lon:             { type: Number,  required: true },
   scrollWheelZoom: { type: Boolean, default: false },
+  showMarker:      { type: Boolean, default: true },
+  resetKey:        { type: [Number, String], default: null },
 })
 
-const mapEl      = ref(null)
+const emit = defineEmits(['set-location'])
+
+const mapEl       = ref(null)
 const isSatellite = ref(false)
-let map    = null
-let marker = null
+const ctxMenu     = ref({ visible: false, x: 0, y: 0, lat: 0, lon: 0 })
+let map       = null
+let marker    = null
 let tileLayer = null
+
+function zoomForState() { return props.showMarker ? ZOOM_GPS : ZOOM_WORLD }
 
 function initMap() {
   if (!mapEl.value || map) return
@@ -56,10 +79,25 @@ function initMap() {
     zoomControl: false,
     scrollWheelZoom: props.scrollWheelZoom,
     attributionControl: false,
-  }).setView([props.lat, props.lon], 14)
+  }).setView([props.lat, props.lon], zoomForState())
 
   tileLayer = L.tileLayer(TILES.map, { maxZoom: 19 }).addTo(map)
-  marker = L.marker([props.lat, props.lon]).addTo(map)
+  if (props.showMarker) {
+    marker = L.marker([props.lat, props.lon]).addTo(map)
+  }
+
+  map.on('contextmenu', (e) => {
+    e.originalEvent.preventDefault()
+    const rect = mapEl.value.getBoundingClientRect()
+    ctxMenu.value = {
+      visible: true,
+      x: rect.left + e.containerPoint.x,
+      y: rect.top + e.containerPoint.y,
+      lat: e.latlng.lat,
+      lon: e.latlng.lng,
+    }
+  })
+  map.on('click', () => { ctxMenu.value.visible = false })
 }
 
 function toggleSatellite() {
@@ -71,10 +109,9 @@ function toggleSatellite() {
 function zoomIn()  { map?.zoomIn() }
 function zoomOut() { map?.zoomOut() }
 
-function updateView() {
-  if (!map) return
-  map.setView([props.lat, props.lon], 14)
-  marker?.setLatLng([props.lat, props.lon])
+function applyLocation() {
+  emit('set-location', { lat: ctxMenu.value.lat, lon: ctxMenu.value.lon })
+  ctxMenu.value.visible = false
 }
 
 let resizeObserver = null
@@ -91,7 +128,30 @@ onBeforeUnmount(() => {
   map = null
 })
 
-watch(() => [props.lat, props.lon], updateView)
+// Pan to new coords when the parent changes them (no zoom change)
+watch([() => props.lat, () => props.lon], () => {
+  if (!map) return
+  map.panTo([props.lat, props.lon])
+  marker?.setLatLng([props.lat, props.lon])
+})
+
+// Add/remove marker and zoom in when GPS status changes
+watch(() => props.showMarker, (show) => {
+  if (!map) return
+  if (show && !marker) {
+    marker = L.marker([props.lat, props.lon]).addTo(map)
+    map.setView([props.lat, props.lon], ZOOM_GPS)
+  } else if (!show && marker) {
+    marker.remove()
+    marker = null
+  }
+})
+
+// Full reset when parent signals a new context (new image, panel reopened…)
+watch(() => props.resetKey, () => {
+  if (!map) return
+  map.setView([props.lat, props.lon], zoomForState())
+})
 </script>
 
 <style scoped>
@@ -176,5 +236,39 @@ watch(() => [props.lat, props.lon], updateView)
 }
 .map-sat-btn:hover {
   background: #f0f0f0 !important;
+}
+
+
+</style>
+
+<style>
+/* Context menu — global because it's Teleported to body */
+.map-ctx-menu {
+  position: fixed;
+  z-index: 1001;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  min-width: 150px;
+  overflow: hidden;
+  pointer-events: all;
+}
+
+.map-ctx-item {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: #333;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.map-ctx-item:hover {
+  background: #f0f0f0;
 }
 </style>

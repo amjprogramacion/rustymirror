@@ -146,7 +146,7 @@
                 {{ gpsLatError || gpsLonError }}
               </p>
             </div>
-            <MapPreview v-if="hasGpsPreview" :lat="previewLat" :lon="previewLon" />
+            <MapPreview :lat="mapCenter.lat" :lon="mapCenter.lon" :show-marker="hasGpsPreview" :reset-key="mapResetKey" @set-location="onMapSetLocation" />
           </div>
         </div>
 
@@ -282,6 +282,7 @@ const store = useScanStore()
 const HEIC  = new Set(['heic', 'heif'])
 
 const panelWidth  = ref(MP_MIN_WIDTH)
+const mapResetKey = ref(0)
 const thumbHeight = ref(MP_MIN_THUMB_HEIGHT)
 
 function startThumbResize(e) {
@@ -327,7 +328,10 @@ const meta   = computed(() => panel.value?.metadata ?? null)
 // ── Section collapse state ────────────────────────────────────────────────────
 const collapsed = ref({ file: false, date: false, location: false, exposure: true, details: true })
 function toggle(key) { collapsed.value[key] = !collapsed.value[key] }
-watch(meta, (m) => { if (m) collapsed.value = { file: false, date: false, location: false, exposure: true, details: true } })
+watch(meta, (m) => {
+  if (m) collapsed.value = { file: false, date: false, location: false, exposure: true, details: true }
+  mapResetKey.value++
+})
 
 const notification = ref(null)
 let   notifyTimer  = null
@@ -349,6 +353,19 @@ const {
   onCombinedInput, onGpsInput, normalizeGpsInput,
   resetGps, validateGps,
 } = useGpsEditor(meta, () => { panel.value.dirty = true })
+
+const SPAIN_CENTER = { lat: 40.416775, lon: -3.703790 }
+const mapCenter = computed(() => ({
+  lat: previewLat.value ?? SPAIN_CENTER.lat,
+  lon: previewLon.value ?? SPAIN_CENTER.lon,
+}))
+
+function onMapSetLocation({ lat, lon }) {
+  gpsLatitudeRaw.value  = lat.toFixed(6)
+  gpsLongitudeRaw.value = lon.toFixed(6)
+  onGpsInput('lat')
+  onGpsInput('lon')
+}
 
 // ── Editable fields ───────────────────────────────────────────────────────────
 const edit = ref({
