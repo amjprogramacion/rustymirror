@@ -76,7 +76,7 @@
           v-for="(entry, idx) in meta.filteredImages"
           :key="entry.path"
           class="card"
-          :class="{ selected: meta.selected.has(entry.path) }"
+          :class="{ selected: meta.selected.has(entry.path), focused: !scanStore.metadataPanel?.batch && scanStore.metadataPanel?.entry?.path === entry.path && !meta.selected.has(entry.path) }"
           :tabindex="0"
           :data-card-path="entry.path"
           @click="onCardClick(entry, idx)"
@@ -460,6 +460,21 @@ async function openFolder(path) { await invoke('open_folder', { path }) }
 .card:hover    { background: var(--bg-card-hover); }
 .card:focus    { outline: none; }
 .card.selected { border-color: var(--color-accent); background: var(--bg-card-selected); }
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--border-radius-md);
+  pointer-events: none;
+  border: 2px solid transparent;
+  box-shadow: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  z-index: 10;
+}
+.card.focused::after {
+  border-color: #7ab8f5;
+  box-shadow: inset 0 0 18px 4px rgba(122, 184, 245, 0.3);
+}
 
 .thumb-wrap {
   position: relative;
