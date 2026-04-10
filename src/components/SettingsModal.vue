@@ -110,6 +110,7 @@
                       Restart now
                     </button>
                   </div>
+                  <div v-if="releaseNotes" class="changelog-block" v-html="formattedNotes" />
                 </section>
 
                 <div class="settings-divider" />
@@ -239,7 +240,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useHistoryStore } from '../store/history'
 import { useMetadataStore } from '../store/metadata'
 import { useCacheSize } from '../composables/useCacheSize'
@@ -264,7 +265,20 @@ const version = ref(import.meta.env.VITE_APP_VERSION ?? '0.1.0')
 const { maxHistory, thumbConcurrency, crossDatePhash, fastMode, autoUpdate: autoCheck, notifyOnUpdate, prefetchFilters } = useSettings()
 
 const { cacheSize, thumbCacheSize, loadCacheSizes, clearCache, clearThumbCache } = useCacheSize()
-const { status: updateStatus, latestVersion, downloadProgress, errorMessage, checkForUpdates, installUpdate, restartApp } = useUpdater()
+const { status: updateStatus, latestVersion, releaseNotes, downloadProgress, errorMessage, checkForUpdates, installUpdate, restartApp } = useUpdater()
+
+const formattedNotes = computed(() => {
+  if (!releaseNotes.value) return ''
+  return releaseNotes.value
+    .split('\n')
+    .map(line => {
+      if (line.startsWith('### ')) return `<span class="notes-group">${line.slice(4)}</span>`
+      if (line.startsWith('- '))   return `<span class="notes-item">• ${line.slice(2)}</span>`
+      return null
+    })
+    .filter(Boolean)
+    .join('')
+})
 
 onMounted(loadCacheSizes)
 </script>
@@ -576,6 +590,41 @@ onMounted(loadCacheSizes)
   border-color: #f0b800;
 }
 .btn-setting--full { width: 100%; justify-content: center; }
+
+/* ── Changelog block ── */
+.changelog-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border-radius: var(--border-radius-sm);
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: -4px;
+}
+
+.changelog-block :deep(.notes-group) {
+  display: block;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.changelog-block :deep(.notes-group:first-child) {
+  margin-top: 0;
+}
+
+.changelog-block :deep(.notes-item) {
+  display: block;
+  color: var(--text-muted);
+  padding-left: 4px;
+}
 
 /* ── Transition ── */
 .modal-fade-enter-active,
