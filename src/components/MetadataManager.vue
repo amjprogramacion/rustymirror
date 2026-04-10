@@ -41,7 +41,7 @@
         @click="openBatchEdit"
       >Edit EXIF</button>
 
-      <span class="image-count">{{ meta.filteredImages.length }} image{{ meta.filteredImages.length !== 1 ? 's' : '' }}</span>
+      <span class="image-count">{{ meta.filteredImages.length }} image{{ meta.filteredImages.length !== 1 ? 's' : '' }}<template v-if="meta.selectedCount > 0"> · {{ meta.selectedCount }} selected</template></span>
 
       <!-- Search -->
       <div class="search-wrap">
