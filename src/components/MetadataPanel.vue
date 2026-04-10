@@ -146,7 +146,7 @@
                 {{ gpsLatError || gpsLonError }}
               </p>
             </div>
-            <MapPreview :lat="mapCenter.lat" :lon="mapCenter.lon" :show-marker="hasGpsPreview" :reset-key="mapResetKey" @set-location="onMapSetLocation" />
+            <MapPreview ref="mapPreviewRef" :lat="mapCenter.lat" :lon="mapCenter.lon" :show-marker="hasGpsPreview" :reset-key="mapResetKey" :saved-view="savedMapView" @set-location="onMapSetLocation" />
           </div>
         </div>
 
@@ -272,6 +272,7 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useScanStore } from '../store/scan'
+import { useMapViewStore } from '../store/mapView'
 import MapPreview from './MapPreview.vue'
 import ChevronIcon from './ChevronIcon.vue'
 import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
@@ -282,7 +283,19 @@ const store = useScanStore()
 const HEIC  = new Set(['heic', 'heif'])
 
 const panelWidth  = ref(MP_MIN_WIDTH)
-const mapResetKey = ref(0)
+const mapViewStore  = useMapViewStore()
+const mapResetKey   = ref(0)
+const savedMapView  = ref(mapViewStore.resultsPanel)
+const mapPreviewRef = ref(null)
+
+// Save map state the moment the panel closes (before v-if removes MapPreview from DOM)
+watch(() => store.metadataPanel, (p, prev) => {
+  if (prev && !p) {
+    const state = mapPreviewRef.value?.getMapState()
+    if (state) mapViewStore.resultsPanel = state
+    savedMapView.value = null
+  }
+}, { flush: 'sync' })
 const thumbHeight = ref(MP_MIN_THUMB_HEIGHT)
 
 function startThumbResize(e) {
@@ -319,6 +332,8 @@ function startResize(e) {
 onBeforeUnmount(() => {
   panelWidth.value  = MP_MIN_WIDTH
   thumbHeight.value = MP_MIN_THUMB_HEIGHT
+  const state = mapPreviewRef.value?.getMapState()
+  if (state) mapViewStore.resultsPanel = state
 })
 
 const panel  = computed(() => store.metadataPanel)

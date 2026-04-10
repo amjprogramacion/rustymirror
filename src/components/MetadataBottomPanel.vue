@@ -162,11 +162,13 @@
             <!-- Map -->
             <div class="mbp-location-map">
               <MapPreview
+                ref="mapPreviewRef"
                 :lat="isBatch ? batchPreviewLat : singleMapCenter.lat"
                 :lon="isBatch ? batchPreviewLon : singleMapCenter.lon"
                 :scroll-wheel-zoom="true"
                 :show-marker="isBatch ? ((!batchAgg.gps.mixed && batchAgg.gps.lat != null) || batchGpsParsed != null) : hasGpsPreview"
                 :reset-key="mapResetKey"
+                :saved-view="savedMapView"
                 @set-location="onMapSetLocation"
               />
             </div>
@@ -255,6 +257,7 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { useScanStore } from '../store/scan'
+import { useMapViewStore } from '../store/mapView'
 import { useMetadataStore } from '../store/metadata'
 import MapPreview from './MapPreview.vue'
 import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
@@ -288,8 +291,13 @@ function startResize(e) {
   window.addEventListener('mouseup', onUp)
 }
 
+const mapViewStore  = useMapViewStore()
+const mapPreviewRef = ref(null)
+
 onBeforeUnmount(() => {
   panelHeight.value = 300
+  const state = mapPreviewRef.value?.getMapState()
+  if (state) mapViewStore.metadataManager = state
 })
 
 // ── Store accessors ───────────────────────────────────────────────────────────
@@ -430,7 +438,18 @@ const batchPreviewLon    = computed(() => batchMapCenter.value.lon)
 const batchHasGpsPreview = computed(() => isBatch.value)
 
 // resetKey: increments when the map should fully reset (new image in single, panel open/close)
-const mapResetKey = ref(0)
+const mapResetKey  = ref(0)
+const savedMapView = ref(mapViewStore.metadataManager)
+
+// Save map state the moment the panel closes (before v-if removes MapPreview from DOM)
+watch(() => store.metadataPanel, (p, prev) => {
+  if (prev && !p) {
+    const state = mapPreviewRef.value?.getMapState()
+    if (state) mapViewStore.metadataManager = state // keep for tool-switch restore
+    savedMapView.value = null                        // reset for same-tool reopen
+  }
+}, { flush: 'sync' })
+
 watch(meta, (m, prev) => { if (!isBatch.value && m !== prev) mapResetKey.value++ })
 
 async function saveBatch() {

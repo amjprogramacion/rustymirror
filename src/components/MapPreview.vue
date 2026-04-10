@@ -31,7 +31,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, defineExpose } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -60,6 +60,7 @@ const props = defineProps({
   scrollWheelZoom: { type: Boolean, default: false },
   showMarker:      { type: Boolean, default: true },
   resetKey:        { type: [Number, String], default: null },
+  savedView:       { type: Object,  default: null }, // { zoom, lat, lon } restored from store
 })
 
 const emit = defineEmits(['set-location'])
@@ -75,11 +76,14 @@ function zoomForState() { return props.showMarker ? ZOOM_GPS : ZOOM_WORLD }
 
 function initMap() {
   if (!mapEl.value || map) return
+  const initLat  = props.savedView?.lat  ?? props.lat
+  const initLon  = props.savedView?.lon  ?? props.lon
+  const initZoom = props.savedView?.zoom ?? zoomForState()
   map = L.map(mapEl.value, {
     zoomControl: false,
     scrollWheelZoom: props.scrollWheelZoom,
     attributionControl: false,
-  }).setView([props.lat, props.lon], zoomForState())
+  }).setView([initLat, initLon], initZoom)
 
   tileLayer = L.tileLayer(TILES.map, { maxZoom: 19 }).addTo(map)
   if (props.showMarker) {
@@ -151,6 +155,12 @@ watch(() => props.showMarker, (show) => {
 watch(() => props.resetKey, () => {
   if (!map) return
   map.setView([props.lat, props.lon], zoomForState())
+})
+
+defineExpose({
+  getMapState: () => map
+    ? { zoom: map.getZoom(), lat: map.getCenter().lat, lon: map.getCenter().lng }
+    : null,
 })
 </script>
 
