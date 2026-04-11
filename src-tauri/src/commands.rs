@@ -6,6 +6,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
+/// Returns the cache directory for the current build mode.
+/// In debug builds, uses a `dev` subdirectory to keep dev caches separate from release caches.
+fn cache_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, tauri::Error> {
+    let base = app.path().app_data_dir()?;
+    if cfg!(debug_assertions) {
+        Ok(base.join("dev"))
+    } else {
+        Ok(base)
+    }
+}
+
 use crate::scanner::find_duplicates;
 use crate::types::{AnalyzeProgress, DuplicateGroup, ScanProgress};
 
@@ -37,7 +48,7 @@ pub async fn scan_directories(
     let app_clone  = app.clone();
     let app_clone2 = app.clone();
     let resource_dir = app.path().resource_dir().ok();
-    let cache = app.path().app_data_dir().ok()
+    let cache = cache_data_dir(&app).ok()
         .and_then(|d| crate::cache::Cache::open(&d).ok())
         .map(std::sync::Arc::new);
     log::debug!("[RustyMirror:RS] cache: {}", if cache.is_some() { "ok" } else { "unavailable" });
@@ -204,7 +215,7 @@ foreach ($p in $lines) {{
             ));
         }
 
-        if let Ok(data_dir) = app.path().app_data_dir() {
+        if let Ok(data_dir) = cache_data_dir(&app) {
             if let Ok(cache) = crate::cache::Cache::open(&data_dir) {
                 cache.evict_deleted(&paths);
                 log::debug!("[RustyMirror:RS] evicted {} entries from cache", paths.len());
@@ -220,7 +231,7 @@ foreach ($p in $lines) {{
             trash::delete(path).map_err(|e| format!("Failed to delete '{}': {}", path, e))?;
             let _ = app.emit("delete_progress", serde_json::json!({ "done": i + 1, "total": total }));
         }
-        if let Ok(data_dir) = app.path().app_data_dir() {
+        if let Ok(data_dir) = cache_data_dir(&app) {
             if let Ok(cache) = crate::cache::Cache::open(&data_dir) {
                 cache.evict_deleted(&paths);
             }
@@ -243,7 +254,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
     use tauri::Manager;
 
     let resource_dir    = app.path().resource_dir().ok();
-    let thumb_cache_dir = app.path().app_data_dir().ok().map(|d| d.join("thumb_cache"));
+    let thumb_cache_dir = cache_data_dir(&app).ok().map(|d| d.join("thumb_cache"));
 
     tokio::task::spawn_blocking(move || {
         use image::imageops::FilterType;
@@ -518,8 +529,7 @@ pub fn is_network_path(path: String) -> bool {
 /// Returns the size of the hash cache in bytes, or 0 if not found.
 #[tauri::command]
 pub fn get_cache_size(app: tauri::AppHandle) -> u64 {
-    use tauri::Manager;
-    app.path().app_data_dir().ok()
+    cache_data_dir(&app).ok()
         .map(|d| d.join("rustymirror_cache.db"))
         .and_then(|p| std::fs::metadata(p).ok())
         .map(|m| m.len())
@@ -529,8 +539,7 @@ pub fn get_cache_size(app: tauri::AppHandle) -> u64 {
 /// Deletes the hash cache database file.
 #[tauri::command]
 pub fn clear_cache(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri::Manager;
-    let path = app.path().app_data_dir()
+    let path = cache_data_dir(&app)
         .map_err(|e| e.to_string())?
         .join("rustymirror_cache.db");
     if path.exists() {
@@ -543,8 +552,7 @@ pub fn clear_cache(app: tauri::AppHandle) -> Result<(), String> {
 /// Returns the total size of the thumbnail cache directory in bytes.
 #[tauri::command]
 pub fn get_thumb_cache_size(app: tauri::AppHandle) -> u64 {
-    use tauri::Manager;
-    let dir = match app.path().app_data_dir().ok().map(|d| d.join("thumb_cache")) {
+    let dir = match cache_data_dir(&app).ok().map(|d| d.join("thumb_cache")) {
         Some(d) => d,
         None    => return 0,
     };
@@ -560,8 +568,7 @@ pub fn get_thumb_cache_size(app: tauri::AppHandle) -> u64 {
 /// Deletes all cached thumbnails.
 #[tauri::command]
 pub fn clear_thumb_cache(app: tauri::AppHandle) -> Result<(), String> {
-    use tauri::Manager;
-    let dir = app.path().app_data_dir()
+    let dir = cache_data_dir(&app)
         .map_err(|e| e.to_string())?
         .join("thumb_cache");
     if dir.exists() {
@@ -733,7 +740,6 @@ pub async fn write_metadata(
     update: crate::types::MetadataUpdate,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    use tauri::Manager;
     let path_clone = path.clone();
     tokio::task::spawn_blocking(move || {
         crate::metadata::write_metadata(std::path::Path::new(&path_clone), &update)
@@ -743,7 +749,7 @@ pub async fn write_metadata(
     .map_err(|e| e.to_string())??;
 
     // Invalidate the SQLite cache entry so the next scan picks up the new date
-    if let Ok(data_dir) = app.path().app_data_dir() {
+    if let Ok(data_dir) = cache_data_dir(&app) {
         if let Ok(cache) = crate::cache::Cache::open(&data_dir) {
             cache.evict_deleted(&[path]);
         }
