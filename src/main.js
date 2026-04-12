@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import { useHistoryStore } from './store/history'
+import { useMetadataHistoryStore } from './store/metadataHistory'
 
 import './styles/tokens.css'
 import './styles/base.css'
@@ -10,6 +11,7 @@ const app = createApp(App)
 const pinia = createPinia()
 app.use(pinia)
 
-// Load persisted scan history before mounting
+// Load persisted scan histories before mounting
 const history = useHistoryStore()
-history.load().finally(() => app.mount('#app'))
+const metadataHistory = useMetadataHistoryStore()
+Promise.all([history.load(), metadataHistory.load()]).finally(() => app.mount('#app'))

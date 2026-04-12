@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { load } from '@tauri-apps/plugin-store'
 import { useSettings } from '../composables/useSettings'
+import { useMetadataHistoryStore } from './metadataHistory'
 
 const STORE_FILE = 'rustymirror.json'
 const GEO_CACHE_KEY = 'geoCache'
@@ -41,6 +42,7 @@ export const useMetadataStore = defineStore('metadata', {
     geoCacheCount: 0,
     geoCacheBytes: 0,
     scanDone: false,
+    activeHistoryEntryId: null,
     images: [],
     searchQuery: '',
     sortBy:  'date',  // 'date' | 'location' | 'device'
@@ -193,16 +195,38 @@ export const useMetadataStore = defineStore('metadata', {
       this.filterLocation = ''
       this.filterDevice   = ''
       this.error = null
+      this.activeHistoryEntryId = null
       _geocodeAbortController = null
 
       try {
-        const images = await invoke('scan_for_metadata', { paths: this.folders })
+        // Check fingerprint to detect cache hits
+        let fingerprint = null
+        try { fingerprint = await invoke('directory_fingerprint', { paths: [...this.folders] }) } catch { /* ignore */ }
+
+        const metaHistory = useMetadataHistoryStore()
+        const cached = fingerprint ? metaHistory.getCached(this.folders, fingerprint) : null
+
+        const scanStart = Date.now()
+        let images
+        if (cached) {
+          images = cached
+        } else {
+          images = await invoke('scan_for_metadata', { paths: this.folders })
+        }
+        const durationMs = cached ? null : (Date.now() - scanStart)
+
         this.images = images
 
         try {
           const checks = await Promise.all(this.folders.map(f => invoke('is_network_path', { path: f })))
           this.networkFolders = new Set(this.folders.filter((_, i) => checks[i]))
         } catch { /* ignore */ }
+
+        // Save to history
+        const entryId = await metaHistory.addEntry(
+          this.folders, images.length, images, fingerprint, durationMs
+        )
+        this.activeHistoryEntryId = entryId
 
         const { prefetchFilters } = useSettings()
         if (prefetchFilters.value) {
@@ -220,6 +244,26 @@ export const useMetadataStore = defineStore('metadata', {
       } finally {
         this.scanning = false
       }
+    },
+
+    loadFromHistory(entry) {
+      if (this.scanning) return
+      if (entry.id === this.activeHistoryEntryId) return
+
+      this.folders = [...entry.folders]
+      this.images = [...entry.images]
+      this.searchQuery = ''
+      this.selected = new Set()
+      this.multiSelect = false
+      this.networkFolders = new Set()
+      this.locationNames = {}
+      this.filterDateFrom = ''
+      this.filterDateTo   = ''
+      this.filterLocation = ''
+      this.filterDevice   = ''
+      this.error = null
+      this.activeHistoryEntryId = entry.id
+      this.scanDone = true
     },
 
     async stopScan() {

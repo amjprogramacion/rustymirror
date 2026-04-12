@@ -308,11 +308,52 @@
           </div>
         </div>
       </section>
+
+      </template>
+
+      <!-- Recent scans (metadata) -->
+      <template v-if="metaHistory.entries.length > 0">
+        <div class="sidebar-divider" />
+        <section class="sidebar-section history-section">
+          <p class="section-label">Recent scans</p>
+          <div class="history-entries-scroll">
+            <div
+              v-for="entry in metaHistory.entries"
+              :key="entry.id"
+              class="history-entry"
+              :class="{
+                disabled: meta.scanning,
+                active: entry.id === meta.activeHistoryEntryId,
+              }"
+              @click="meta.loadFromHistory(entry)"
+              :title="entry.folders.join('\n')"
+            >
+              <!-- Line 1: date & time + duration -->
+              <div class="history-date">
+                {{ formatLocalDate(entry.date) }}<span v-if="formatDuration(entry.durationMs)" class="history-duration">&nbsp;({{ formatDuration(entry.durationMs) }})</span>
+              </div>
+
+              <!-- Line 2: folder path(s) -->
+              <div class="history-folders">
+                <span v-for="f in entry.folders" :key="f" class="history-folder" :title="f">
+                  {{ shortPath(f) }}
+                </span>
+              </div>
+
+              <!-- Line 3: image count -->
+              <div class="history-footer">
+                <span class="history-stats">
+                  {{ entry.imageCount ?? 0 }} image{{ (entry.imageCount ?? 0) !== 1 ? 's' : '' }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
       </template>
     </template>
 
     <!-- Cache buttons — pinned to bottom -->
-    <div class="sidebar-spacer" v-if="!(activeMode === 'duplicates' && history.entries.length > 0)" />
+    <div class="sidebar-spacer" v-if="!((activeMode === 'duplicates' && history.entries.length > 0) || (activeMode !== 'duplicates' && metaHistory.entries.length > 0))" />
     <div class="sidebar-divider" />
     <section class="sidebar-section sidebar-bottom">
       <button
@@ -325,15 +366,13 @@
         Clear scan history
       </button>
       <button
-        v-if="activeMode === 'duplicates'"
+        v-if="activeMode !== 'duplicates'"
         class="btn btn-cache btn-full btn-sm"
-        :class="{ 'btn-cache--active': cacheSize > 0 }"
-        @click="clearCache"
-        :disabled="cacheSize === 0"
-        :title="`Hash cache: ${formatSize(cacheSize)}`"
+        :class="{ 'btn-cache--active': metaHistory.entries.length > 0 }"
+        @click="metaHistory.clearHistory()"
+        :disabled="metaHistory.entries.length === 0"
       >
-        Clear hash cache
-        <span class="cache-size" v-if="cacheSize > 0">{{ formatSize(cacheSize) }}</span>
+        Clear scan history
       </button>
       <button
         class="btn btn-cache btn-full btn-sm"
@@ -344,6 +383,17 @@
       >
         Clear thumbnail cache
         <span class="cache-size" v-if="thumbCacheSize > 0">{{ formatSize(thumbCacheSize) }}</span>
+      </button>
+      <button
+        v-if="activeMode === 'duplicates'"
+        class="btn btn-cache btn-full btn-sm"
+        :class="{ 'btn-cache--active': cacheSize > 0 }"
+        @click="clearCache"
+        :disabled="cacheSize === 0"
+        :title="`Hash cache: ${formatSize(cacheSize)}`"
+      >
+        Clear hash cache
+        <span class="cache-size" v-if="cacheSize > 0">{{ formatSize(cacheSize) }}</span>
       </button>
       <button
         v-if="activeMode !== 'duplicates'"
@@ -373,6 +423,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useScanStore } from '../store/scan'
 import { useMetadataStore } from '../store/metadata'
 import { useHistoryStore } from '../store/history'
+import { useMetadataHistoryStore } from '../store/metadataHistory'
 import { formatSize, shortPath, formatLocalDate, formatDuration } from '../utils/formatters'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
@@ -391,6 +442,7 @@ const sortOptions = [
   { key: 'device',   label: 'Device'   },
 ]
 const history = useHistoryStore()
+const metaHistory = useMetadataHistoryStore()
 const { status: updateStatus } = useUpdater()
 const baseVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0'
 const isDev = import.meta.env.DEV
