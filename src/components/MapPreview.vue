@@ -31,7 +31,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch, defineExpose } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 

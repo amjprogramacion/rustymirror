@@ -16,12 +16,24 @@ fn find_magick(resource_dir: Option<&Path>) -> Option<PathBuf> {
     {
         let mut candidates: Vec<PathBuf> = Vec::new();
         if let Some(res) = resource_dir {
+            // Dev mode: resource_dir == src-tauri/, magick.exe is in resources/ subdir
+            candidates.push(res.join("resources").join("magick.exe"));
+            // Direct fallback
             candidates.push(res.join("magick.exe"));
+            // Walk up two levels (target/debug/ → src-tauri/resources/)
             if let Some(src_tauri) = res.parent().and_then(|p| p.parent()) {
                 candidates.push(src_tauri.join("resources").join("magick.exe"));
             }
         }
+        // Relative CWD fallback (project root as CWD)
         candidates.push(PathBuf::from("src-tauri").join("resources").join("magick.exe"));
+        // Fallback: look next to the current executable (works in dev and release)
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                candidates.push(exe_dir.join("resources").join("magick.exe"));
+                candidates.push(exe_dir.join("magick.exe"));
+            }
+        }
 
         for candidate in &candidates {
             log::debug!("[RustyMirror:RS] checking magick at: {}", candidate.display());
@@ -34,7 +46,7 @@ fn find_magick(resource_dir: Option<&Path>) -> Option<PathBuf> {
             log::debug!("[RustyMirror:RS] magick found in PATH");
             return Some(PathBuf::from("magick"));
         }
-        log::debug!("[RustyMirror:RS] magick NOT found");
+        log::warn!("[RustyMirror:RS] magick NOT found — checked: {:?}", candidates);
         None
     }
     #[cfg(target_os = "macos")]
@@ -55,6 +67,7 @@ fn which_exists(cmd: &str) -> bool {
 
 /// Extract dimensions from HEIC using `magick identify` — much faster than
 /// full conversion because it only reads the file header.
+#[allow(dead_code)]
 pub fn heic_dimensions(path: &Path, resource_dir: Option<&Path>) -> (u32, u32) {
     let cmd = match magick_path(resource_dir) {
         Some(c) => c,
@@ -95,54 +108,81 @@ pub fn heic_dimensions(path: &Path, resource_dir: Option<&Path>) -> (u32, u32) {
 // ── Full conversion (only for pHash) ─────────────────────────────────────────
 
 /// Converts a HEIC file to a temporary JPEG.
+/// `max_dim`: if Some(n), resize so neither dimension exceeds n pixels (for
+/// scanner use — pHash only needs a small image; saves ~50× disk I/O vs full-res).
+/// Pass None for thumbnail/viewer conversions that need full resolution.
 /// Returns (temp_path, width, height) or None if conversion fails.
 pub fn heic_to_temp_jpeg(
     heic_path: &Path,
     resource_dir: Option<&Path>,
+    max_dim: Option<u32>,
 ) -> Option<(PathBuf, u32, u32)> {
     let stem = heic_path.file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "heic_tmp".to_string());
     let tmp = std::env::temp_dir().join(format!("rustymirror_{}.jpg", stem));
 
-    convert_one(heic_path, &tmp, resource_dir).ok()?;
+    convert_one(heic_path, &tmp, resource_dir, max_dim).ok()?;
     if !tmp.exists() { return None; }
 
     let (w, h) = image::image_dimensions(&tmp).unwrap_or((0, 0));
     Some((tmp, w, h))
 }
 
-fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>) -> Result<()> {
+fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim: Option<u32>) -> Result<()> {
     let cmd = magick_path(resource_dir).context("no HEIC converter")?;
 
+    // `-resize NxN>` shrinks only if either dimension exceeds N; `>` is passed
+    // as a literal arg (not a shell redirect) so it is safe in Command::new.
+    let resize_arg: Option<String> = max_dim.map(|n| format!("{}x{}>", n, n));
+
     #[cfg(target_os = "macos")]
-    let status = std::process::Command::new(cmd)
-        .args([input.to_str().unwrap(), "--setProperty", "format", "jpeg",
-               "--out", output.to_str().unwrap()])
-        .status().context("sips failed")?;
+    let status = {
+        let mut c = std::process::Command::new(cmd);
+        if let Some(ref r) = resize_arg {
+            // sips uses --resampleHeightWidthMax for proportional downscale
+            c.args(["--resampleHeightWidthMax", r.trim_end_matches('>')]);
+        }
+        c.args([input.to_str().unwrap(), "--setProperty", "format", "jpeg",
+                "--out", output.to_str().unwrap()])
+         .status().context("sips failed")?
+    };
 
     #[cfg(target_os = "windows")]
     let status = {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        std::process::Command::new(cmd)
-            .args([input.to_str().unwrap(), output.to_str().unwrap()])
-            .creation_flags(CREATE_NO_WINDOW)
-            .status().context("magick failed")?
+        let mut c = std::process::Command::new(cmd);
+        c.arg(input.to_str().unwrap());
+        if let Some(ref r) = resize_arg {
+            c.args(["-resize", r]);
+        }
+        c.arg(output.to_str().unwrap())
+         .creation_flags(CREATE_NO_WINDOW)
+         .status().context("magick failed")?
     };
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let status = std::process::Command::new(cmd)
-        .args([input.to_str().unwrap(), output.to_str().unwrap()])
-        .status().context("magick failed")?;
+    let status = {
+        let mut c = std::process::Command::new(cmd);
+        c.arg(input.to_str().unwrap());
+        if let Some(ref r) = resize_arg {
+            c.args(["-resize", r]);
+        }
+        c.arg(output.to_str().unwrap())
+         .status().context("magick/convert failed")?
+    };
 
     if status.success() { Ok(()) } else { anyhow::bail!("converter exit {}", status) }
 }
 
 /// Batch-converts HEIC files in parallel. Returns (original, temp, w, h).
+/// `max_dim`: if Some(n), outputs are resized to at most n×n pixels (scanner
+/// use case — pHash quality is identical but temp files are ~50× smaller).
 pub fn batch_convert_heic(
     heic_paths: &[PathBuf],
     resource_dir: Option<&Path>,
+    max_dim: Option<u32>,
     progress_cb: impl Fn(usize, usize) + Send + Sync,
 ) -> Vec<(PathBuf, PathBuf, u32, u32)> {
     use rayon::prelude::*;
@@ -155,7 +195,7 @@ pub fn batch_convert_heic(
     let counter = AtomicUsize::new(0);
 
     heic_paths.par_iter().filter_map(|src| {
-        let result = heic_to_temp_jpeg(src, resource_dir);
+        let result = heic_to_temp_jpeg(src, resource_dir, max_dim);
         let done = counter.fetch_add(1, Ordering::Relaxed) + 1;
         progress_cb(done, total);
         result.map(|(dst, w, h)| (src.clone(), dst, w, h))

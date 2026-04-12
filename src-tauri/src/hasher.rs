@@ -125,7 +125,8 @@ pub fn perceptual_hash_from_bytes(bytes: &[u8], use_thumbnail: bool) -> Option<I
     Some(hasher.hash_image(&small))
 }
 
-/// Computes pHash by reading the file fresh (used for HEIC temp conversions).
+/// Computes pHash by reading the file fresh.
+#[allow(dead_code)]
 pub fn perceptual_hash(path: &Path, use_thumbnail: bool) -> Option<ImageHash> {
     let bytes = std::fs::read(path).ok()?;
     perceptual_hash_from_bytes(&bytes, use_thumbnail)

@@ -265,11 +265,13 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
         let is_heic = lower.ends_with(".heic") || lower.ends_with(".heif");
 
         if is_heic {
-            let cache_path = thumb_cache_dir.as_ref().and_then(|dir| {
-                let bytes = std::fs::read(&path).ok()?;
-                let hash  = blake3::hash(&bytes);
-                let name  = format!("{}.jpg", &hash.to_hex()[..16]);
-                Some(dir.join(name))
+            // Read once — used for the cache key.
+            let heic_bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+
+            let cache_path = thumb_cache_dir.as_ref().map(|dir| {
+                let hash = blake3::hash(&heic_bytes);
+                let name = format!("{}.jpg", &hash.to_hex()[..16]);
+                dir.join(name)
             });
 
             if let Some(ref cp) = cache_path {
@@ -283,15 +285,21 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
             }
 
             log::debug!("[RustyMirror:RS] thumb MISS (heic): {}", path);
+
             let (tmp, _, _) = crate::heic::heic_to_temp_jpeg(
                 std::path::Path::new(&path),
                 resource_dir.as_deref(),
+                None, // full resolution for thumbnail/viewer
             ).ok_or_else(|| "heic-no-converter".to_string())?;
 
-            let bytes = std::fs::read(&tmp).map_err(|e| e.to_string())?;
+            let jpeg_bytes = std::fs::read(&tmp).map_err(|e| e.to_string())?;
             let _ = std::fs::remove_file(&tmp);
 
-            let img   = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+            let img = image::load_from_memory(&jpeg_bytes).map_err(|e| e.to_string())?;
+            // Normalise to 8-bit RGB — mirrors the PNG fix; prevents JPEG encoder
+            // failures when magick/sips produces output with an unusual bit depth
+            // or colour space (e.g. HDR/wide-gamut HEICs from iPhone Pro models).
+            let img   = image::DynamicImage::ImageRgb8(img.into_rgb8());
             let thumb = img.resize(180, 180, FilterType::Nearest);
             let mut buf = Cursor::new(Vec::<u8>::new());
             thumb.write_to(&mut buf, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
@@ -310,7 +318,8 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
                 base64::engine::general_purpose::STANDARD.encode(&thumb_bytes)));
         }
 
-        // Non-HEIC: only process network paths (local files use convertFileSrc)
+        // Non-HEIC: handles local PNGs (WebView2 struggles with some variants)
+        // and network paths (which cannot use convertFileSrc).
         let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
 
         let cache_path = thumb_cache_dir.as_ref().and_then(|dir| {
@@ -421,6 +430,7 @@ pub async fn get_full_image(path: String, app: tauri::AppHandle) -> Result<Strin
             let (tmp, _, _) = crate::heic::heic_to_temp_jpeg(
                 std::path::Path::new(&path),
                 resource_dir.as_deref(),
+                None, // full resolution for thumbnail/viewer
             ).ok_or_else(|| "heic-no-converter".to_string())?;
             let b = std::fs::read(&tmp).map_err(|e| e.to_string())?;
             let _ = std::fs::remove_file(&tmp);
@@ -431,6 +441,9 @@ pub async fn get_full_image(path: String, app: tauri::AppHandle) -> Result<Strin
 
         let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
         let img = if !is_heic { apply_exif_orientation(&bytes, img) } else { img };
+        // Normalise to 8-bit RGB — prevents JPEG encoder failures on HDR/wide-gamut
+        // or CMYK output from ImageMagick (mirrors the same fix in get_thumbnail).
+        let img = image::DynamicImage::ImageRgb8(img.into_rgb8());
 
         let mut buf = Cursor::new(Vec::<u8>::new());
         img.write_to(&mut buf, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;

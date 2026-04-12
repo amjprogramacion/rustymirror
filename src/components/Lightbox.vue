@@ -19,13 +19,14 @@
       <!-- Image -->
       <div class="lb-frame">
         <img
-          v-if="directSrc"
+          v-if="directSrc && directSrc !== '__error__'"
           ref="imgEl"
           :src="directSrc"
           class="lb-img"
           draggable="false"
           @load="updateBadgePos"
         />
+        <div v-else-if="directSrc === '__error__'" class="lb-error">⚠ Could not load image</div>
         <div v-else class="lb-spinner" />
         <!-- Badge positioned via JS to sit over the actual image area -->
         <div
@@ -101,7 +102,7 @@ const entries = computed(() => store.lightbox?.entries ?? [])
 const index   = computed(() => store.lightbox?.index ?? 0)
 const current = computed(() => entries.value[index.value] ?? {})
 
-// Full-res HEIC cache: path -> base64 data URL
+// Full-res HEIC cache: path -> base64 data URL  |  '__error__' on failure
 const heicFullCache = ref({})
 const imgEl = ref(null)
 const badgeStyle = ref(null)
@@ -139,7 +140,10 @@ watch(current, async (entry) => {
   try {
     const src = await invoke('get_full_image', { path: entry.path })
     heicFullCache.value = { ...heicFullCache.value, [entry.path]: src }
-  } catch {}
+  } catch (e) {
+    console.error('[RustyMirror] get_full_image failed:', entry.path, e)
+    heicFullCache.value = { ...heicFullCache.value, [entry.path]: '__error__' }
+  }
 }, { immediate: true })
 
 function onOverlayClick(e) {
@@ -275,6 +279,11 @@ onBeforeUnmount(()  => window.removeEventListener('keydown', onKeydown))
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.lb-error {
+  color: rgba(255,255,255,0.5);
+  font-size: var(--font-size-sm);
+}
 
 /* ── Info bar ── */
 .lb-info {
