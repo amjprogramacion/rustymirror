@@ -52,13 +52,6 @@ fn read_capture_date(path: &Path, bytes: &[u8], meta: &std::fs::Metadata) -> Str
                 &ts[9..11], &ts[11..13], &ts[13..15]);
         }
     }
-    if let Ok(exif) = exif::Reader::new().read_from_container(&mut std::io::Cursor::new(bytes)) {
-        if let Some(field) = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
-            let s = field.display_value().to_string();
-            if s.len() >= 19 {
-                return format!("{}-{}-{}T{}:{}:{}Z",
-                    &s[0..4], &s[5..7], &s[8..10],
-                    &s[11..13], &s[14..16], &s[17..19]);
             }
         }
     }
@@ -127,6 +120,44 @@ fn read_header_hash(path: &Path) -> Option<String> {
     Some(blake3::hash(&buf).to_hex().to_string())
 }
 
+/// Convert file mtime metadata to an RFC3339 string, falling back to the Unix epoch.
+fn mtime_rfc3339(meta: &std::fs::Metadata) -> String {
+    meta.modified().ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|d| chrono::DateTime::<chrono::Utc>::from_timestamp(d.as_secs() as i64, 0))
+        .map(|dt| dt.to_rfc3339())
+        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
+}
+
+/// Parse the DateTimeOriginal EXIF field from raw image bytes into an RFC3339 string.
+fn parse_exif_date(bytes: &[u8]) -> Option<String> {
+    let exif = exif::Reader::new()
+        .read_from_container(&mut std::io::Cursor::new(bytes)).ok()?;
+    let field = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)?;
+    let s = field.display_value().to_string();
+    if s.len() >= 19 {
+        Some(format!("{}-{}-{}T{}:{}:{}Z",
+            &s[0..4], &s[5..7], &s[8..10],
+            &s[11..13], &s[14..16], &s[17..19]))
+    } else {
+        None
+    }
+}
+
+/// Build a `CachedFile` from a `FileRecord`, supplying the two pHash variants explicitly.
+fn build_cached_file(r: &FileRecord, phash: Option<String>, fast_phash: Option<String>) -> crate::cache::CachedFile {
+    crate::cache::CachedFile {
+        blake3:      r.ex_hash.clone(),
+        size_bytes:  r.entry.size_bytes,
+        phash,
+        fast_phash,
+        header_hash: r.header_hash.clone(),
+        width:       r.entry.width,
+        height:      r.entry.height,
+        modified:    r.entry.modified.clone(),
+    }
+}
+
 struct HeicExtra {
     ph:       image_hasher::ImageHash,
     width:    u32,
@@ -170,43 +201,12 @@ fn resolve_phash_owned(
     None
 }
 
-fn make_record(path: &Path, cache: Option<&crate::cache::Cache>, fast_mode: bool) -> Option<FileRecord> {
+/// Read a file from disk and build a `FileRecord` without consulting the cache.
+fn make_record(path: &Path, fast_mode: bool) -> Option<FileRecord> {
     let meta = std::fs::metadata(path).ok()?;
-
-    let fs_modified = meta.modified().ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .and_then(|d| chrono::DateTime::<chrono::Utc>::from_timestamp(d.as_secs() as i64, 0))
-        .map(|dt| dt.to_rfc3339())
-        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
-
+    let fs_modified = mtime_rfc3339(&meta);
     let size_bytes = meta.len();
     let path_str = path.to_string_lossy().to_string();
-
-    if let Some(cache) = cache {
-        if let Some(cached) = cache.get(&path_str, size_bytes, &fs_modified) {
-            let ph = if fast_mode {
-                cached.fast_phash.as_deref().and_then(hex_to_phash)
-            } else {
-                cached.phash.as_deref().and_then(hex_to_phash)
-            };
-            return Some(FileRecord {
-                entry: ImageEntry {
-                    path: path_str,
-                    size_bytes: cached.size_bytes,
-                    width: cached.width,
-                    height: cached.height,
-                    modified: cached.modified,
-                    is_original: false,
-                    ..Default::default()
-                },
-                ex_hash: cached.blake3,
-                ts_tag: extract_timestamp_tag(path),
-                ph,
-                mtime_key: fs_modified,
-                header_hash: cached.header_hash,
-            });
-        }
-    }
 
     let (ex_hash, _, bytes) = read_file_data(path).ok()?;
 
@@ -321,11 +321,7 @@ where
 
         let meta = std::fs::metadata(path).ok()?;
         let size  = meta.len();
-        let mtime = meta.modified().ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .and_then(|d| chrono::DateTime::<chrono::Utc>::from_timestamp(d.as_secs() as i64, 0))
-            .map(|dt| dt.to_rfc3339())
-            .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
+        let mtime = mtime_rfc3339(&meta);
 
         let record = if let Some(entry) = bulk_cache.get(&path_cache_key) {
             if entry.size_bytes == size {
@@ -370,19 +366,19 @@ where
                         })
                     } else {
                         // pHash exists but only for the other mode — re-read the file.
-                        std::panic::catch_unwind(|| make_record(path, None, fast_mode)).ok().flatten()
+                        std::panic::catch_unwind(|| make_record(path, fast_mode)).ok().flatten()
                     }
                 } else {
                     // Header hash mismatch — file changed, re-read.
-                    std::panic::catch_unwind(|| make_record(path, None, fast_mode)).ok().flatten()
+                    std::panic::catch_unwind(|| make_record(path, fast_mode)).ok().flatten()
                 }
             } else {
                 // Size changed — file definitely changed, re-read.
-                std::panic::catch_unwind(|| make_record(path, None, fast_mode)).ok().flatten()
+                std::panic::catch_unwind(|| make_record(path, fast_mode)).ok().flatten()
             }
         } else {
             // Not in DB at all — skip the redundant per-file SQLite lookup.
-            std::panic::catch_unwind(|| make_record(path, None, fast_mode)).ok().flatten()
+            std::panic::catch_unwind(|| make_record(path, fast_mode)).ok().flatten()
         };
 
         let done = counter.fetch_add(1, AOrdering::Relaxed) + 1;
@@ -448,16 +444,7 @@ where
                 } else {
                     (ph_hex, existing.and_then(|e| e.data.fast_phash.clone()))
                 };
-                (cache_key(&r.entry.path), r.mtime_key.clone(), CachedFile {
-                    blake3:      r.ex_hash.clone(),
-                    size_bytes:  r.entry.size_bytes,
-                    phash,
-                    fast_phash,
-                    header_hash: r.header_hash.clone(),
-                    width:       r.entry.width,
-                    height:      r.entry.height,
-                    modified:    r.entry.modified.clone(),
-                })
+                (cache_key(&r.entry.path), r.mtime_key.clone(), build_cached_file(r, phash, fast_phash))
             })
             .collect();
         // Diagnostic: print hex bytes of first 3 paths being stored.
@@ -559,18 +546,8 @@ where
             let tmp_bytes = std::fs::read(tmp).ok()?;
             // Reuse already-read bytes — avoids a second disk read of the temp JPEG.
             let ph = std::panic::catch_unwind(|| perceptual_hash_from_bytes(&tmp_bytes, fast_mode)).ok().flatten()?;
-            let modified = {
-                if let Ok(exif) = exif::Reader::new()
-                    .read_from_container(&mut std::io::Cursor::new(&tmp_bytes))
-                {
-                    if let Some(field) = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
-                        let s = field.display_value().to_string();
-                        if s.len() >= 19 {
-                            format!("{}-{}-{}T{}:{}:{}Z", &s[0..4], &s[5..7], &s[8..10], &s[11..13], &s[14..16], &s[17..19])
-                        } else { records[i].entry.modified.clone() }
-                    } else { records[i].entry.modified.clone() }
-                } else { records[i].entry.modified.clone() }
-            };
+            let modified = parse_exif_date(&tmp_bytes)
+                .unwrap_or_else(|| records[i].entry.modified.clone());
             let done = phase3b_counter.fetch_add(1, AOrdering::Relaxed) + 1;
             analyze_cb(AnalyzeProgress { analyzed: done, total: phase3b_total.max(1),
                 phase: "Hashing HEIC images…".into() });
@@ -835,16 +812,8 @@ where
         let updates: Vec<(String, String, CachedFile)> = on_demand_phashes.iter()
             .map(|(&i, ph)| {
                 let r = &records[i];
-                (cache_key(&r.entry.path), r.mtime_key.clone(), CachedFile {
-                    blake3:      r.ex_hash.clone(),
-                    size_bytes:  r.entry.size_bytes,
-                    phash:       Some(phash_to_hex(ph)),
-                    fast_phash:  None,
-                    header_hash: r.header_hash.clone(),
-                    width:       r.entry.width,
-                    height:      r.entry.height,
-                    modified:    r.entry.modified.clone(),
-                })
+                (cache_key(&r.entry.path), r.mtime_key.clone(),
+                    build_cached_file(r, Some(phash_to_hex(ph)), None))
             }).collect();
         if !updates.is_empty() {
             log::debug!("[RustyMirror:RS] phase 4: writing {} on-demand pHashes to cache", updates.len());

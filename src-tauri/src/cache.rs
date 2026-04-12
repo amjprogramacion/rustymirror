@@ -62,26 +62,6 @@ impl Cache {
             .unwrap_or(0) as usize
     }
 
-    /// Look up a single file by path + size + mtime.
-    pub fn get(&self, path: &str, size_bytes: u64, mtime: &str) -> Option<CachedFile> {
-        let conn = self.conn.lock().ok()?;
-        conn.query_row(
-            "SELECT blake3, phash, fast_phash, header_hash, size_bytes, width, height, modified
-             FROM file_cache WHERE path=?1 AND size_bytes=?2 AND mtime=?3",
-            params![path, size_bytes as i64, mtime],
-            |row| Ok(CachedFile {
-                blake3:      row.get(0)?,
-                phash:       row.get(1)?,
-                fast_phash:  row.get(2)?,
-                header_hash: row.get(3)?,
-                size_bytes:  row.get::<_, i64>(4)? as u64,
-                width:       row.get::<_, i64>(5)? as u32,
-                height:      row.get::<_, i64>(6)? as u32,
-                modified:    row.get(7)?,
-            }),
-        ).ok()
-    }
-
     /// Load ALL cached entries for a list of paths in one query.
     /// Returns HashMap<path, CacheKey> — caller checks size+mtime to validate.
     pub fn get_bulk(&self, paths: &[String]) -> HashMap<String, CacheKey> {
