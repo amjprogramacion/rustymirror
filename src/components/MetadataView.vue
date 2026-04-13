@@ -44,26 +44,11 @@
       <span class="image-count">{{ meta.filteredImages.length }} image{{ meta.filteredImages.length !== 1 ? 's' : '' }}<template v-if="meta.selectedCount > 0"> · {{ meta.selectedCount }} selected</template></span>
 
       <!-- Search -->
-      <div class="search-wrap">
-        <span class="search-icon">⌕</span>
-        <input
-          class="search-input"
-          type="text"
-          placeholder="Search by filename…"
-          v-model="meta.searchQuery"
-          @keydown.escape="meta.searchQuery = ''"
-        />
-        <button
-          v-if="meta.searchQuery"
-          class="search-clear"
-          @click="meta.searchQuery = ''"
-          title="Clear search"
-        >✕</button>
-      </div>
+      <SearchInput v-model="meta.searchQuery" />
     </div>
 
     <!-- Grid -->
-    <div class="grid-scroll" ref="gridEl" :style="scanStore.metadataPanel ? { paddingBottom: (scanStore.metadataPanelHeight + 16) + 'px' } : {}">
+    <div class="grid-scroll" ref="gridEl" :style="panel.activePanel ? { paddingBottom: (panel.panelHeight + 16) + 'px' } : {}">
       <div v-if="meta.filteredImages.length === 0" class="no-results">
         <template v-if="meta.searchQuery">
           No images match <em>"{{ meta.searchQuery }}"</em>.
@@ -76,7 +61,7 @@
           v-for="(entry, idx) in meta.filteredImages"
           :key="entry.path"
           class="card"
-          :class="{ selected: meta.selected.has(entry.path), focused: !scanStore.metadataPanel?.batch && scanStore.metadataPanel?.entry?.path === entry.path && !meta.selected.has(entry.path) }"
+          :class="{ selected: meta.selected.has(entry.path), focused: !panel.activePanel?.batch && panel.activePanel?.entry?.path === entry.path && !meta.selected.has(entry.path) }"
           :tabindex="0"
           :data-card-path="entry.path"
           @click="onCardClick(entry, idx)"
@@ -131,7 +116,7 @@
     </div>
   </template>
 
-  <MetadataBottomPanel />
+  <BatchEditPanel />
 </div>
 </template>
 
@@ -139,22 +124,23 @@
 import { ref, computed, onBeforeUnmount, watch, nextTick } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { useMetadataStore } from '../store/metadata'
-import { useScanStore } from '../store/scan'
+import { usePanelStore } from '../store/panel'
+import { useThumbnailStore } from '../store/thumbnails'
 import { useSettings } from '../composables/useSettings'
 import { fileExt, fileName, formatSize, formatDate } from '../utils/formatters'
-import MetadataBottomPanel from './MetadataBottomPanel.vue'
+import BatchEditPanel from './BatchEditPanel.vue'
+import SearchInput from './SearchInput.vue'
 
-const meta      = useMetadataStore()
-const scanStore = useScanStore()
+const meta   = useMetadataStore()
+const panel  = usePanelStore()
+const thumbs = useThumbnailStore()
 const { prefetchFilters } = useSettings()
 const gridEl    = ref(null)
 const THUMB_ERROR = '__error__'
 const HEIC_EXTS   = new Set(['heic', 'heif'])
 
-// Thumbnails are read/written through the scan store so the cache is shared
-// between duplicate finder and metadata editor — no redundant re-downloads.
-const thumbCache     = scanStore.thumbCache
-const directSrcCache = scanStore.directSrcCache
+const thumbCache     = thumbs.thumbCache
+const directSrcCache = thumbs.directSrcCache
 
 function needsRust(path) {
   return HEIC_EXTS.has(fileExt(path)) || meta.isNetworkPath(path)
@@ -176,13 +162,13 @@ function setupObserver(root) {
       }
       if (e.isIntersecting) {
         if (needsRust(path)) {
-          scanStore.enqueueThumbnail(path)
+          thumbs.enqueueThumbnail(path)
         } else {
-          scanStore.setDirectSrc(path, convertFileSrc(path))
+          thumbs.setDirectSrc(path, convertFileSrc(path))
           observer.unobserve(e.target)
         }
       } else {
-        scanStore.dequeueThumbnail(path)
+        thumbs.dequeueThumbnail(path)
       }
     }
   }, { root, rootMargin: '400px', threshold: 0 })
@@ -197,7 +183,7 @@ function toggleMultiSelect() {
   const enabling = !meta.multiSelect
   meta.multiSelect = enabling
   if (enabling) {
-    const panel = scanStore.metadataPanel
+    const panel = panel.activePanel
     if (panel && !panel.batch && panel.entry?.path) {
       meta.toggleSelected(panel.entry.path)
     }
@@ -207,7 +193,7 @@ function toggleMultiSelect() {
 function openBatchEdit() {
   const selected = meta.filteredImages.filter(e => meta.selected.has(e.path))
   if (selected.length < 2) return
-  scanStore.openBatchEditPanel(selected)
+  panel.openBatchPanel(selected)
 }
 
 // Reactive key that changes whenever the selected set changes (add, remove, swap)
@@ -219,34 +205,34 @@ const selectedKey = computed(() => {
 
 // While the batch panel is open, keep it in sync with selection changes
 watch(selectedKey, () => {
-  const panel = scanStore.metadataPanel
+  const panel = panel.activePanel
   if (!panel || panel.saving) return
 
   const count = meta.selectedCount
   if (count === 0) {
-    scanStore.closeMetadataPanel()
+    panel.closePanel()
   } else if (count === 1) {
     if (panel.batch) {
       const entry = meta.filteredImages.find(e => meta.selected.has(e.path))
-      if (entry) scanStore.openMetadataPanel(entry)
+      if (entry) panel.openPanel(entry)
     }
   } else {
     const entries = meta.filteredImages.filter(e => meta.selected.has(e.path))
-    scanStore.openBatchEditPanel(entries)
+    panel.openBatchPanel(entries)
   }
 })
 
 // Close the metadata panel on sort, filter, or new scan
-watch(() => [meta.sortBy, meta.sortDir], () => scanStore.closeMetadataPanel())
-watch(() => [meta.filterDateFrom, meta.filterDateTo, meta.filterLocation, meta.filterDevice], () => scanStore.closeMetadataPanel())
-watch(() => meta.scanning, (scanning) => { if (scanning) scanStore.closeMetadataPanel() })
+watch(() => [meta.sortBy, meta.sortDir], () => panel.closePanel())
+watch(() => [meta.filterDateFrom, meta.filterDateTo, meta.filterLocation, meta.filterDevice], () => panel.closePanel())
+watch(() => meta.scanning, (scanning) => { if (scanning) panel.closePanel() })
 
 // When visible images change (filter/sort), cancel pending thumb loads and
 // re-register the observer so newly visible cards get prioritised.
 watch(
   () => meta.filteredImages,
   () => {
-    scanStore.clearThumbQueue()
+    thumbs.clearThumbQueue()
     nextTick(() => { if (gridEl.value) setupObserver(gridEl.value) })
   }
 )
@@ -266,7 +252,7 @@ function onCardClick(entry, idx) {
   if (meta.multiSelect) {
     meta.toggleSelected(entry.path)
   } else {
-    scanStore.openMetadataPanel(entry)
+    panel.openPanel(entry)
   }
 }
 
@@ -380,50 +366,6 @@ async function openFolder(path) { await invoke('open_folder', { path }) }
   color: var(--text-muted);
   margin-left: var(--space-1);
 }
-
-/* ── Search ── */
-.search-wrap {
-  margin-left: auto;
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.search-icon {
-  position: absolute;
-  left: 8px;
-  font-size: 15px;
-  color: var(--text-muted);
-  pointer-events: none;
-  line-height: 1;
-}
-
-.search-input {
-  width: 200px;
-  padding: 4px 28px 4px 26px;
-  border-radius: var(--border-radius-md);
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  transition: border-color var(--transition), width var(--transition);
-  outline: none;
-}
-.search-input::placeholder { color: var(--text-muted); }
-.search-input:focus { border-color: var(--color-accent); width: 260px; }
-
-.search-clear {
-  position: absolute;
-  right: 6px;
-  background: none;
-  color: var(--text-muted);
-  font-size: 11px;
-  padding: 2px 4px;
-  line-height: 1;
-  border-radius: 3px;
-  transition: color var(--transition);
-}
-.search-clear:hover { color: var(--text-primary); }
 
 /* ── Grid scroll ── */
 .grid-scroll {

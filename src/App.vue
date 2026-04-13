@@ -3,8 +3,8 @@
     <ModeRail />
     <Sidebar />
     <main class="content-area">
-      <ResultsArea v-if="activeMode === 'duplicates'" />
-      <MetadataManager v-else />
+      <DuplicatesView v-if="activeMode === 'duplicates'" />
+      <MetadataView v-else />
     </main>
   </div>
   <Lightbox />
@@ -15,23 +15,23 @@
 import { onMounted, watch } from 'vue'
 import ModeRail from './components/ModeRail.vue'
 import Sidebar from './components/Sidebar.vue'
-import ResultsArea from './components/ResultsArea.vue'
-import MetadataManager from './components/MetadataManager.vue'
+import DuplicatesView from './components/DuplicatesView.vue'
+import MetadataView from './components/MetadataView.vue'
 import Lightbox from './components/Lightbox.vue'
 import UpdateToast from './components/UpdateToast.vue'
 import { useUpdater } from './composables/useUpdater'
 import { useMode } from './composables/useMode'
-import { useScanStore } from './store/scan'
+import { usePanelStore } from './store/panel'
 
 const { activeMode } = useMode()
-const scanStore = useScanStore()
+const panel = usePanelStore()
 
-// Each tool keeps its own independent metadata panel state.
+// Each tool keeps its own independent panel state.
 // When switching modes: stash the current panel, restore the one for the new mode.
 const panelStash = {}
 watch(activeMode, (newMode, oldMode) => {
-  panelStash[oldMode] = scanStore.metadataPanel
-  scanStore.$patch({ metadataPanel: panelStash[newMode] ?? null })
+  panelStash[oldMode] = panel.activePanel
+  panel.activePanel = panelStash[newMode] ?? null
 })
 
 const { autoCheck, checkForUpdates } = useUpdater()

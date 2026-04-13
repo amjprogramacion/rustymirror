@@ -1,10 +1,10 @@
 <template>
   <Transition name="mbp-slide">
     <div
-      v-if="store.metadataPanel"
+      v-if="panel.activePanel"
       class="mbp-panel"
       :style="{ height: panelHeight + 'px' }"
-      @keydown.escape="store.closeMetadataPanel()"
+      @keydown.escape="panel.closePanel()"
     >
       <!-- Resize handle (top edge) -->
       <div class="mbp-resize-handle" @mousedown.prevent="startResize" />
@@ -38,7 +38,7 @@
           </div>
         </div>
 
-        <button class="mbp-close" @click="store.closeMetadataPanel()" title="Close">✕</button>
+        <button class="mbp-close" @click="panel.closePanel()" title="Close">✕</button>
       </div>
 
       <!-- Loading state -->
@@ -256,14 +256,18 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { useScanStore } from '../store/scan'
+import { useDuplicatesStore } from '../store/duplicates'
+import { usePanelStore } from '../store/panel'
+import { useThumbnailStore } from '../store/thumbnails'
 import { useMapViewStore } from '../store/mapView'
 import { useMetadataStore } from '../store/metadata'
 import MapPreview from './MapPreview.vue'
 import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
 import { useGpsEditor, parseCombinedGps } from '../composables/useGpsEditor'
 
-const store     = useScanStore()
+const store     = useDuplicatesStore()
+const panel     = usePanelStore()
+const thumbs    = useThumbnailStore()
 const metaStore = useMetadataStore()
 const HEIC      = new Set(['heic', 'heif'])
 const MIXED     = '__mixed__'
@@ -271,8 +275,8 @@ const MIXED     = '__mixed__'
 // ── Panel height resize ───────────────────────────────────────────────────────
 const MIN_HEIGHT = 200
 const panelHeight = computed({
-  get: () => store.metadataPanelHeight,
-  set: v => { store.metadataPanelHeight = v }
+  get: () => panel.panelHeight,
+  set: v => { panel.panelHeight = v }
 })
 
 function startResize(e) {
@@ -297,13 +301,13 @@ const mapPreviewRef = ref(null)
 onBeforeUnmount(() => {
   panelHeight.value = 300
   const state = mapPreviewRef.value?.getMapState()
-  if (state) mapViewStore.metadataManager = state
+  if (state) mapViewStore.metadata = state
 })
 
 // ── Store accessors ───────────────────────────────────────────────────────────
-const panel = computed(() => store.metadataPanel)
-const entry = computed(() => panel.value?.entry ?? {})
-const meta  = computed(() => panel.value?.metadata ?? null)
+const activePanel = computed(() => panel.activePanel)
+const entry = computed(() => activePanel.value?.entry ?? {})
+const meta  = computed(() => activePanel.value?.metadata ?? null)
 
 const notification = ref(null)
 let   notifyTimer  = null
@@ -315,7 +319,7 @@ function showNotification(type, message, duration = 2500) {
 }
 
 // ── Batch / single mode ───────────────────────────────────────────────────────
-const isBatch = computed(() => panel.value?.batch === true)
+const isBatch = computed(() => panel.activePanel?.batch === true)
 
 // ── Batch: GPS helpers ────────────────────────────────────────────────────────
 function decimalToDms(decimal, type) {
@@ -334,9 +338,9 @@ function formatBatchGps(lat, lon) {
 
 // ── Batch: aggregated values ──────────────────────────────────────────────────
 const batchAgg = computed(() => {
-  if (!isBatch.value || !panel.value?.allMetadata) return null
-  const all     = panel.value.allMetadata
-  const entries = panel.value.entries
+  if (!isBatch.value || !panel.activePanel?.allMetadata) return null
+  const all     = panel.activePanel.allMetadata
+  const entries = panel.activePanel.entries
 
   function agg(fn) {
     const vals  = all.map(fn)
@@ -397,7 +401,7 @@ const batchGpsCombinedError = ref(null)
 
 function resetBatch() {
   const agg = batchAgg.value
-  if (!agg || !panel.value) return
+  if (!agg || !panel.activePanel) return
   batchEdit.value = {
     dateTimeOriginal: agg.dateTimeOriginal === MIXED ? null : agg.dateTimeOriginal,
     imageDescription: agg.imageDescription === MIXED ? null : agg.imageDescription,
@@ -406,14 +410,14 @@ function resetBatch() {
   }
   batchGpsCombinedRaw.value   = (!agg.gps.mixed && agg.gps.lat != null) ? formatBatchGps(agg.gps.lat, agg.gps.lon) : ''
   batchGpsCombinedError.value = null
-  panel.value.dirty           = false
+  panel.activePanel.dirty     = false
 }
 
 watch(batchAgg, (agg) => { if (agg) resetBatch() }, { immediate: true })
 
 function onBatchGpsInput() {
   batchGpsCombinedError.value = null
-  if (panel.value) panel.value.dirty = true
+  if (panel.activePanel) panel.activePanel.dirty = true
 }
 
 const batchGpsParsed    = computed(() => parseCombinedGps(batchGpsCombinedRaw.value))
@@ -429,7 +433,7 @@ const singleMapCenter = computed(() => ({
 // Always show the map in batch mode: use typed coords → first image with GPS → Spain as fallback
 const batchMapCenter = computed(() => {
   if (batchGpsParsed.value) return batchGpsParsed.value
-  const first = panel.value?.allMetadata?.find(m => m.gpsLatitude != null)
+  const first = panel.activePanel?.allMetadata?.find(m => m.gpsLatitude != null)
   return first ? { lat: first.gpsLatitude, lon: first.gpsLongitude } : SPAIN_CENTER
 })
 
@@ -439,13 +443,13 @@ const batchHasGpsPreview = computed(() => isBatch.value)
 
 // resetKey: increments when the map should fully reset (new image in single, panel open/close)
 const mapResetKey  = ref(0)
-const savedMapView = ref(mapViewStore.metadataManager)
+const savedMapView = ref(mapViewStore.metadata)
 
 // Save map state the moment the panel closes (before v-if removes MapPreview from DOM)
-watch(() => store.metadataPanel, (p, prev) => {
+watch(() => panel.activePanel, (p, prev) => {
   if (prev && !p) {
     const state = mapPreviewRef.value?.getMapState()
-    if (state) mapViewStore.metadataManager = state // keep for tool-switch restore
+    if (state) mapViewStore.metadata = state // keep for tool-switch restore
     savedMapView.value = null                        // reset for same-tool reopen
   }
 }, { flush: 'sync' })
@@ -471,10 +475,10 @@ async function saveBatch() {
     gpsLatitude:      lat,
     gpsLongitude:     lon,
   })
-  if (panel.value?.error) {
-    showNotification('error', panel.value.error, 4000)
+  if (panel.activePanel?.error) {
+    showNotification('error', panel.activePanel.error, 4000)
   } else {
-    showNotification('success', `Saved to ${panel.value?.entries?.length ?? ''} images`)
+    showNotification('success', `Saved to ${panel.activePanel?.entries?.length ?? ''} images`)
   }
 }
 
@@ -549,11 +553,11 @@ const thumbSrc = computed(() => {
   if (!p) return null
   const ext = fileExt(p)
   if (HEIC.has(ext)) {
-    return store.thumbCache[p] && store.thumbCache[p] !== '__error__'
-      ? store.thumbCache[p]
+    return thumbs.thumbCache[p] && thumbs.thumbCache[p] !== '__error__'
+      ? thumbs.thumbCache[p]
       : null
   }
-  return store.directSrcCache[p] ?? convertFileSrc(p)
+  return thumbs.directSrcCache[p] ?? convertFileSrc(p)
 })
 
 const hasCameraInfo   = computed(() => meta.value && (meta.value.make || meta.value.model || meta.value.lensModel || meta.value.software))

@@ -1,13 +1,13 @@
 <template>
   <Transition name="mp-slide">
-    <div v-if="store.metadataPanel" class="mp-panel" :style="{ width: panelWidth + 'px' }" @keydown.escape="store.closeMetadataPanel()">
+    <div v-if="panel.activePanel" class="mp-panel" :style="{ width: panelWidth + 'px' }" @keydown.escape="panel.closePanel()">
       <!-- Resize handle -->
       <div class="mp-resize-handle" @mousedown.prevent="startResize" />
 
       <!-- Header -->
       <div class="mp-header">
         <span class="mp-title">Image Info</span>
-        <button class="mp-close" @click="store.closeMetadataPanel()" title="Close">✕</button>
+        <button class="mp-close" @click="panel.closePanel()" title="Close">✕</button>
       </div>
 
       <!-- Thumbnail — resizable height -->
@@ -32,18 +32,18 @@
       </div>
 
       <!-- Loading state -->
-      <div v-if="panel.loading" class="mp-loading">
+      <div v-if="panel.activePanel.loading" class="mp-loading">
         <span class="mp-spinner" />
         <span>Reading metadata…</span>
       </div>
 
       <!-- Error state -->
-      <div v-else-if="panel.error" class="mp-error">
-        {{ panel.error }}
+      <div v-else-if="panel.activePanel.error" class="mp-error">
+        {{ panel.activePanel.error }}
       </div>
 
       <!-- Metadata content -->
-      <div v-else-if="meta" class="mp-content" :style="panel.dirty || panel.saving ? 'padding-bottom: 64px' : ''">
+      <div v-else-if="meta" class="mp-content" :style="panel.activePanel.dirty || panel.activePanel.saving ? 'padding-bottom: 64px' : ''">
 
         <!-- File & Camera -->
         <div class="mp-section">
@@ -80,7 +80,7 @@
                 type="datetime-local"
                 step="1"
                 :value="isoToDatetimeLocal(edit.dateTimeOriginal)"
-                @change="e => { edit.dateTimeOriginal = datetimeLocalToIso(e.target.value); panel.dirty = true }"
+                @change="e => { edit.dateTimeOriginal = datetimeLocalToIso(e.target.value); panel.activePanel.dirty = true }"
               />
             </label>
           </div>
@@ -204,7 +204,7 @@
                 class="mp-input"
                 type="text"
                 v-model="edit.imageDescription"
-                @input="panel.dirty = true"
+                @input="panel.activePanel.dirty = true"
                 placeholder="Add a description…"
               />
             </label>
@@ -215,7 +215,7 @@
                 class="mp-input"
                 type="text"
                 v-model="edit.artist"
-                @input="panel.dirty = true"
+                @input="panel.activePanel.dirty = true"
                 placeholder="Photographer name…"
               />
             </label>
@@ -226,13 +226,13 @@
                 class="mp-input"
                 type="text"
                 v-model="edit.copyright"
-                @input="panel.dirty = true"
+                @input="panel.activePanel.dirty = true"
                 placeholder="© Year Name…"
               />
             </label>
           </div>
 
-          <p class="mp-save-notice" v-if="!panel.dirty && !panel.saving">
+          <p class="mp-save-notice" v-if="!panel.activePanel.dirty && !panel.activePanel.saving">
             Changes are written directly to the file's EXIF data.
           </p>
         </div>
@@ -241,11 +241,11 @@
 
       <!-- Floating action bar -->
       <Transition name="mp-bar">
-        <div class="mp-float-bar" v-if="panel.dirty || panel.saving">
+        <div class="mp-float-bar" v-if="panel.activePanel.dirty || panel.activePanel.saving">
           <div class="mp-actions">
-            <button class="mp-btn mp-btn-ghost" @click="resetEdit" :disabled="panel.saving">Reset</button>
-            <button class="mp-btn mp-btn-primary" @click="save" :disabled="panel.saving">
-              <span v-if="panel.saving">Saving…</span>
+            <button class="mp-btn mp-btn-ghost" @click="resetEdit" :disabled="panel.activePanel.saving">Reset</button>
+            <button class="mp-btn mp-btn-primary" @click="save" :disabled="panel.activePanel.saving">
+              <span v-if="panel.activePanel.saving">Saving…</span>
               <span v-else>Save changes</span>
             </button>
           </div>
@@ -271,7 +271,9 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { useScanStore } from '../store/scan'
+import { useDuplicatesStore } from '../store/duplicates'
+import { usePanelStore } from '../store/panel'
+import { useThumbnailStore } from '../store/thumbnails'
 import { useMapViewStore } from '../store/mapView'
 import MapPreview from './MapPreview.vue'
 import ChevronIcon from './ChevronIcon.vue'
@@ -279,20 +281,22 @@ import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetime
 import { useGpsEditor } from '../composables/useGpsEditor'
 import { MP_MIN_WIDTH, MP_MIN_THUMB_HEIGHT } from '../constants'
 
-const store = useScanStore()
-const HEIC  = new Set(['heic', 'heif'])
+const store  = useDuplicatesStore()
+const panel  = usePanelStore()
+const thumbs = useThumbnailStore()
+const HEIC   = new Set(['heic', 'heif'])
 
 const panelWidth  = ref(MP_MIN_WIDTH)
 const mapViewStore  = useMapViewStore()
 const mapResetKey   = ref(0)
-const savedMapView  = ref(mapViewStore.resultsPanel)
+const savedMapView  = ref(mapViewStore.duplicates)
 const mapPreviewRef = ref(null)
 
 // Save map state the moment the panel closes (before v-if removes MapPreview from DOM)
-watch(() => store.metadataPanel, (p, prev) => {
+watch(() => panel.activePanel, (p, prev) => {
   if (prev && !p) {
     const state = mapPreviewRef.value?.getMapState()
-    if (state) mapViewStore.resultsPanel = state
+    if (state) mapViewStore.duplicates = state
     savedMapView.value = null
   }
 }, { flush: 'sync' })
@@ -333,12 +337,12 @@ onBeforeUnmount(() => {
   panelWidth.value  = MP_MIN_WIDTH
   thumbHeight.value = MP_MIN_THUMB_HEIGHT
   const state = mapPreviewRef.value?.getMapState()
-  if (state) mapViewStore.resultsPanel = state
+  if (state) mapViewStore.duplicates = state
 })
 
-const panel  = computed(() => store.metadataPanel)
-const entry  = computed(() => panel.value?.entry ?? {})
-const meta   = computed(() => panel.value?.metadata ?? null)
+const activePanel = computed(() => panel.activePanel)
+const entry  = computed(() => activePanel.value?.entry ?? {})
+const meta   = computed(() => activePanel.value?.metadata ?? null)
 
 // ── Section collapse state ────────────────────────────────────────────────────
 const collapsed = ref({ file: false, date: false, location: false, exposure: true, details: true })
@@ -367,7 +371,7 @@ const {
   previewLat, previewLon, hasGpsPreview,
   onCombinedInput, onGpsInput, normalizeGpsInput,
   resetGps, validateGps,
-} = useGpsEditor(meta, () => { panel.value.dirty = true })
+} = useGpsEditor(meta, () => { panel.activePanel.dirty = true })
 
 const SPAIN_CENTER = { lat: 40.416775, lon: -3.703790 }
 const mapCenter = computed(() => ({
@@ -399,7 +403,7 @@ function resetEdit() {
     copyright:        meta.value.copyright ?? '',
   }
   resetGps(meta.value)
-  if (panel.value) panel.value.dirty = false
+  if (panel.activePanel) panel.activePanel.dirty = false
 }
 
 watch(meta, (m) => { if (m) resetEdit() }, { immediate: true })
@@ -416,8 +420,8 @@ async function save() {
     gpsLatitude:      lat,
     gpsLongitude:     lon,
   })
-  if (panel.value?.error) {
-    showNotification('error', panel.value.error, 4000)
+  if (panel.activePanel?.error) {
+    showNotification('error', panel.activePanel.error, 4000)
   } else {
     showNotification('success', 'Saved successfully')
   }
@@ -429,11 +433,11 @@ const thumbSrc = computed(() => {
   if (!p) return null
   const ext = fileExt(p)
   if (HEIC.has(ext)) {
-    return store.thumbCache[p] && store.thumbCache[p] !== '__error__'
-      ? store.thumbCache[p]
+    return thumbs.thumbCache[p] && thumbs.thumbCache[p] !== '__error__'
+      ? thumbs.thumbCache[p]
       : null
   }
-  return store.directSrcCache[p] ?? convertFileSrc(p)
+  return thumbs.directSrcCache[p] ?? convertFileSrc(p)
 })
 
 const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime || meta.value.fNumber || meta.value.isoSpeed || meta.value.focalLength))

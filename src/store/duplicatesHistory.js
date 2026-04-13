@@ -22,7 +22,7 @@ function cacheKey(folders, threshold, fastMode, crossDatePhash) {
   return `${foldersKey(folders)}@@${threshold}@@${fastMode ? 'fast' : 'precise'}@@${crossDatePhash ? 'cross' : 'nocross'}`
 }
 
-export const useHistoryStore = defineStore('history', {
+export const useDuplicatesHistoryStore = defineStore('duplicatesHistory', {
   state: () => ({
     // Each entry: { id, folders, date, duplicates, imageCount, fingerprint, groups, threshold }
     entries: [],

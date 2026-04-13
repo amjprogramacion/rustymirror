@@ -52,14 +52,7 @@ fn read_capture_date(path: &Path, bytes: &[u8], meta: &std::fs::Metadata) -> Str
                 &ts[9..11], &ts[11..13], &ts[13..15]);
         }
     }
-            }
-        }
-    }
-    meta.modified().ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .and_then(|d| chrono::DateTime::<chrono::Utc>::from_timestamp(d.as_secs() as i64, 0))
-        .map(|dt| dt.to_rfc3339())
-        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
+    parse_exif_date(bytes).unwrap_or_else(|| mtime_rfc3339(meta))
 }
 
 pub fn collect_images(directories: &[PathBuf]) -> Vec<PathBuf> {

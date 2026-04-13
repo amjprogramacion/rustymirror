@@ -22,20 +22,7 @@
       <div class="sidebar-divider" />
 
       <!-- Folder list -->
-      <section class="sidebar-section">
-        <p class="section-label">Folders</p>
-
-        <button class="btn btn-secondary btn-full" @click="pickFolder">
-          + Add folder
-        </button>
-
-        <ul class="folder-list" v-if="store.folders.length">
-          <li v-for="folder in store.folders" :key="folder" class="folder-item">
-            <span class="folder-path" :title="folder">{{ folder }}</span>
-            <button class="btn-remove" @click="store.removeFolder(folder)" title="Remove folder">✕</button>
-          </li>
-        </ul>
-      </section>
+      <FolderSection :folders="store.folders" @add="pickFolder" @remove="store.removeFolder" />
 
       <div class="sidebar-divider" />
 
@@ -191,20 +178,7 @@
       <div class="sidebar-divider" />
 
       <!-- Folder list -->
-      <section class="sidebar-section">
-        <p class="section-label">Folders</p>
-
-        <button class="btn btn-secondary btn-full" @click="pickMetaFolder">
-          + Add folder
-        </button>
-
-        <ul class="folder-list" v-if="meta.folders.length">
-          <li v-for="folder in meta.folders" :key="folder" class="folder-item">
-            <span class="folder-path" :title="folder">{{ folder }}</span>
-            <button class="btn-remove" @click="meta.removeFolder(folder)" title="Remove folder">✕</button>
-          </li>
-        </ul>
-      </section>
+      <FolderSection :folders="meta.folders" @add="pickMetaFolder" @remove="meta.removeFolder" />
 
       <div class="sidebar-divider" />
 
@@ -420,9 +394,9 @@ import { useMode } from '../composables/useMode'
 import { useSettings } from '../composables/useSettings'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import { useScanStore } from '../store/scan'
+import { useDuplicatesStore } from '../store/duplicates'
 import { useMetadataStore } from '../store/metadata'
-import { useHistoryStore } from '../store/history'
+import { useDuplicatesHistoryStore } from '../store/duplicatesHistory'
 import { useMetadataHistoryStore } from '../store/metadataHistory'
 import { formatSize, shortPath, formatLocalDate, formatDuration } from '../utils/formatters'
 import { useCacheSize } from '../composables/useCacheSize'
@@ -431,9 +405,10 @@ import { SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../constants'
 import SettingsModal from './SettingsModal.vue'
 import SelectChevron from './SelectChevron.vue'
 import ClearIcon from './ClearIcon.vue'
+import FolderSection from './FolderSection.vue'
 
 const { activeMode } = useMode()
-const store = useScanStore()
+const store = useDuplicatesStore()
 const meta = useMetadataStore()
 
 const sortOptions = [
@@ -441,7 +416,7 @@ const sortOptions = [
   { key: 'location', label: 'Location' },
   { key: 'device',   label: 'Device'   },
 ]
-const history = useHistoryStore()
+const history = useDuplicatesHistoryStore()
 const metaHistory = useMetadataHistoryStore()
 const { status: updateStatus } = useUpdater()
 const baseVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0'
@@ -682,42 +657,6 @@ onBeforeUnmount(() => {
 }
 .filter-clear-all:hover { opacity: 0.75; }
 
-/* ── Folder list ── */
-.folder-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.folder-item {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-1);
-  padding: 4px var(--space-1);
-  border-radius: var(--border-radius-sm);
-  background: var(--bg-card);
-}
-
-.folder-path {
-  flex: 1;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  word-break: break-all;
-  line-height: 1.4;
-}
-
-.btn-remove {
-  background: none;
-  color: var(--color-danger);
-  font-size: 11px;
-  padding: 0 2px;
-  line-height: 1;
-  flex-shrink: 0;
-  margin-top: 1px;
-  transition: color var(--transition);
-}
-.btn-remove:hover { color: var(--color-danger-hover); }
 
 .empty-hint {
   font-size: var(--font-size-xs);

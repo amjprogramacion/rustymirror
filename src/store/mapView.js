@@ -4,9 +4,9 @@ import { defineStore } from 'pinia'
 // so switching between tools restores the exact position the user left.
 export const useMapViewStore = defineStore('mapView', {
   state: () => ({
-    // MetadataBottomPanel (MetadataManager / metadata tool)
-    metadataManager: null, // { zoom, lat, lon }
-    // MetadataPanel (ResultsArea / duplicates tool)
-    resultsPanel: null,    // { zoom, lat, lon }
+    // BatchEditPanel (MetadataView / metadata tool)
+    metadata: null, // { zoom, lat, lon }
+    // ImageDetailPanel (DuplicatesView / duplicates tool)
+    duplicates: null,    // { zoom, lat, lon }
   }),
 })

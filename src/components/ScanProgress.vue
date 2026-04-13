@@ -61,9 +61,9 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useScanStore } from '../store/scan'
+import { useDuplicatesStore } from '../store/duplicates'
 
-const store = useScanStore()
+const store = useDuplicatesStore()
 
 const isScanning = computed(() =>
   store.progress.total > 0 &&

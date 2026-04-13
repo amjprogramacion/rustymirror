@@ -1,12 +1,14 @@
 import { defineStore } from 'pinia'
-import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { logger } from '../utils/logger'
-import { useHistoryStore } from './history'
+import { useDuplicatesHistoryStore } from './duplicatesHistory'
 import { useMetadataStore } from './metadata'
 import { useSettings } from '../composables/useSettings'
+import { useThumbnailStore } from './thumbnails'
+import { usePanelStore } from './panel'
 
-export const useScanStore = defineStore('scan', {
+export const useDuplicatesStore = defineStore('duplicates', {
   state: () => ({
     folders: [],
     scanning: false,
@@ -26,16 +28,8 @@ export const useScanStore = defineStore('scan', {
     selected: new Set(),
     scanDone: false,
     error: null,
-    thumbCache: {},
     networkFolders: new Set(),
     lightbox: null,
-    directSrcCache: {},
-    // Metadata panel: null when closed, { entry, metadata, loading, saving, error, dirty } when open
-    metadataPanel: null,
-    metadataPanelHeight: 300,
-    heicThumbGenerated: 0,
-    _thumbQueue: [],
-    _thumbActive: 0,
     // ID of the history entry currently displayed in the results panel.
     // Set after each completed scan; used by Sidebar to highlight the active entry.
     activeHistoryEntryId: null,
@@ -242,11 +236,7 @@ export const useScanStore = defineStore('scan', {
       this.dupSortDir = 'desc'
       this.selected = new Set()
       this.searchQuery = ''
-      this._thumbQueue = []
-      this._thumbActive = 0
-      this.heicThumbGenerated = 0
-      this.thumbCache = {}
-      this.directSrcCache = {}
+      useThumbnailStore().clearCache()
       this.networkFolders = new Set()
       this.error = null
       this.progress = { scanned: 0, total: 0 }
@@ -268,7 +258,7 @@ export const useScanStore = defineStore('scan', {
       })
 
       try {
-        const history = useHistoryStore()
+        const history = useDuplicatesHistoryStore()
         const hammingThreshold = Math.round((100 - this.similarityThreshold) / 100 * 64)
 
         // Resolve fastMode and crossDatePhash before the try block so they are visible
@@ -328,7 +318,9 @@ export const useScanStore = defineStore('scan', {
 
           try {
             const checks = await Promise.all(this.folders.map(f => invoke('is_network_path', { path: f })))
-            this.setNetworkFolders(this.folders.filter((_, i) => checks[i]))
+            const networkFolders = this.folders.filter((_, i) => checks[i])
+            this.setNetworkFolders(networkFolders)
+            useThumbnailStore().setNetworkFolders(networkFolders)
           } catch { /* ignore */ }
         }
       } catch (e) {
@@ -360,27 +352,6 @@ export const useScanStore = defineStore('scan', {
       this.lightbox = null
     },
 
-    async openMetadataPanel(entry) {
-      this.metadataPanel = { entry, metadata: null, loading: true, saving: false, error: null, dirty: false }
-      try {
-        const metadata = await invoke('read_metadata', { path: entry.path })
-        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, metadata, loading: false }
-      } catch (e) {
-        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, loading: false, error: String(e) }
-      }
-    },
-    async openBatchEditPanel(entries) {
-      this.metadataPanel = { batch: true, entries, allMetadata: null, loading: true, saving: false, error: null, dirty: false }
-      try {
-        const allMetadata = await Promise.all(entries.map(e => invoke('read_metadata', { path: e.path })))
-        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, allMetadata, loading: false }
-      } catch (e) {
-        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, loading: false, error: String(e) }
-      }
-    },
-    closeMetadataPanel() {
-      this.metadataPanel = null
-    },
     // Patch the matching entry inside groups[] after a metadata save
     updateGroupEntry(path, metadata) {
       const d      = new Date()
@@ -403,35 +374,37 @@ export const useScanStore = defineStore('scan', {
       }
     },
     async saveMetadata(update) {
-      if (!this.metadataPanel) return
-      this.metadataPanel = { ...this.metadataPanel, saving: true, error: null }
+      const panel = usePanelStore()
+      if (!panel.activePanel) return
+      panel.activePanel = { ...panel.activePanel, saving: true, error: null }
       try {
-        const path = this.metadataPanel.entry.path
+        const path = panel.activePanel.entry.path
         await invoke('write_metadata', { path, update })
         const metadata = await invoke('read_metadata', { path })
-        this.metadataPanel = { ...this.metadataPanel, metadata, saving: false, dirty: false }
+        panel.activePanel = { ...panel.activePanel, metadata, saving: false, dirty: false }
         useMetadataStore().updateEntryFromMetadata(path, metadata)
         this.updateGroupEntry(path, metadata)
       } catch (e) {
-        this.metadataPanel = { ...this.metadataPanel, saving: false, error: String(e) }
+        panel.activePanel = { ...panel.activePanel, saving: false, error: String(e) }
       }
     },
     async saveBatchMetadata(update) {
-      if (!this.metadataPanel?.batch) return
-      this.metadataPanel = { ...this.metadataPanel, saving: true, error: null }
+      const panel = usePanelStore()
+      if (!panel.activePanel?.batch) return
+      panel.activePanel = { ...panel.activePanel, saving: true, error: null }
       try {
-        await Promise.all(this.metadataPanel.entries.map(e => invoke('write_metadata', { path: e.path, update })))
-        const allMetadata = await Promise.all(this.metadataPanel.entries.map(e => invoke('read_metadata', { path: e.path })))
-        if (this.metadataPanel) {
-          this.metadataPanel = { ...this.metadataPanel, allMetadata, saving: false, dirty: false }
+        await Promise.all(panel.activePanel.entries.map(e => invoke('write_metadata', { path: e.path, update })))
+        const allMetadata = await Promise.all(panel.activePanel.entries.map(e => invoke('read_metadata', { path: e.path })))
+        if (panel.activePanel) {
+          panel.activePanel = { ...panel.activePanel, allMetadata, saving: false, dirty: false }
           const metaStore = useMetadataStore()
-          this.metadataPanel.entries.forEach((e, i) => {
+          panel.activePanel.entries.forEach((e, i) => {
             metaStore.updateEntryFromMetadata(e.path, allMetadata[i])
             this.updateGroupEntry(e.path, allMetadata[i])
           })
         }
       } catch (e) {
-        if (this.metadataPanel) this.metadataPanel = { ...this.metadataPanel, saving: false, error: String(e) }
+        if (panel.activePanel) panel.activePanel = { ...panel.activePanel, saving: false, error: String(e) }
       }
     },
     lightboxNext() {
@@ -442,13 +415,6 @@ export const useScanStore = defineStore('scan', {
       if (!this.lightbox) return
       this.lightbox.index = (this.lightbox.index - 1 + this.lightbox.entries.length) % this.lightbox.entries.length
     },
-    setThumb(path, src) {
-      this.thumbCache[path] = src
-    },
-    setDirectSrc(path, src) {
-      this.directSrcCache[path] = src
-    },
-
     setNetworkFolders(folders) {
       this.networkFolders = new Set(folders)
     },
@@ -458,58 +424,6 @@ export const useScanStore = defineStore('scan', {
         if (path.startsWith(f)) return true
       }
       return false
-    },
-
-    // Drop all pending (not yet in-flight) thumbnail requests
-    clearThumbQueue() {
-      this._thumbQueue = []
-    },
-
-    // Remove a single path from the pending queue (if not yet in-flight)
-    dequeueThumbnail(path) {
-      const idx = this._thumbQueue.indexOf(path)
-      if (idx !== -1) this._thumbQueue.splice(idx, 1)
-    },
-
-    // Enqueue a thumbnail load, respecting global concurrency (max 4 at once)
-    enqueueThumbnail(path) {
-      if (path in this.thumbCache) return
-      if (this.directSrcCache[path]) return   // already has a working direct URL
-      if (this._thumbQueue.includes(path)) return
-      this._thumbQueue.push(path)
-      this._flushThumbQueue()
-    },
-
-    _flushThumbQueue() {
-      const MAX = useSettings().thumbConcurrency.value
-      while (this._thumbActive < MAX && this._thumbQueue.length > 0) {
-        const path = this._thumbQueue.shift()
-        if (path in this.thumbCache) continue
-        if (this.directSrcCache[path]) continue  // already resolved via convertFileSrc
-        this._thumbActive++
-        invoke('get_thumbnail', { path })
-          .then(src => {
-            this.thumbCache[path] = src
-            this.heicThumbGenerated++
-          })
-          .catch((e) => {
-            console.warn('Thumbnail generation failed:', path, e)
-            // PNGs and HEIC are always routed through Rust — don't fall back to
-            // convertFileSrc for them (that's exactly what we're trying to avoid).
-            // For other formats on local paths, let the browser try natively.
-            const ext = path.split('.').pop()?.toLowerCase() ?? ''
-            const rustOnly = ext === 'heic' || ext === 'heif' || ext === 'png'
-            if (!rustOnly && !this.isNetworkPath(path)) {
-              this.directSrcCache[path] = convertFileSrc(path)
-            } else {
-              this.thumbCache[path] = '__error__'
-            }
-          })
-          .finally(() => {
-            this._thumbActive--
-            this._flushThumbQueue()
-          })
-      }
     },
 
     async deleteSelected() {
@@ -544,7 +458,7 @@ export const useScanStore = defineStore('scan', {
       this.selected = new Set()
       logger.info(`groups after delete: ${this.groups.length}`)
 
-      const history = useHistoryStore()
+      const history = useDuplicatesHistoryStore()
       const histEntry = history.entries.find(e => e.id === this.activeHistoryEntryId)
       if (histEntry) {
         histEntry.fingerprint = null

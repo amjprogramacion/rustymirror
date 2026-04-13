@@ -64,8 +64,8 @@
             draggable="false"
           />
           <img
-            v-else-if="store.thumbCache[entry.path] && store.thumbCache[entry.path] !== '__error__'"
-            :src="store.thumbCache[entry.path]"
+            v-else-if="thumbs.thumbCache[entry.path] && thumbs.thumbCache[entry.path] !== '__error__'"
+            :src="thumbs.thumbCache[entry.path]"
             class="lb-thumb-img"
             draggable="false"
           />
@@ -93,10 +93,12 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
-import { useScanStore } from '../store/scan'
+import { useDuplicatesStore } from '../store/duplicates'
+import { useThumbnailStore } from '../store/thumbnails'
 import { fileName, formatSize, formatDate } from '../utils/formatters'
 
-const store   = useScanStore()
+const store  = useDuplicatesStore()
+const thumbs = useThumbnailStore()
 const HEIC    = new Set(['heic', 'heif'])
 const entries = computed(() => store.lightbox?.entries ?? [])
 const index   = computed(() => store.lightbox?.index ?? 0)

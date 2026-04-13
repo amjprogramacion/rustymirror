@@ -241,7 +241,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useHistoryStore } from '../store/history'
+import { useDuplicatesHistoryStore } from '../store/duplicatesHistory'
 import { useMetadataStore } from '../store/metadata'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
@@ -258,7 +258,7 @@ const tabs = [
 ]
 const activeTab = ref('general')
 
-const history = useHistoryStore()
+const history = useDuplicatesHistoryStore()
 const meta    = useMetadataStore()
 const version = ref(import.meta.env.VITE_APP_VERSION ?? '0.1.0')
 

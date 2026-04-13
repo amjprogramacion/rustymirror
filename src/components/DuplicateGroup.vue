@@ -24,19 +24,19 @@
       >
         <div class="thumb-wrap" :data-path="entry.path">
           <img
-            v-if="store.directSrcCache[entry.path]"
-            :src="store.directSrcCache[entry.path]"
+            v-if="thumbs.directSrcCache[entry.path]"
+            :src="thumbs.directSrcCache[entry.path]"
             class="thumb"
             draggable="false"
             @error="onDirectSrcError(entry.path)"
           />
           <img
-            v-else-if="store.thumbCache[entry.path] && store.thumbCache[entry.path] !== THUMB_ERROR"
-            :src="store.thumbCache[entry.path]"
+            v-else-if="thumbs.thumbCache[entry.path] && thumbs.thumbCache[entry.path] !== THUMB_ERROR"
+            :src="thumbs.thumbCache[entry.path]"
             class="thumb"
             draggable="false"
           />
-          <div v-else-if="store.thumbCache[entry.path] === THUMB_ERROR" class="thumb-placeholder">
+          <div v-else-if="thumbs.thumbCache[entry.path] === THUMB_ERROR" class="thumb-placeholder">
             <span class="thumb-ext">{{ fileExt(entry.path).toUpperCase() }}</span>
             <span class="thumb-no-preview">No preview</span>
           </div>
@@ -59,7 +59,7 @@
             <div class="btn-group">
               <button class="btn-open btn-explore" @click.stop="openFolder(entry.path)" title="Show in folder">Explore</button>
               <button class="btn-open" @click.stop="openFile(entry.path)" title="Open file">Open</button>
-              <button class="btn-open btn-info" @click.stop="store.openMetadataPanel(entry)" title="View metadata">EXIF</button>
+              <button class="btn-open btn-info" @click.stop="panel.openPanel(entry)" title="View metadata">EXIF</button>
             </div>
             <label v-if="!store.multiSelect" class="card-checkbox" @click.stop>
               <input
@@ -78,11 +78,15 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
-import { useScanStore } from '../store/scan'
+import { useDuplicatesStore } from '../store/duplicates'
+import { useThumbnailStore } from '../store/thumbnails'
+import { usePanelStore } from '../store/panel'
 import { fileExt, fileName, formatSize, formatDate, kindLabel } from '../utils/formatters'
 
 const props = defineProps({ group: { type: Object, required: true } })
-const store = useScanStore()
+const store  = useDuplicatesStore()
+const thumbs = useThumbnailStore()
+const panel  = usePanelStore()
 const THUMB_ERROR = '__error__'
 const HEIC_EXTS = new Set(['heic', 'heif'])
 // PNGs are always processed via Rust to avoid WebView2 rendering issues with
@@ -100,13 +104,13 @@ function needsRust(path) {
 
 onMounted(() => {
   for (const entry of props.group.entries) {
-    if (!needsRust(entry.path) && !(entry.path in store.directSrcCache)) {
-      store.setDirectSrc(entry.path, convertFileSrc(entry.path))
+    if (!needsRust(entry.path) && !(entry.path in thumbs.directSrcCache)) {
+      thumbs.setDirectSrc(entry.path, convertFileSrc(entry.path))
     }
   }
 
   const toObserve = props.group.entries.filter(e =>
-    needsRust(e.path) && !(e.path in store.thumbCache)
+    needsRust(e.path) && !(e.path in thumbs.thumbCache)
   )
 
   if (toObserve.length === 0) return
@@ -115,14 +119,14 @@ onMounted(() => {
     for (const e of entries) {
       const path = e.target.dataset.cardPath
       if (!path) continue
-      if (path in store.thumbCache) {
+      if (path in thumbs.thumbCache) {
         observer.unobserve(e.target)
         continue
       }
       if (e.isIntersecting) {
-        store.enqueueThumbnail(path)
+        thumbs.enqueueThumbnail(path)
       } else {
-        store.dequeueThumbnail(path)
+        thumbs.dequeueThumbnail(path)
       }
     }
   }, { rootMargin: '400px', threshold: 0 })
@@ -133,7 +137,7 @@ onMounted(() => {
     const cards = groupEl.value.querySelectorAll('.card[data-card-path]')
     cards.forEach(el => {
       const path = el.dataset.cardPath
-      if (pathsToObserve.has(path) && !(path in store.thumbCache)) {
+      if (pathsToObserve.has(path) && !(path in thumbs.thumbCache)) {
         observer.observe(el)
       }
     })
@@ -147,8 +151,8 @@ onBeforeUnmount(() => observer?.disconnect())
 // src so the template falls through to the thumb path, then ask Rust to decode
 // and serve the file — Rust now falls back to raw bytes if it can't resize.
 function onDirectSrcError(path) {
-  store.directSrcCache[path] = null
-  store.enqueueThumbnail(path)
+  thumbs.directSrcCache[path] = null
+  thumbs.enqueueThumbnail(path)
 }
 
 const focusedPath = ref(null)

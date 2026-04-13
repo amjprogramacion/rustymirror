@@ -32,22 +32,7 @@
       </button>
 
       <!-- Search -->
-      <div class="search-wrap">
-        <span class="search-icon">⌕</span>
-        <input
-          class="search-input"
-          type="text"
-          placeholder="Search by filename…"
-          v-model="store.searchQuery"
-          @keydown.escape="store.searchQuery = ''"
-        />
-        <button
-          v-if="store.searchQuery"
-          class="search-clear"
-          @click="store.searchQuery = ''"
-          title="Clear search"
-        >✕</button>
-      </div>
+      <SearchInput v-model="store.searchQuery" />
     </div>
 
     <!-- Groups -->
@@ -60,7 +45,7 @@
           No groups match this filter.
         </template>
       </div>
-      <ImageGroup
+      <DuplicateGroup
         v-for="group in store.filteredGroups"
         :key="group.entries.map(e => e.path).join('|')"
         :group="group"
@@ -129,21 +114,24 @@
       </div>
     </div>
   </Transition>
-  <MetadataPanel />
+  <ImageDetailPanel />
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { useScanStore } from '../store/scan'
-import ImageGroup from './ImageGroup.vue'
+import { useDuplicatesStore } from '../store/duplicates'
+import DuplicateGroup from './DuplicateGroup.vue'
 import ScanProgress from './ScanProgress.vue'
-import MetadataPanel from './MetadataPanel.vue'
+import ImageDetailPanel from './ImageDetailPanel.vue'
+import SearchInput from './SearchInput.vue'
+import { useThumbnailStore } from '../store/thumbnails'
 import { fileName } from '../utils/formatters'
 import { DELETE_MAX_PREVIEW } from '../constants'
 
-const store        = useScanStore()
+const store        = useDuplicatesStore()
+const thumbs       = useThumbnailStore()
 const showConfirm  = ref(false)
 const deleteError  = ref(null)
 
@@ -158,7 +146,7 @@ watch(() => store.scanDone, (done) => {
 })
 
 watch(() => store.filteredGroups, () => {
-  store.clearThumbQueue()
+  thumbs.clearThumbQueue()
 })
 
 function onWindowKeydown(e) {
@@ -286,55 +274,6 @@ async function doDelete() {
   font-size: 11px;
   font-weight: 600;
 }
-
-/* ── Search ── */
-.search-wrap {
-  margin-left: auto;
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.search-icon {
-  position: absolute;
-  left: 8px;
-  font-size: 15px;
-  color: var(--text-muted);
-  pointer-events: none;
-  line-height: 1;
-}
-
-.search-input {
-  width: 200px;
-  padding: 4px 28px 4px 26px;
-  border-radius: var(--border-radius-md);
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  transition: border-color var(--transition), width var(--transition);
-  outline: none;
-}
-
-.search-input::placeholder { color: var(--text-muted); }
-
-.search-input:focus {
-  border-color: var(--color-accent);
-  width: 260px;
-}
-
-.search-clear {
-  position: absolute;
-  right: 6px;
-  background: none;
-  color: var(--text-muted);
-  font-size: 11px;
-  padding: 2px 4px;
-  line-height: 1;
-  border-radius: 3px;
-  transition: color var(--transition);
-}
-.search-clear:hover { color: var(--text-primary); }
 
 /* ── Groups scroll ── */
 .groups-scroll {
