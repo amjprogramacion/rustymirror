@@ -3,56 +3,53 @@
     <div class="scan-card">
       <div class="spinner" />
 
-      <!-- Fingerprinting phase: double WalkDir pass -->
-      <template v-if="store.fingerprinting">
-        <p class="scan-title">Analyzing selected folders…</p>
-        <div class="bar-track">
-          <div class="bar-indeterminate" />
-        </div>
+      <!-- Fingerprinting: folder analysis before scan -->
+      <template v-if="fingerprinting">
+        <p class="scan-title">{{ title || 'Analyzing selected folders…' }}</p>
+        <div class="bar-track"><div class="bar-indeterminate" /></div>
       </template>
 
-      <!-- Phase 1: scanning files -->
+      <!-- Determinate scan phase: file count + progress bar + ETA -->
       <template v-else-if="isScanning">
-        <p class="scan-title">{{ store.scanLabel || 'Scanning for duplicates…' }}</p>
+        <p class="scan-title">{{ scanLabel || title || 'Scanning…' }}</p>
         <p class="scan-count">
-          <span class="count-current">{{ store.progress.scanned.toLocaleString() }}</span>
+          <span class="count-current">{{ progress.scanned.toLocaleString() }}</span>
           <span class="count-sep"> / </span>
-          <span class="count-total">{{ store.progress.total.toLocaleString() }}</span>
+          <span class="count-total">{{ progress.total.toLocaleString() }}</span>
           <span class="count-label"> images</span>
         </p>
         <div class="bar-track">
-          <div class="bar-fill" :style="{ width: store.progressPercent + '%' }" />
+          <div class="bar-fill" :style="{ width: progressPercent + '%' }" />
         </div>
         <div class="scan-meta">
-          <span class="pct">{{ store.progressPercent }}%</span>
+          <span class="pct">{{ progressPercent }}%</span>
           <span class="eta">{{ etaLabel || '\xa0' }}</span>
         </div>
       </template>
 
-      <!-- Phase 2-4: analyzing -->
+      <!-- Determinate analyze phase: phase progress bar -->
+      <template v-else-if="isAnalyzing">
+        <p class="scan-title">{{ scanLabel || analyzeProgress.phase || title || 'Analyzing…' }}</p>
+        <p class="scan-count">
+          <span class="count-current">{{ analyzeProgress.analyzed.toLocaleString() }}</span>
+          <span class="count-sep"> / </span>
+          <span class="count-total">{{ analyzeProgress.total.toLocaleString() }}</span>
+          <span class="count-label"> files</span>
+        </p>
+        <div class="bar-track">
+          <div class="bar-fill bar-analyze" :style="{ width: analyzePct + '%' }" />
+        </div>
+        <div class="scan-meta">
+          <span class="pct">{{ analyzePct }}%</span>
+          <span class="eta">&nbsp;</span>
+        </div>
+      </template>
+
+      <!-- Indeterminate fallback: simple title + optional subtitle -->
       <template v-else>
-        <p class="scan-title">{{ store.scanLabel || analyzeTitle }}</p>
-        <template v-if="store.analyzeProgress.total > 1">
-          <p class="scan-count">
-            <span class="count-current">{{ store.analyzeProgress.analyzed.toLocaleString() }}</span>
-            <span class="count-sep"> / </span>
-            <span class="count-total">{{ store.analyzeProgress.total.toLocaleString() }}</span>
-            <span class="count-label"> files</span>
-          </p>
-          <div class="bar-track">
-            <div class="bar-fill bar-analyze" :style="{ width: analyzePct + '%' }" />
-          </div>
-          <div class="scan-meta">
-            <span class="pct">{{ analyzePct }}%</span>
-            <span class="eta">&nbsp;</span>
-          </div>
-        </template>
-        <template v-else>
-          <!-- Indeterminate — no count available yet -->
-          <div class="bar-track">
-            <div class="bar-indeterminate" />
-          </div>
-        </template>
+        <p class="scan-title">{{ scanLabel || title || 'Scanning…' }}</p>
+        <p v-if="subtitle" class="scan-subtitle">{{ subtitle }}</p>
+        <div class="bar-track"><div class="bar-indeterminate" /></div>
       </template>
 
     </div>
@@ -61,27 +58,41 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useDuplicatesStore } from '../store/duplicates'
 
-const store = useDuplicatesStore()
+const props = defineProps({
+  // Generic title shown in all indeterminate phases
+  title:           { type: String,  default: null },
+  // Optional secondary line (e.g. "1 234 images found" during geocoding)
+  subtitle:        { type: String,  default: null },
+  // Duplicates-specific: pre-scan folder fingerprinting phase
+  fingerprinting:  { type: Boolean, default: false },
+  // Duplicates-specific: label override set by the store mid-scan
+  scanLabel:       { type: String,  default: null },
+  // Duplicates-specific: file scan progress { scanned, total }
+  progress:        { type: Object,  default: () => ({ scanned: 0, total: 0 }) },
+  progressPercent: { type: Number,  default: 0 },
+  // Duplicates-specific: analysis phase progress { analyzed, total, phase }
+  analyzeProgress: { type: Object,  default: () => ({ analyzed: 0, total: 0, phase: '' }) },
+  etaSeconds:      { type: Number,  default: null },
+})
 
 const isScanning = computed(() =>
-  store.progress.total > 0 &&
-  store.progress.scanned < store.progress.total
+  (props.progress?.total ?? 0) > 0 &&
+  props.progress.scanned < props.progress.total
+)
+
+const isAnalyzing = computed(() =>
+  (props.analyzeProgress?.total ?? 0) > 1
 )
 
 const analyzePct = computed(() => {
-  const { analyzed, total } = store.analyzeProgress
+  const { analyzed, total } = props.analyzeProgress ?? {}
   if (!total) return 0
   return Math.round((analyzed / total) * 100)
 })
 
-const analyzeTitle = computed(() =>
-  store.analyzeProgress.phase || 'Analyzing…'
-)
-
 const etaLabel = computed(() => {
-  const s = store.etaSeconds
+  const s = props.etaSeconds
   if (!s) return ''
   if (s < 60) return `~${s}s remaining`
   return `~${Math.ceil(s / 60)}m remaining`
@@ -126,6 +137,12 @@ const etaLabel = computed(() => {
   text-align: center;
 }
 
+.scan-subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  text-align: center;
+}
+
 .scan-count { font-size: var(--font-size-lg); color: var(--text-secondary); }
 .count-current { font-weight: 600; color: var(--color-accent); font-size: 22px; }
 .count-sep, .count-total { color: var(--text-secondary); font-size: 18px; }
@@ -146,9 +163,7 @@ const etaLabel = computed(() => {
   transition: width 250ms linear;
 }
 
-.bar-analyze {
-  background: var(--color-success);
-}
+.bar-analyze { background: var(--color-success); }
 
 @keyframes indeterminate {
   0%   { transform: translateX(-100%); }

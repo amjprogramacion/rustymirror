@@ -1,6 +1,14 @@
 <template>
   <!-- Scanning progress -->
-  <ScanProgress v-if="store.scanning" />
+  <ScanProgress
+    v-if="store.scanning"
+    :fingerprinting="store.fingerprinting"
+    :scan-label="store.scanLabel"
+    :progress="store.progress"
+    :progress-percent="store.progressPercent"
+    :analyze-progress="store.analyzeProgress"
+    :eta-seconds="store.etaSeconds"
+  />
 
   <!-- Empty state -->
   <div class="empty-state" v-else-if="!store.scanDone">
