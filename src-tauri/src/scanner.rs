@@ -13,6 +13,71 @@ use crate::hasher::{perceptual_hash_from_bytes, read_file_data};
 use crate::heic::{batch_convert_heic, cleanup_temp};
 use crate::types::{AnalyzeProgress, DuplicateGroup, ImageEntry, SimilarityKind};
 
+// ── BK-tree for O(n log n) pHash similarity search ───────────────────────
+// A BK-tree organises hashes in a metric tree keyed by Hamming distance.
+// Querying for "all hashes within distance T of X" visits only a fraction
+// of nodes (O(log n + k)) instead of scanning everything (O(n)).
+struct BkNode {
+    ph_idx:   usize,                  // index into ph_pairs
+    hash:     image_hasher::ImageHash,
+    children: HashMap<u32, usize>,   // hamming distance → arena index
+}
+
+struct BkTree {
+    nodes: Vec<BkNode>,
+}
+
+impl BkTree {
+    fn new(capacity: usize) -> Self {
+        Self { nodes: Vec::with_capacity(capacity) }
+    }
+
+    fn insert(&mut self, ph_idx: usize, hash: image_hasher::ImageHash) {
+        if self.nodes.is_empty() {
+            self.nodes.push(BkNode { ph_idx, hash, children: HashMap::new() });
+            return;
+        }
+        let mut cur = 0;
+        loop {
+            let d = self.nodes[cur].hash.dist(&hash);
+            // Separate immutable get from mutable insert to satisfy borrow checker.
+            if let Some(&next) = self.nodes[cur].children.get(&d) {
+                cur = next;
+            } else {
+                let new_idx = self.nodes.len();
+                self.nodes[cur].children.insert(d, new_idx);
+                self.nodes.push(BkNode { ph_idx, hash, children: HashMap::new() });
+                return;
+            }
+        }
+    }
+
+    /// Returns ph_pairs indices for all entries with Hamming distance ≤ threshold.
+    fn query(&self, query: &image_hasher::ImageHash, threshold: u32) -> Vec<usize> {
+        let mut results = Vec::new();
+        if self.nodes.is_empty() { return results; }
+        let mut stack = vec![0usize];
+        while let Some(node_idx) = stack.pop() {
+            let node = &self.nodes[node_idx];
+            let d = node.hash.dist(query);
+            if d <= threshold { results.push(node.ph_idx); }
+            // Triangle inequality prunes subtrees that cannot contain matches.
+            let lo = d.saturating_sub(threshold);
+            let hi = d.saturating_add(threshold);
+            for (&child_dist, &child_idx) in &node.children {
+                if child_dist >= lo && child_dist <= hi {
+                    stack.push(child_idx);
+                }
+            }
+        }
+        results
+    }
+}
+
+// Upper bound for the O(n²) distance matrix used in phase 5 cross-date comparison.
+// Above this size the matrix is skipped to avoid large allocations.
+const MATRIX_LIMIT: usize = 4_000;
+
 static IMAGE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "webp", "bmp", "gif", "tiff", "tif", "heic", "heif",
 ];
@@ -668,44 +733,24 @@ where
     let n = ph_pairs.len();
     let mut ph_grouped = vec![false; n];
 
-    // For moderate n, pre-compute all pairwise Hamming distances into a flat
-    // upper-triangular matrix so each pair is computed exactly once and subsequent
-    // lookups are a cheap array index rather than a hash-bit operation.
-    // Index formula for pair (lo, hi) where lo < hi:
-    //   lo * n - lo * (lo + 1) / 2 + (hi - lo - 1)
-    // For large n the early-termination path dominates, so we skip the matrix
-    // to avoid a potentially large allocation (4000 * 3999 / 2 * 4 B ≈ 32 MB).
-    const MATRIX_LIMIT: usize = 4_000;
-    let dist_matrix: Option<Vec<u32>> = if n > 1 && n <= MATRIX_LIMIT {
-        let size = n * (n - 1) / 2;
-        let mut m = vec![0u32; size];
-        for a in 0..n {
-            let base = a * n - a * (a + 1) / 2;
-            for b in (a + 1)..n {
-                m[base + (b - a - 1)] = ph_pairs[a].1.dist(ph_pairs[b].1);
-            }
-        }
-        Some(m)
-    } else {
-        None
-    };
+    // Build a BK-tree for O(n log n) candidate lookup instead of O(n²) scan.
+    // For each ungrouped image A, the tree returns only the images within
+    // `phash_threshold` Hamming distance — skipping the rest entirely.
+    // Since A is always in its own cluster, complete-linkage requires every
+    // member to be within threshold of A, so querying on A's hash yields the
+    // complete candidate set without missing any valid member.
+    let mut bk_tree = BkTree::new(n);
+    for (i, (_, hash)) in ph_pairs.iter().enumerate() {
+        bk_tree.insert(i, (*hash).clone());
+    }
 
-    // Returns the Hamming distance between ph_pairs[a] and ph_pairs[b],
-    // using the pre-computed matrix when available.
-    let pair_dist = |a: usize, b: usize| -> u32 {
-        let (lo, hi) = if a < b { (a, b) } else { (b, a) };
-        if let Some(ref m) = dist_matrix {
-            m[lo * n - lo * (lo + 1) / 2 + (hi - lo - 1)]
-        } else {
-            ph_pairs[lo].1.dist(ph_pairs[hi].1)
-        }
-    };
-
-    // Complete-linkage greedy clustering:
+    // Complete-linkage greedy clustering (same semantics as before):
     // B is added to a cluster only if dist(B, X) ≤ threshold for EVERY existing
     // member X. This guarantees that the worst-case pairwise distance inside any
     // cluster never exceeds the threshold, so the displayed similarity is always
     // ≥ the value the user selected in the slider.
+    // The BK-tree narrows the candidate set; the inner loop enforces the
+    // complete-linkage constraint — results are identical to the O(n²) version.
     //
     // max_dist is tracked incrementally during formation — no post-loop needed.
     for a in 0..n {
@@ -713,10 +758,15 @@ where
         let mut cluster: Vec<usize> = vec![a];
         let mut max_dist = 0u32;
 
-        'next_b: for b in (a + 1)..n {
-            if ph_grouped[b] { continue; }
+        // BK-tree returns only images within threshold of A — O(log n + k).
+        // Sort to preserve ascending-index traversal order (determinism).
+        let mut candidates = bk_tree.query(ph_pairs[a].1, phash_threshold);
+        candidates.sort_unstable();
+
+        'next_b: for b in candidates {
+            if b <= a || ph_grouped[b] { continue; }
             for &x in &cluster {
-                let d = pair_dist(x, b);
+                let d = ph_pairs[x].1.dist(ph_pairs[b].1);
                 if d > phash_threshold {
                     continue 'next_b; // too far from some cluster member — skip
                 }
