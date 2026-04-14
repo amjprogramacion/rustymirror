@@ -13,7 +13,7 @@ use rayon::prelude::*;
 
 use crate::cache::CachedFile;
 use crate::heic::{batch_convert_heic, cleanup_temp};
-use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, ImageEntry, SimilarityKind};
+use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, ImageEntry, RetentionRule, SimilarityKind};
 
 use self::bktree::BkTree;
 use self::grouping::{mark_original, sort_by_date};
@@ -40,6 +40,7 @@ pub fn find_duplicates<F1, F2>(
     cache: Option<std::sync::Arc<crate::cache::Cache>>,
     cross_date_phash: bool,
     fast_mode: bool,
+    retention_rule: RetentionRule,
     scan_cb:    F1,
     analyze_cb: F2,
 ) -> Result<(Vec<DuplicateGroup>, Vec<FailedFile>)>
@@ -127,6 +128,7 @@ where
                                 width:       entry.data.width,
                                 height:      entry.data.height,
                                 modified:    entry.data.modified.clone(),
+                                blur_score:  entry.data.blur_score,
                                 is_original: false,
                                 ..Default::default()
                             },
@@ -270,7 +272,7 @@ where
     for (_, indices) in &exact_map {
         if indices.len() < 2 { continue; }
         let mut entries: Vec<ImageEntry> = indices.iter().map(|&i| records[i].entry.clone()).collect();
-        mark_original(&mut entries); sort_by_date(&mut entries);
+        mark_original(&mut entries, &retention_rule); sort_by_date(&mut entries);
         indices.iter().for_each(|&i| grouped[i] = true);
         groups.push(DuplicateGroup { kind: SimilarityKind::Exact, entries, similarity: Some(100) });
     }
@@ -378,6 +380,7 @@ where
                     width:       extra.width,
                     height:      extra.height,
                     modified:    extra.modified.clone(),
+                    blur_score:  None,
                 })
             })
             // Also cache dimensions for grouped HEICs we just converted, so future
@@ -398,6 +401,7 @@ where
                     width:       *w,
                     height:      *h,
                     modified:    r.entry.modified.clone(),
+                    blur_score:  None,
                 }))
             }))
             .collect();
@@ -525,7 +529,7 @@ where
         };
         let mut entries: Vec<ImageEntry> = cluster.iter()
             .map(|&pos| entry_corrected(ph_pairs[pos].0)).collect();
-        mark_original(&mut entries); sort_by_date(&mut entries);
+        mark_original(&mut entries, &retention_rule); sort_by_date(&mut entries);
         for &pos in &cluster { grouped[ph_pairs[pos].0] = true; }
         groups.push(DuplicateGroup { kind, entries, similarity });
 
@@ -582,7 +586,7 @@ where
         } else { None };
 
         let mut entries: Vec<ImageEntry> = indices.iter().map(|&i| records[i].entry.clone()).collect();
-        mark_original(&mut entries); sort_by_date(&mut entries);
+        mark_original(&mut entries, &retention_rule); sort_by_date(&mut entries);
         indices.iter().for_each(|&i| grouped[i] = true);
         samedate_group_indices.push(indices.to_vec());
         groups.push(DuplicateGroup { kind: SimilarityKind::SameDate, entries, similarity });
@@ -721,7 +725,7 @@ where
             let mut entries: Vec<ImageEntry> = cluster.iter()
                 .map(|&idx| entry_corrected(flat[idx].0))
                 .collect();
-            mark_original(&mut entries); sort_by_date(&mut entries);
+            mark_original(&mut entries, &retention_rule); sort_by_date(&mut entries);
 
             // Cross-group clusters are labelled SameDate with a similarity score
             // so the user can see they were linked by date AND visual similarity.
@@ -763,7 +767,7 @@ where
                     remove_flags[group_pos] = true;
                 } else {
                     // Re-mark original among remaining entries
-                    mark_original(&mut groups[group_pos].entries);
+                    mark_original(&mut groups[group_pos].entries, &retention_rule);
                 }
             }
 
@@ -795,4 +799,15 @@ where
         "scan complete"
     );
     Ok((groups, failed_files))
+}
+
+/// Re-apply a retention rule to an already-scanned set of groups without a full rescan.
+///
+/// For each group: clears `is_original` on all entries, then re-marks the one
+/// entry that best satisfies `rule`. Called from the `apply_retention_rule` Tauri command.
+pub fn apply_retention_rule(mut groups: Vec<DuplicateGroup>, rule: &RetentionRule) -> Vec<DuplicateGroup> {
+    for g in &mut groups {
+        mark_original(&mut g.entries, rule);
+    }
+    groups
 }

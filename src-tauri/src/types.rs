@@ -28,6 +28,27 @@ pub struct ImageEntry {
     pub gps_longitude: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,        // "Make Model"
+    /// Laplacian variance of the image (higher = sharper). None for HEIC or on decode failure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blur_score: Option<f64>,
+}
+
+/// Which criterion to use when selecting the "original" within a duplicate group.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum RetentionRule {
+    /// Keep the copy with the highest pixel count (width × height). Default.
+    HighestResolution,
+    /// Keep the copy with the earliest capture/modified date.
+    OldestDate,
+    /// Keep the copy with the most recent capture/modified date.
+    NewestDate,
+    /// Keep the copy whose filename matches a simple glob pattern (e.g. `IMG_*`).
+    /// Falls back to `HighestResolution` if no file matches.
+    FilenamePattern { pattern: String },
+    /// Keep the sharpest copy (highest Laplacian variance).
+    /// Falls back to `HighestResolution` for files without a blur score.
+    HighestSharpness,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

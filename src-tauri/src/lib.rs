@@ -35,6 +35,7 @@ pub fn run() {
         .manage(FileListCache(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             commands::scan_directories,
+            commands::apply_retention_rule_cmd,
             commands::stop_scan,
             commands::delete_files,
             commands::log_message,

@@ -55,6 +55,14 @@
             {{ entry.width > 0 ? `${entry.width}x${entry.height}` : '--' }} · {{ formatSize(entry.sizeBytes) }}
           </p>
           <p class="meta-detail">{{ formatDate(entry.dateTaken ?? entry.modified) }}</p>
+          <p v-if="entry.blurScore != null" class="meta-detail meta-sharpness"
+             :title="`Sharpness score: ${entry.blurScore.toFixed(1)}`">
+            <span class="sharpness-label">Sharpness:</span>
+            <span class="sharpness-bar-wrap">
+              <span class="sharpness-bar" :style="{ width: sharpnessPct(entry.blurScore) + '%' }" />
+            </span>
+            {{ entry.blurScore.toFixed(0) }}
+          </p>
           <div class="meta-actions">
             <div class="btn-group">
               <button class="btn-open btn-explore" @click.stop="openFolder(entry.path)" title="Show in folder">Explore</button>
@@ -156,6 +164,15 @@ function onDirectSrcError(path) {
 }
 
 const focusedPath = ref(null)
+
+// Sharpness bar: clamp blur_score to a 0-100% visual range.
+// Scores below ~10 look blurry; scores above ~300 look very sharp.
+// We use log scale so low values aren't invisible.
+function sharpnessPct(score) {
+  if (score == null || score <= 0) return 0
+  const pct = Math.log1p(score) / Math.log1p(400) * 100
+  return Math.min(100, Math.max(2, pct))
+}
 
 function onCardClick(entry) {
   if (store.multiSelect) {
@@ -376,6 +393,13 @@ async function openFolder(path) {
   font-weight: 500;
 }
 .meta-detail { font-size: 10px; color: var(--text-muted); }
+.meta-sharpness { display: flex; align-items: center; gap: 4px; }
+.sharpness-label { flex-shrink: 0; }
+.sharpness-bar-wrap {
+  flex: 1; height: 4px; background: var(--border-color);
+  border-radius: 2px; overflow: hidden; min-width: 24px; max-width: 48px;
+}
+.sharpness-bar { display: block; height: 100%; background: var(--color-accent); border-radius: 2px; }
 
 .btn-open {
   margin-top: 0;
