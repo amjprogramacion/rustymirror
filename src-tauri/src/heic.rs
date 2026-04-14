@@ -63,6 +63,21 @@ fn which_exists(cmd: &str) -> bool {
     std::process::Command::new(cmd).arg("--version").output().is_ok()
 }
 
+/// Waits for `child` to exit, killing it and returning an error if it exceeds `timeout`.
+fn wait_timeout(mut child: std::process::Child, timeout: std::time::Duration) -> Result<std::process::ExitStatus> {
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait()? {
+            Some(status) => return Ok(status),
+            None if start.elapsed() >= timeout => {
+                let _ = child.kill();
+                anyhow::bail!("HEIC converter timed out after {:?}", timeout);
+            }
+            None => std::thread::sleep(std::time::Duration::from_millis(100)),
+        }
+    }
+}
+
 // ── Metadata extraction (no full decode) ─────────────────────────────────────
 
 /// Extract dimensions from HEIC using `magick identify` — much faster than
@@ -129,6 +144,8 @@ pub fn heic_to_temp_jpeg(
     Some((tmp, w, h))
 }
 
+const CONVERT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
 fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim: Option<u32>) -> Result<()> {
     let cmd = magick_path(resource_dir).context("no HEIC converter")?;
 
@@ -144,8 +161,8 @@ fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim
             c.args(["--resampleHeightWidthMax", r.trim_end_matches('>')]);
         }
         c.args([input.to_str().unwrap(), "--setProperty", "format", "jpeg",
-                "--out", output.to_str().unwrap()])
-         .status().context("sips failed")?
+                "--out", output.to_str().unwrap()]);
+        wait_timeout(c.spawn().context("sips failed")?, CONVERT_TIMEOUT)?
     };
 
     #[cfg(target_os = "windows")]
@@ -158,8 +175,8 @@ fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim
             c.args(["-resize", r]);
         }
         c.arg(output.to_str().unwrap())
-         .creation_flags(CREATE_NO_WINDOW)
-         .status().context("magick failed")?
+         .creation_flags(CREATE_NO_WINDOW);
+        wait_timeout(c.spawn().context("magick failed")?, CONVERT_TIMEOUT)?
     };
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -169,8 +186,8 @@ fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim
         if let Some(ref r) = resize_arg {
             c.args(["-resize", r]);
         }
-        c.arg(output.to_str().unwrap())
-         .status().context("magick/convert failed")?
+        c.arg(output.to_str().unwrap());
+        wait_timeout(c.spawn().context("magick/convert failed")?, CONVERT_TIMEOUT)?
     };
 
     if status.success() { Ok(()) } else { anyhow::bail!("converter exit {}", status) }
