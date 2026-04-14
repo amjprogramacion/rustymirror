@@ -57,59 +57,21 @@
         <div class="mbp-sections">
 
           <!-- File & Camera -->
-          <div class="mbp-section">
-            <div class="mbp-section-title">File &amp; Camera</div>
-            <div class="mbp-rows">
-              <div class="mbp-row">
-                <span class="mbp-label">Size</span>
-                <span class="mbp-value" v-if="!isBatch">{{ formatSize(meta.fileSize) }}</span>
-                <span class="mbp-value" v-else-if="batchAgg.fileSize !== MIXED">{{ formatSize(batchAgg.fileSize) }}</span>
-                <span class="mbp-value mbp-value--muted" v-else>Various values</span>
-              </div>
-              <div class="mbp-row" v-if="!isBatch ? meta.width > 0 : batchAgg.width != null">
-                <span class="mbp-label">Dims</span>
-                <span class="mbp-value" v-if="!isBatch">{{ meta.width }}×{{ meta.height }}</span>
-                <span class="mbp-value" v-else-if="batchAgg.width !== MIXED">{{ batchAgg.width }}×{{ batchAgg.height }}</span>
-                <span class="mbp-value mbp-value--muted" v-else>Various values</span>
-              </div>
-              <div class="mbp-row" v-if="!isBatch ? (meta.make || meta.model) : (batchAgg.make != null || batchAgg.model != null)">
-                <span class="mbp-label">Device</span>
-                <span class="mbp-value" v-if="!isBatch">{{ [meta.make, meta.model].filter(Boolean).join(' ') }}</span>
-                <span class="mbp-value" v-else-if="batchAgg.make !== MIXED && batchAgg.model !== MIXED">{{ [batchAgg.make, batchAgg.model].filter(Boolean).join(' ') }}</span>
-                <span class="mbp-value mbp-value--muted" v-else>Various values</span>
-              </div>
-              <div class="mbp-row" v-if="!isBatch ? meta.lensModel : batchAgg.lensModel != null">
-                <span class="mbp-label">Lens</span>
-                <span class="mbp-value" v-if="!isBatch">{{ meta.lensModel }}</span>
-                <span class="mbp-value" v-else-if="batchAgg.lensModel !== MIXED">{{ batchAgg.lensModel }}</span>
-                <span class="mbp-value mbp-value--muted" v-else>Various values</span>
-              </div>
-              <div class="mbp-row" v-if="!isBatch ? meta.software : batchAgg.software != null">
-                <span class="mbp-label">Software</span>
-                <span class="mbp-value" v-if="!isBatch">{{ meta.software }}</span>
-                <span class="mbp-value" v-else-if="batchAgg.software !== MIXED">{{ batchAgg.software }}</span>
-                <span class="mbp-value mbp-value--muted" v-else>Various values</span>
-              </div>
-            </div>
-          </div>
+          <PanelSectionFileCamera
+            class="mbp-section"
+            :meta="meta"
+            :batchAgg="batchAgg"
+            :is-batch="isBatch"
+          />
 
           <!-- Date taken -->
-          <div class="mbp-section">
-            <div class="mbp-section-title">Date taken</div>
-            <div class="mbp-edit-rows">
-              <label class="mbp-edit-row">
-                <input
-                  class="mbp-input"
-                  type="datetime-local"
-                  step="1"
-                  :value="isoToDatetimeLocal(isBatch ? batchEdit.dateTimeOriginal : edit.dateTimeOriginal)"
-                  :placeholder="isBatch && batchAgg.dateTimeOriginal === MIXED ? 'Various values' : ''"
-                  @change="e => { const v = datetimeLocalToIso(e.target.value); isBatch ? (batchEdit.dateTimeOriginal = v) : (edit.dateTimeOriginal = v); panel.dirty = true }"
-                />
-              </label>
-              <p v-if="isBatch && batchAgg.dateTimeOriginal === MIXED && !batchEdit.dateTimeOriginal" class="mbp-various-hint">Various values — leave empty to keep each file's date</p>
-            </div>
-          </div>
+          <PanelSectionDate
+            class="mbp-section"
+            :value="isBatch ? batchEdit.dateTimeOriginal : edit.dateTimeOriginal"
+            :is-mixed="isBatch && batchAgg?.dateTimeOriginal === MIXED"
+            :show-hint="isBatch && batchAgg?.dateTimeOriginal === MIXED && !batchEdit.dateTimeOriginal"
+            @change="v => { isBatch ? (batchEdit.dateTimeOriginal = v) : (edit.dateTimeOriginal = v); panel.dirty = true }"
+          />
 
           <!-- Location -->
           <div class="mbp-section mbp-section--location">
@@ -175,49 +137,29 @@
           </div>
 
           <!-- Exposure -->
-          <div class="mbp-section" v-if="!isBatch ? hasExposureInfo : hasExposureInfoBatch">
-            <div class="mbp-section-title">Exposure</div>
-            <div class="mbp-rows">
-              <template v-for="row in exposureRows" :key="row.label">
-                <div class="mbp-row" v-if="row.visible">
-                  <span class="mbp-label">{{ row.label }}</span>
-                  <span class="mbp-value" v-if="row.value !== MIXED">{{ row.value }}</span>
-                  <span class="mbp-value mbp-value--muted" v-else>Various values</span>
-                </div>
-              </template>
-            </div>
-          </div>
+          <PanelSectionExposure
+            v-if="!isBatch ? hasExposureInfo : hasExposureInfoBatch"
+            class="mbp-section"
+            :meta="meta"
+            :batchAgg="batchAgg"
+            :is-batch="isBatch"
+          />
 
           <!-- Details -->
-          <div class="mbp-section mbp-section--details">
-            <div class="mbp-section-title">Details</div>
-            <div class="mbp-edit-rows">
-              <label class="mbp-edit-row">
-                <span class="mbp-label">Description</span>
-                <input class="mbp-input" type="text"
-                  :value="isBatch ? batchEdit.imageDescription : edit.imageDescription"
-                  @input="e => { isBatch ? (batchEdit.imageDescription = e.target.value) : (edit.imageDescription = e.target.value); panel.dirty = true }"
-                  :placeholder="isBatch && batchAgg.imageDescription === MIXED ? 'Various values' : 'Add a description…'" />
-              </label>
-              <label class="mbp-edit-row">
-                <span class="mbp-label">Artist</span>
-                <input class="mbp-input" type="text"
-                  :value="isBatch ? batchEdit.artist : edit.artist"
-                  @input="e => { isBatch ? (batchEdit.artist = e.target.value) : (edit.artist = e.target.value); panel.dirty = true }"
-                  :placeholder="isBatch && batchAgg.artist === MIXED ? 'Various values' : 'Photographer name…'" />
-              </label>
-              <label class="mbp-edit-row">
-                <span class="mbp-label">Copyright</span>
-                <input class="mbp-input" type="text"
-                  :value="isBatch ? batchEdit.copyright : edit.copyright"
-                  @input="e => { isBatch ? (batchEdit.copyright = e.target.value) : (edit.copyright = e.target.value); panel.dirty = true }"
-                  :placeholder="isBatch && batchAgg.copyright === MIXED ? 'Various values' : '© Year Name…'" />
-              </label>
-            </div>
-            <p class="mbp-save-notice" v-if="!isBatch && !panel.dirty && !panel.saving && !saveError">
-              Changes are written directly to the file's EXIF data.
-            </p>
-          </div>
+          <PanelSectionDetails
+            class="mbp-section mbp-section--details"
+            :description="isBatch ? batchEdit.imageDescription : edit.imageDescription"
+            :artist="isBatch ? batchEdit.artist : edit.artist"
+            :copyright="isBatch ? batchEdit.copyright : edit.copyright"
+            :desc-mixed="isBatch && batchAgg?.imageDescription === MIXED"
+            :artist-mixed="isBatch && batchAgg?.artist === MIXED"
+            :copyright-mixed="isBatch && batchAgg?.copyright === MIXED"
+            :show-notice="!isBatch && !panel.dirty && !panel.saving"
+            @update:description="v => { isBatch ? (batchEdit.imageDescription = v) : (edit.imageDescription = v) }"
+            @update:artist="v => { isBatch ? (batchEdit.artist = v) : (edit.artist = v) }"
+            @update:copyright="v => { isBatch ? (batchEdit.copyright = v) : (edit.copyright = v) }"
+            @change="panel.dirty = true"
+          />
 
         </div>
 
@@ -262,8 +204,12 @@ import { useThumbnailStore } from '../store/thumbnails'
 import { useMapViewStore } from '../store/mapView'
 import { useMetadataStore } from '../store/metadata'
 import MapPreview from './MapPreview.vue'
-import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
+import { fileExt, fileName, folderPath } from '../utils/formatters'
 import { useGpsEditor, parseCombinedGps } from '../composables/useGpsEditor'
+import PanelSectionFileCamera from './PanelSectionFileCamera.vue'
+import PanelSectionExposure   from './PanelSectionExposure.vue'
+import PanelSectionDate       from './PanelSectionDate.vue'
+import PanelSectionDetails    from './PanelSectionDetails.vue'
 
 const store     = useDuplicatesStore()
 const panel     = usePanelStore()
@@ -410,14 +356,14 @@ function resetBatch() {
   }
   batchGpsCombinedRaw.value   = (!agg.gps.mixed && agg.gps.lat != null) ? formatBatchGps(agg.gps.lat, agg.gps.lon) : ''
   batchGpsCombinedError.value = null
-  panel.activePanel.dirty     = false
+  panel.dirty = false
 }
 
 watch(batchAgg, (agg) => { if (agg) resetBatch() }, { immediate: true })
 
 function onBatchGpsInput() {
   batchGpsCombinedError.value = null
-  if (panel.activePanel) panel.activePanel.dirty = true
+  panel.dirty = true
 }
 
 const batchGpsParsed    = computed(() => parseCombinedGps(batchGpsCombinedRaw.value))
@@ -492,7 +438,7 @@ const {
   previewLat, previewLon, hasGpsPreview,
   onCombinedInput, onGpsInput, normalizeGpsInput,
   resetGps, validateGps,
-} = useGpsEditor(meta, () => { panel.value.dirty = true })
+} = useGpsEditor(meta, () => { panel.dirty = true })
 
 function onMapSetLocation({ lat, lon }) {
   if (isBatch.value) {
@@ -523,7 +469,7 @@ function resetEdit() {
     copyright:        meta.value.copyright ?? '',
   }
   resetGps(meta.value)
-  if (panel.value) panel.value.dirty = false
+  panel.dirty = false
 }
 
 watch(meta, (m) => { if (m) resetEdit() }, { immediate: true })
@@ -540,8 +486,8 @@ async function save() {
     gpsLatitude:      lat,
     gpsLongitude:     lon,
   })
-  if (panel.value?.error) {
-    showNotification('error', panel.value.error, 4000)
+  if (panel.activePanel?.error) {
+    showNotification('error', panel.activePanel.error, 4000)
   } else {
     showNotification('success', 'Saved successfully')
   }
@@ -568,27 +514,6 @@ const hasExposureInfoBatch = computed(() => {
   return a && [a.exposureTime, a.fNumber, a.isoSpeed, a.focalLength, a.flash, a.whiteBalance, a.exposureMode, a.meteringMode].some(v => v != null)
 })
 
-// Unified exposure row list — works for both single and batch
-const exposureRows = computed(() => {
-  const a = batchAgg.value
-  const m = meta.value
-  function row(label, singleVal, batchField) {
-    const bv = a?.[batchField]
-    const visible = isBatch.value ? bv != null : !!singleVal
-    const value   = isBatch.value ? bv : singleVal
-    return { label, value, visible }
-  }
-  return [
-    row('Shutter',       m?.exposureTime, 'exposureTime'),
-    row('Aperture',      m?.fNumber,      'fNumber'),
-    row('ISO',           m?.isoSpeed,     'isoSpeed'),
-    row('Focal length',  m?.focalLength,  'focalLength'),
-    row('Flash',         m?.flash,        'flash'),
-    row('White balance', m?.whiteBalance, 'whiteBalance'),
-    row('Exp. mode',     m?.exposureMode, 'exposureMode'),
-    row('Metering',      m?.meteringMode, 'meteringMode'),
-  ]
-})
 </script>
 
 <style scoped>

@@ -46,45 +46,23 @@
       <div v-else-if="meta" class="mp-content" :style="panel.activePanel.dirty || panel.activePanel.saving ? 'padding-bottom: 64px' : ''">
 
         <!-- File & Camera -->
-        <div class="mp-section">
-          <button class="mp-section-title" @click="toggle('file')">
-            File &amp; Camera <ChevronIcon :open="!collapsed.file" />
-          </button>
-          <div class="mp-rows" v-show="!collapsed.file">
-            <div class="mp-row"><span class="mp-label">Size</span><span class="mp-value">{{ formatSize(meta.fileSize) }}</span></div>
-            <div class="mp-row" v-if="meta.width > 0"><span class="mp-label">Dims</span><span class="mp-value">{{ meta.width }}×{{ meta.height }}</span></div>
-            <div class="mp-row" v-if="meta.make || meta.model">
-              <span class="mp-label">Device</span>
-              <span class="mp-value">{{ [meta.make, meta.model].filter(Boolean).join(' ') }}</span>
-            </div>
-            <div class="mp-row" v-if="meta.lensModel">
-              <span class="mp-label">Lens</span>
-              <span class="mp-value">{{ meta.lensModel }}</span>
-            </div>
-            <div class="mp-row" v-if="meta.software">
-              <span class="mp-label">Software</span>
-              <span class="mp-value">{{ meta.software }}</span>
-            </div>
-          </div>
-        </div>
+        <PanelSectionFileCamera
+          class="mp-section"
+          :meta="meta"
+          :collapsible="true"
+          :collapsed="collapsed.file"
+          @toggle="toggle('file')"
+        />
 
         <!-- Date -->
-        <div class="mp-section">
-          <button class="mp-section-title" @click="toggle('date')">
-            Date taken <ChevronIcon :open="!collapsed.date" />
-          </button>
-          <div class="mp-edit-rows" v-show="!collapsed.date">
-            <label class="mp-edit-row">
-              <input
-                class="mp-input"
-                type="datetime-local"
-                step="1"
-                :value="isoToDatetimeLocal(edit.dateTimeOriginal)"
-                @change="e => { edit.dateTimeOriginal = datetimeLocalToIso(e.target.value); panel.activePanel.dirty = true }"
-              />
-            </label>
-          </div>
-        </div>
+        <PanelSectionDate
+          class="mp-section"
+          :value="edit.dateTimeOriginal"
+          :collapsible="true"
+          :collapsed="collapsed.date"
+          @toggle="toggle('date')"
+          @change="v => { edit.dateTimeOriginal = v; panel.activePanel.dirty = true }"
+        />
 
         <!-- Location -->
         <div class="mp-section">
@@ -151,91 +129,29 @@
         </div>
 
         <!-- Exposure -->
-        <div class="mp-section" v-if="hasExposureInfo">
-          <button class="mp-section-title" @click="toggle('exposure')">
-            Exposure <ChevronIcon :open="!collapsed.exposure" />
-          </button>
-          <div class="mp-rows" v-show="!collapsed.exposure">
-            <div class="mp-row" v-if="meta.exposureTime">
-              <span class="mp-label">Shutter</span>
-              <span class="mp-value">{{ meta.exposureTime }}</span>
-            </div>
-            <div class="mp-row" v-if="meta.fNumber">
-              <span class="mp-label">Aperture</span>
-              <span class="mp-value">{{ meta.fNumber }}</span>
-            </div>
-            <div class="mp-row" v-if="meta.isoSpeed">
-              <span class="mp-label">ISO</span>
-              <span class="mp-value">{{ meta.isoSpeed }}</span>
-            </div>
-            <div class="mp-row" v-if="meta.focalLength">
-              <span class="mp-label">Focal length</span>
-              <span class="mp-value">{{ meta.focalLength }}</span>
-            </div>
-            <div class="mp-row" v-if="meta.flash">
-              <span class="mp-label">Flash</span>
-              <span class="mp-value">{{ meta.flash }}</span>
-            </div>
-            <div class="mp-row" v-if="meta.whiteBalance">
-              <span class="mp-label">White balance</span>
-              <span class="mp-value">{{ meta.whiteBalance }}</span>
-            </div>
-            <div class="mp-row" v-if="meta.exposureMode">
-              <span class="mp-label">Exp. mode</span>
-              <span class="mp-value">{{ meta.exposureMode }}</span>
-            </div>
-            <div class="mp-row" v-if="meta.meteringMode">
-              <span class="mp-label">Metering</span>
-              <span class="mp-value">{{ meta.meteringMode }}</span>
-            </div>
-          </div>
-        </div>
+        <PanelSectionExposure
+          v-if="hasExposureInfo"
+          class="mp-section"
+          :meta="meta"
+          :collapsible="true"
+          :collapsed="collapsed.exposure"
+          @toggle="toggle('exposure')"
+        />
 
         <!-- Editable fields -->
-        <div class="mp-section mp-section--edit">
-          <button class="mp-section-title" @click="toggle('details')">
-            Details <ChevronIcon :open="!collapsed.details" />
-          </button>
-          <div class="mp-edit-rows" v-show="!collapsed.details">
-
-            <label class="mp-edit-row">
-              <span class="mp-label">Description</span>
-              <input
-                class="mp-input"
-                type="text"
-                v-model="edit.imageDescription"
-                @input="panel.activePanel.dirty = true"
-                placeholder="Add a description…"
-              />
-            </label>
-
-            <label class="mp-edit-row">
-              <span class="mp-label">Artist</span>
-              <input
-                class="mp-input"
-                type="text"
-                v-model="edit.artist"
-                @input="panel.activePanel.dirty = true"
-                placeholder="Photographer name…"
-              />
-            </label>
-
-            <label class="mp-edit-row">
-              <span class="mp-label">Copyright</span>
-              <input
-                class="mp-input"
-                type="text"
-                v-model="edit.copyright"
-                @input="panel.activePanel.dirty = true"
-                placeholder="© Year Name…"
-              />
-            </label>
-          </div>
-
-          <p class="mp-save-notice" v-if="!panel.activePanel.dirty && !panel.activePanel.saving">
-            Changes are written directly to the file's EXIF data.
-          </p>
-        </div>
+        <PanelSectionDetails
+          class="mp-section mp-section--edit"
+          :description="edit.imageDescription"
+          :artist="edit.artist"
+          :copyright="edit.copyright"
+          :show-notice="!panel.activePanel.dirty && !panel.activePanel.saving"
+          :collapsible="true"
+          :collapsed="collapsed.details"
+          @toggle="toggle('details')"
+          @update:description="v => { edit.imageDescription = v; panel.activePanel.dirty = true }"
+          @update:artist="v => { edit.artist = v; panel.activePanel.dirty = true }"
+          @update:copyright="v => { edit.copyright = v; panel.activePanel.dirty = true }"
+        />
 
       </div>
 
@@ -277,8 +193,12 @@ import { useThumbnailStore } from '../store/thumbnails'
 import { useMapViewStore } from '../store/mapView'
 import MapPreview from './MapPreview.vue'
 import ChevronIcon from './ChevronIcon.vue'
-import { fileExt, fileName, folderPath, formatSize, isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
+import { fileExt, fileName, folderPath } from '../utils/formatters'
 import { useGpsEditor } from '../composables/useGpsEditor'
+import PanelSectionFileCamera from './PanelSectionFileCamera.vue'
+import PanelSectionExposure   from './PanelSectionExposure.vue'
+import PanelSectionDate       from './PanelSectionDate.vue'
+import PanelSectionDetails    from './PanelSectionDetails.vue'
 import { MP_MIN_WIDTH, MP_MIN_THUMB_HEIGHT } from '../constants'
 
 const store  = useDuplicatesStore()

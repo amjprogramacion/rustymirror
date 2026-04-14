@@ -18,313 +18,9 @@
 
     <SettingsModal v-model="showSettings" />
 
-    <template v-if="activeMode === 'duplicates'">
-      <div class="sidebar-divider" />
-
-      <!-- Folder list -->
-      <FolderSection :folders="store.folders" @add="pickFolder" @remove="store.removeFolder" />
-
-      <div class="sidebar-divider" />
-
-      <!-- Similarity threshold -->
-      <section class="sidebar-section">
-        <div class="threshold-header">
-          <p class="section-label">Similarity</p>
-          <span class="threshold-value">{{ store.similarityThreshold }}%</span>
-        </div>
-        <input
-          type="range"
-          min="75"
-          max="100"
-          step="1"
-          v-model.number="store.similarityThreshold"
-          class="threshold-slider"
-          :disabled="store.scanning"
-        />
-        <p class="threshold-hint">
-          <span v-if="store.similarityThreshold === 100">Exact matches only</span>
-          <span v-else-if="store.similarityThreshold >= 95">Very similar ({{ store.similarityThreshold }}%+)</span>
-          <span v-else-if="store.similarityThreshold >= 85">Similar ({{ store.similarityThreshold }}%+)</span>
-          <span v-else>Loosely similar ({{ store.similarityThreshold }}%+)</span>
-        </p>
-      </section>
-
-      <div class="sidebar-divider" />
-
-      <!-- Scan button -->
-      <section class="sidebar-section">
-        <button
-          class="btn btn-full"
-          :class="store.scanning ? 'btn-danger' : 'btn-success'"
-          :disabled="!store.scanning && store.folders.length === 0"
-          @click="store.scanning ? store.stopScan() : store.startScan()"
-        >
-          {{ store.scanning ? 'Stop scan' : 'Scan' }}
-        </button>
-      </section>
-
-      <!-- Sort + Filter — only after scan -->
-      <template v-if="store.scanDone">
-        <div class="sidebar-divider" />
-        <section class="sidebar-section">
-          <p class="section-label">Sort</p>
-          <div class="sort-selects">
-            <div class="select-field">
-              <select class="sort-select filter-select" v-model="store.dupSortBy">
-                <option value="group">Group</option>
-                <option value="date">Date</option>
-                <option value="title">Title</option>
-              </select>
-              <SelectChevron />
-            </div>
-            <div class="select-field">
-              <select class="sort-select filter-select" v-model="store.dupSortDir">
-                <option value="asc">Ascending</option>
-                <option value="desc">Descending</option>
-              </select>
-              <SelectChevron />
-            </div>
-          </div>
-        </section>
-        <div class="sidebar-divider" />
-        <section class="sidebar-section">
-          <p class="section-label">Filter</p>
-          <div class="filter-labeled-row">
-            <span class="filter-label">Group</span>
-            <div class="filter-pills">
-              <button
-                v-for="f in filters"
-                :key="f.value"
-                class="pill"
-                :class="{ active: store.filter === f.value }"
-                @click="store.filter = f.value"
-              >
-                {{ f.label }}
-                <span class="pill-count">{{ store.groupCounts[f.value] }}</span>
-              </button>
-            </div>
-          </div>
-          <div class="filter-labeled-row" v-if="store.availableExtensions.length > 1">
-            <span class="filter-label">Extension</span>
-            <select
-              class="sort-select filter-select"
-              v-model="store.extFilter"
-            >
-              <option value="">All</option>
-              <option v-for="ext in store.availableExtensions" :key="ext" :value="ext">
-                .{{ ext }}
-              </option>
-            </select>
-          </div>
-        </section>
-      </template>
-
-      <!-- Recent scans -->
-      <template v-if="history.entries.length > 0">
-        <div class="sidebar-divider" />
-        <section class="sidebar-section history-section">
-          <p class="section-label">Recent scans</p>
-          <div class="history-entries-scroll">
-          <div
-            v-for="entry in history.entries"
-            :key="entry.id"
-            class="history-entry"
-            :class="{
-              disabled: store.scanning,
-              active: isActiveEntry(entry),
-            }"
-            @click="loadFromHistory(entry)"
-            :title="entry.folders.join('\n')"
-          >
-            <!-- Line 1: date & time (+ scan duration on first real scan) -->
-            <div class="history-date">
-              {{ formatLocalDate(entry.date) }}<span v-if="formatDuration(entry.durationMs)" class="history-duration">&nbsp;({{ formatDuration(entry.durationMs) }})</span>
-            </div>
-
-            <!-- Line 2: folder path(s) -->
-            <div class="history-folders">
-              <span v-for="f in entry.folders" :key="f" class="history-folder" :title="f">
-                {{ shortPath(f) }}
-              </span>
-            </div>
-
-            <!-- Line 3: stats left · threshold badge right -->
-            <div class="history-footer">
-              <span class="history-stats">
-                {{ entry.imageCount ?? 0 }} img · {{ entry.duplicates }} group{{ entry.duplicates !== 1 ? 's' : '' }}
-              </span>
-              <div class="history-badges">
-                <span v-if="entry.fastMode" class="history-fast-badge" title="Fast mode (EXIF thumbnail)">
-                  <svg viewBox="0 0 7 11" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M4.2 0L0 6h3.2L2.8 11 7 5H3.8L4.2 0z" fill="#f5c542"/>
-                  </svg>
-                </span>
-                <span v-if="entry.crossDatePhash !== false" class="history-cross-badge" title="Cross-date similarity (phase 5)">
-                  <svg viewBox="0 0 11 11" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M1 5.5h9M5.5 1v9M2.5 2.5l6 6M8.5 2.5l-6 6" stroke="#7ecfff" stroke-width="1.5" stroke-linecap="round"/>
-                  </svg>
-                </span>
-                <span class="history-threshold">{{ entry.threshold ?? 90 }}%</span>
-              </div>
-            </div>
-          </div>
-          </div><!-- end history-entries-scroll -->
-        </section>
-      </template>
-    </template>
-
-    <!-- Metadata mode sidebar -->
-    <template v-else>
-      <div class="sidebar-divider" />
-
-      <!-- Folder list -->
-      <FolderSection :folders="meta.folders" @add="pickMetaFolder" @remove="meta.removeFolder" />
-
-      <div class="sidebar-divider" />
-
-      <!-- Scan button -->
-      <section class="sidebar-section">
-        <button
-          class="btn btn-full"
-          :class="(meta.scanning || meta.geocoding) ? 'btn-danger' : 'btn-success'"
-          :disabled="!meta.scanning && !meta.geocoding && meta.folders.length === 0"
-          @click="(meta.scanning || meta.geocoding) ? meta.stopScan() : meta.startScan()"
-        >
-          {{ meta.scanning ? 'Stop scan' : meta.geocoding ? 'Stop scan' : 'Scan' }}
-        </button>
-      </section>
-
-      <template v-if="meta.scanDone">
-      <div class="sidebar-divider" />
-
-      <!-- Sorting -->
-      <section class="sidebar-section">
-        <p class="section-label">
-          Sort
-          <span v-if="meta.geocoding && meta.sortBy === 'location'" class="sort-geocoding-hint">
-            · fetching locations…
-          </span>
-        </p>
-        <div class="sort-selects">
-          <div class="select-field">
-            <select class="sort-select filter-select" v-model="meta.sortBy">
-              <option v-for="opt in sortOptions" :key="opt.key" :value="opt.key">{{ opt.label }}</option>
-            </select>
-            <SelectChevron />
-          </div>
-          <div class="select-field">
-            <select class="sort-select filter-select" v-model="meta.sortDir">
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
-            </select>
-            <SelectChevron />
-          </div>
-        </div>
-      </section>
-
-      <div class="sidebar-divider" />
-
-      <!-- Filtering -->
-      <section class="sidebar-section">
-        <p class="section-label">
-          Filter
-          <button
-            v-if="meta.filterDateFrom || meta.filterDateTo || meta.filterLocation || meta.filterDevice"
-            class="filter-clear-all"
-            @click="meta.filterDateFrom = ''; meta.filterDateTo = ''; meta.filterLocation = ''; meta.filterDevice = ''"
-          >clear all</button>
-        </p>
-
-        <!-- Date range -->
-        <div class="filter-labeled-row">
-          <span class="filter-label">Date</span>
-          <div class="filter-row">
-            <input type="date" class="filter-input" v-model="meta.filterDateFrom" title="From" placeholder="From" :style="{ color: meta.filterDateFrom ? 'inherit' : 'transparent' }" />
-            <input type="date" class="filter-input" v-model="meta.filterDateTo" title="To" placeholder="To" :style="{ color: meta.filterDateTo ? 'inherit' : 'transparent' }" />
-            <button v-if="meta.filterDateFrom || meta.filterDateTo" class="filter-clear-sq" @click="meta.filterDateFrom = ''; meta.filterDateTo = ''" title="Clear">
-              <ClearIcon />
-            </button>
-          </div>
-        </div>
-
-        <!-- Location -->
-        <div class="filter-labeled-row">
-          <span class="filter-label">Location</span>
-          <div class="filter-row">
-            <div class="select-field">
-              <select class="sort-select filter-select" v-model="meta.filterLocation">
-                <option value="">All</option>
-                <option value="__no_location__">Without location</option>
-                <option v-for="loc in meta.availableLocations" :key="loc" :value="loc">{{ loc }}</option>
-              </select>
-              <SelectChevron />
-            </div>
-            <button v-if="meta.filterLocation" class="filter-clear-sq" @click="meta.filterLocation = ''" title="Clear">
-              <ClearIcon />
-            </button>
-          </div>
-        </div>
-
-        <!-- Device -->
-        <div class="filter-labeled-row">
-          <span class="filter-label">Device</span>
-          <div class="filter-row">
-            <div class="select-field">
-              <select class="sort-select filter-select" v-model="meta.filterDevice">
-                <option value="">All</option>
-                <option v-for="dev in meta.availableDevices" :key="dev" :value="dev">{{ dev }}</option>
-              </select>
-              <SelectChevron />
-            </div>
-            <button v-if="meta.filterDevice" class="filter-clear-sq" @click="meta.filterDevice = ''" title="Clear">
-              <ClearIcon />
-            </button>
-          </div>
-        </div>
-      </section>
-
-      </template>
-
-      <!-- Recent scans (metadata) -->
-      <template v-if="metaHistory.entries.length > 0">
-        <div class="sidebar-divider" />
-        <section class="sidebar-section history-section">
-          <p class="section-label">Recent scans</p>
-          <div class="history-entries-scroll">
-            <div
-              v-for="entry in metaHistory.entries"
-              :key="entry.id"
-              class="history-entry"
-              :class="{
-                disabled: meta.scanning,
-                active: entry.id === meta.activeHistoryEntryId,
-              }"
-              @click="meta.loadFromHistory(entry)"
-              :title="entry.folders.join('\n')"
-            >
-              <!-- Line 1: date & time + duration -->
-              <div class="history-date">
-                {{ formatLocalDate(entry.date) }}<span v-if="formatDuration(entry.durationMs)" class="history-duration">&nbsp;({{ formatDuration(entry.durationMs) }})</span>
-              </div>
-
-              <!-- Line 2: folder path(s) -->
-              <div class="history-folders">
-                <span v-for="f in entry.folders" :key="f" class="history-folder" :title="f">
-                  {{ shortPath(f) }}
-                </span>
-              </div>
-
-              <!-- Line 3: image count -->
-              <div class="history-footer">
-                <span class="history-stats">
-                  {{ entry.imageCount ?? 0 }} image{{ (entry.imageCount ?? 0) !== 1 ? 's' : '' }}
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
-      </template>
-    </template>
+    <!-- Mode sub-panels — each owns its own stores, logic and styles -->
+    <SidebarDuplicates v-if="activeMode === 'duplicates'" />
+    <SidebarMeta v-else />
 
     <!-- Cache buttons — pinned to bottom -->
     <div class="sidebar-spacer" v-if="!((activeMode === 'duplicates' && history.entries.length > 0) || (activeMode !== 'duplicates' && metaHistory.entries.length > 0))" />
@@ -393,36 +89,29 @@ import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useMode } from '../composables/useMode'
 import { useSettings } from '../composables/useSettings'
 import { invoke } from '@tauri-apps/api/core'
-import { open } from '@tauri-apps/plugin-dialog'
 import { useDuplicatesStore } from '../store/duplicates'
 import { useMetadataStore } from '../store/metadata'
 import { useDuplicatesHistoryStore } from '../store/duplicatesHistory'
 import { useMetadataHistoryStore } from '../store/metadataHistory'
-import { formatSize, shortPath, formatLocalDate, formatDuration } from '../utils/formatters'
+import { formatSize } from '../utils/formatters'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
 import { SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../constants'
 import SettingsModal from './SettingsModal.vue'
-import SelectChevron from './SelectChevron.vue'
-import ClearIcon from './ClearIcon.vue'
-import FolderSection from './FolderSection.vue'
+import SidebarDuplicates from './SidebarDuplicates.vue'
+import SidebarMeta from './SidebarMeta.vue'
 
 const { activeMode } = useMode()
-const store = useDuplicatesStore()
-const meta = useMetadataStore()
-
-const sortOptions = [
-  { key: 'date',     label: 'Date'     },
-  { key: 'location', label: 'Location' },
-  { key: 'device',   label: 'Device'   },
-]
-const history = useDuplicatesHistoryStore()
+const store       = useDuplicatesStore()   // needed for cache-size watchers
+const meta        = useMetadataStore()     // needed for geo-cache buttons
+const history     = useDuplicatesHistoryStore()
 const metaHistory = useMetadataHistoryStore()
+
 const { status: updateStatus } = useUpdater()
 const baseVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0'
-const isDev = import.meta.env.DEV
-const version = ref(baseVersion)
-const devSuffix = ref('')
+const isDev       = import.meta.env.DEV
+const version     = ref(baseVersion)
+const devSuffix   = ref('')
 
 onMounted(async () => {
   if (isDev) {
@@ -431,80 +120,33 @@ onMounted(async () => {
   }
   meta.loadGeoCacheCount()
 })
+
 const showSettings = ref(false)
-
-const filters = [
-  { label: 'All',     value: 'all'      },
-  { label: 'Exact',   value: 'exact'    },
-  { label: 'Similar', value: 'similar'  },
-  { label: 'Dates',   value: 'sameDate' },
-]
-
-// Scroll results to top whenever the active filter changes
-watch(() => store.filter, () => {
-  document.getElementById('groups-scroll')?.scrollTo({ top: 0, behavior: 'smooth' })
-})
 
 // ── Cache management ──────────────────────────────────────────────────────────
 const { cacheSize, thumbCacheSize, loadCacheSizes: loadCacheSize, clearCache, clearThumbCache } = useCacheSize()
-
-
-function isActiveEntry(entry) {
-  return store.scanDone && entry.id === store.activeHistoryEntryId
-}
-
-function loadFromHistory(entry) {
-  if (store.scanning) return
-
-  const entryThreshold = entry.threshold ?? 90
-
-  store.folders = [...entry.folders]
-  store.similarityThreshold = entryThreshold
-
-  // Already showing this exact entry — nothing to do
-  if (entry.id === store.activeHistoryEntryId) return
-
-  // Restore the fastMode and crossDatePhash that were used when this entry was
-  // originally scanned, regardless of what the current Settings toggles say.
-  store.fastModeOverride = entry.fastMode ?? false
-  store.crossDatePhashOverride = entry.crossDatePhash ?? true
-  store.scanLabel = 'Loading scan…'
-  store.startScan()
-}
-
 
 onMounted(() => {
   loadCacheSize()
   setTimeout(loadCacheSize, 1500)
 })
 
-watch(() => store.scanDone, (done) => { if (done) loadCacheSize() })
-watch(() => store.scanning, (scanning) => { if (!scanning) loadCacheSize() })
-watch(() => store.heicThumbGenerated, () => { loadCacheSize() })
-
-async function pickFolder() {
-  const path = await open({ directory: true, multiple: false })
-  if (path) store.addFolder(path)
-}
-
-async function pickMetaFolder() {
-  const path = await open({ directory: true, multiple: false })
-  if (path) meta.addFolder(path)
-}
+watch(() => store.scanDone,          (done)    => { if (done)     loadCacheSize() })
+watch(() => store.scanning,          (scanning) => { if (!scanning) loadCacheSize() })
+watch(() => store.heicThumbGenerated, ()        => { loadCacheSize() })
 
 // ── Sidebar resize ────────────────────────────────────────────────────────────
-
 const { sidebarWidth } = useSettings()
 
-let resizing = false
-let startX = 0
+let resizing  = false
+let startX    = 0
 let startWidth = 0
 
 function startResize(e) {
   resizing = true
-  startX = e.clientX
+  startX   = e.clientX
   startWidth = sidebarWidth.value
-  document.body.style.cursor = 'col-resize'
+  document.body.style.cursor     = 'col-resize'
   document.body.style.userSelect = 'none'
 }
 
@@ -517,22 +159,23 @@ function onMouseMove(e) {
 function onMouseUp() {
   if (!resizing) return
   resizing = false
-  document.body.style.cursor = ''
+  document.body.style.cursor     = ''
   document.body.style.userSelect = ''
 }
 
 onMounted(() => {
   document.addEventListener('mousemove', onMouseMove)
-  document.addEventListener('mouseup', onMouseUp)
+  document.addEventListener('mouseup',  onMouseUp)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('mousemove', onMouseMove)
-  document.removeEventListener('mouseup', onMouseUp)
+  document.removeEventListener('mouseup',  onMouseUp)
 })
 </script>
 
 <style scoped>
+/* ── Sidebar shell ── */
 .sidebar {
   position: relative;
   background: var(--sidebar-bg);
@@ -620,14 +263,16 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* ── Divider ── */
+/* ── Divider (cache section) ── */
 .sidebar-divider {
   height: 1px;
   background: var(--sidebar-border);
   margin: 0;
 }
 
-/* ── Section ── */
+/* ── Cache section ── */
+.sidebar-spacer { flex: 1; }
+
 .sidebar-section {
   padding: var(--space-3);
   display: flex;
@@ -635,168 +280,8 @@ onBeforeUnmount(() => {
   gap: var(--space-2);
 }
 
-.section-label {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  display: flex;
-  align-items: center;
-}
+.sidebar-bottom { padding-top: var(--space-3); padding-bottom: var(--space-3); }
 
-.filter-clear-all {
-  margin-left: auto;
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: var(--font-size-xs);
-  color: var(--color-accent);
-  cursor: pointer;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-}
-.filter-clear-all:hover { opacity: 0.75; }
-
-
-.empty-hint {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-/* ── Sort selects ── */
-.sort-selects {
-  display: flex;
-  flex-direction: row;
-  gap: 6px;
-}
-
-.sort-select {
-  width: 100%;
-  padding: 5px 8px;
-  font-size: var(--font-size-xs);
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-primary);
-  cursor: pointer;
-  outline: none;
-  appearance: auto;
-  transition: border-color var(--transition);
-}
-.sort-select:focus {
-  border-color: var(--color-accent);
-}
-
-/* ── Filter controls ── */
-.filter-clear-btn {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--color-accent);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  opacity: 0.85;
-  transition: opacity var(--transition);
-}
-.filter-clear-btn:hover { opacity: 1; }
-
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.filter-row .filter-input {
-  flex: 1;
-  min-width: 0;
-}
-
-.filter-select {
-  appearance: none;
-  padding-right: 28px;
-}
-
-.select-field :deep(.select-chevron) {
-  position: absolute;
-  right: 8px;
-}
-
-.select-field {
-  position: relative;
-  flex: 1;
-  display: flex;
-  align-items: center;
-}
-
-.select-field .sort-select {
-  width: 100%;
-  padding-right: 28px;
-}
-
-.filter-clear-sq {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  align-self: stretch;
-  flex-shrink: 0;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition), border-color var(--transition);
-}
-.filter-clear-sq:hover {
-  background: var(--color-danger);
-  border-color: var(--color-danger);
-  color: #fff;
-}
-
-.filter-labeled-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-.filter-labeled-row:last-child { margin-bottom: 0; }
-
-.filter-label {
-  font-size: 10px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.filter-input {
-  flex: 1;
-  min-width: 0;
-  padding: 4px 6px;
-  font-size: 11px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-primary);
-  outline: none;
-  transition: border-color var(--transition);
-  box-sizing: border-box;
-}
-.filter-input:focus { border-color: var(--color-accent); }
-.filter-input::-webkit-calendar-picker-indicator { filter: invert(0.6); cursor: pointer; }
-
-.sort-geocoding-hint {
-  font-size: 10px;
-  color: var(--text-muted);
-  font-style: italic;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-}
-
-/* ── Buttons ── */
 .btn {
   display: flex;
   align-items: center;
@@ -810,208 +295,14 @@ onBeforeUnmount(() => {
 }
 
 .btn-full { width: 100%; }
+.btn-sm   { padding: 5px var(--space-3); font-size: 11px; }
 
-.btn-secondary {
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-.btn-secondary:hover:not(:disabled) { background: var(--bg-card-hover); }
-
-.btn-success {
-  background: var(--color-success);
-  color: #fff;
-}
-.btn-success:hover:not(:disabled) { background: var(--color-success-hover); }
-
-.btn-danger {
-  background: var(--color-danger);
-  color: #fff;
-}
-.btn-danger:hover:not(:disabled) { background: var(--color-danger-hover); }
-
-/* ── Threshold slider ── */
-.threshold-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.threshold-value {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--color-accent);
-}
-
-.threshold-slider {
-  width: 100%;
-  accent-color: var(--color-accent);
-  cursor: pointer;
-}
-
-.threshold-slider:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.threshold-hint {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  text-align: center;
-}
-
-/* ── History ── */
-.history-entry {
-  padding: var(--space-2);
-  border-radius: var(--border-radius-sm);
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: background var(--transition), border-color var(--transition);
-  margin-bottom: var(--space-1);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.history-entry:hover:not(.disabled):not(.active) {
-  background: var(--bg-card-hover);
-  border-color: var(--color-accent);
-}
-.history-entry.active {
-  border-color: var(--color-accent);
-  background: var(--bg-card);
-}
-.history-entry.disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* Line 1 — date */
-.history-date {
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-.history-duration {
-  opacity: 0.7;
-}
-
-/* Line 2 — folder path(s) */
-.history-folders {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.history-folder {
-  font-size: 11px;
-  color: var(--text-primary);
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Line 3 — stats + threshold badge */
-.history-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 1px;
-}
-
-.history-stats {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--color-accent);
-}
-
-.history-badges {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.history-threshold {
-  display: inline-flex;
-  align-items: center;
-  height: 16px;
-  font-size: 9px;
-  font-weight: 700;
-  color: rgba(0, 0, 0, 0.65);
-  background: var(--color-accent);
-  border-radius: var(--border-radius-pill);
-  padding: 0 6px;
-  letter-spacing: 0.2px;
-}
-
-.history-fast-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  background: transparent;
-  border-radius: 50%;
-}
-
-.history-fast-badge svg {
-  width: 7px;
-  height: 11px;
-  transform: rotate(15deg);
-}
-
-.history-cross-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  background: transparent;
-  border-radius: 50%;
-}
-
-.history-cross-badge svg {
-  width: 11px;
-  height: 11px;
-}
-
-/* ── Cache size badge ── */
-.cache-size {
-  font-size: 9px;
-  opacity: 0.6;
-  margin-left: 4px;
-}
-
-/* ── Bottom section ── */
-.sidebar-spacer { flex: 1; }
-
-/* Recent scans: grows to fill remaining space, entries scroll internally */
-.history-section {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.history-entries-scroll {
-  flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-1);
-}
-.sidebar-bottom { padding-top: var(--space-3); padding-bottom: var(--space-3); }
-.btn-sm { padding: 5px var(--space-3); font-size: 11px; }
-
-/* ── Cache buttons ── */
 .btn-cache {
   background: transparent;
   color: var(--text-muted);
   border: 1px solid transparent;
 }
-.btn-cache:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
+.btn-cache:disabled { opacity: 0.3; cursor: not-allowed; }
 .btn-cache.btn-cache--active {
   background: var(--bg-card);
   color: var(--text-secondary);
@@ -1023,48 +314,9 @@ onBeforeUnmount(() => {
   border-color: var(--bg-card-hover);
 }
 
-/* ── Filter pills ── */
-.filter-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-
-.pill {
-  flex: 1 1 calc(50% - var(--space-1));
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 2px 3px 2px 8px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  text-transform: uppercase;
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-pill);
-  transition: background var(--transition), color var(--transition), border-color var(--transition);
-}
-
-.pill:hover { background: var(--bg-card-hover); }
-
-.pill.active {
-  background: var(--color-accent);
-  color: #fff;
-  border-color: var(--color-accent);
-}
-
-.pill-count {
-  opacity: 0.7;
-  font-weight: 400;
-  background: var(--bg-primary);
-  padding: 2px 6px;
-  border-radius: 1rem;
-}
-
-.pill.active .pill-count {
-  background: #092a4d;
+.cache-size {
+  font-size: 9px;
+  opacity: 0.6;
+  margin-left: 4px;
 }
 </style>
