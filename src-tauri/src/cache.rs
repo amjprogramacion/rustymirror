@@ -49,10 +49,21 @@ impl Cache {
                 modified    TEXT    NOT NULL DEFAULT ''
             );
         ")?;
-        // Migrate existing databases that lack newer columns.
-        let _ = conn.execute_batch("ALTER TABLE file_cache ADD COLUMN fast_phash TEXT;");
-        let _ = conn.execute_batch("ALTER TABLE file_cache ADD COLUMN header_hash TEXT;");
+        Self::migrate(&conn)?;
         Ok(Self { conn: Mutex::new(conn) })
+    }
+
+    fn migrate(conn: &Connection) -> Result<()> {
+        let version: i32 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version < 1 {
+            conn.execute_batch("ALTER TABLE file_cache ADD COLUMN fast_phash TEXT;")?;
+            conn.execute_batch("PRAGMA user_version = 1")?;
+        }
+        if version < 2 {
+            conn.execute_batch("ALTER TABLE file_cache ADD COLUMN header_hash TEXT;")?;
+            conn.execute_batch("PRAGMA user_version = 2")?;
+        }
+        Ok(())
     }
 
     /// Number of cached entries.
