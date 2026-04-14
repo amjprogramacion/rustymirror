@@ -138,19 +138,19 @@ where
                         })
                     } else {
                         // pHash exists but only for the other mode — re-read the file.
-                        std::panic::catch_unwind(|| make_record(path, fast_mode)).ok().flatten()
+                        make_record(path, fast_mode)
                     }
                 } else {
                     // Header hash mismatch — file changed, re-read.
-                    std::panic::catch_unwind(|| make_record(path, fast_mode)).ok().flatten()
+                    make_record(path, fast_mode)
                 }
             } else {
                 // Size changed — file definitely changed, re-read.
-                std::panic::catch_unwind(|| make_record(path, fast_mode)).ok().flatten()
+                make_record(path, fast_mode)
             }
         } else {
             // Not in DB at all — skip the redundant per-file SQLite lookup.
-            std::panic::catch_unwind(|| make_record(path, fast_mode)).ok().flatten()
+            make_record(path, fast_mode)
         };
 
         let done = counter.fetch_add(1, AOrdering::Relaxed) + 1;
@@ -340,7 +340,7 @@ where
             let (tmp, w, h) = conversions.get(&orig)?;
             let tmp_bytes = std::fs::read(tmp).ok()?;
             // Reuse already-read bytes — avoids a second disk read of the temp JPEG.
-            let ph = std::panic::catch_unwind(|| crate::hasher::perceptual_hash_from_bytes(&tmp_bytes, fast_mode)).ok().flatten()?;
+            let ph = crate::hasher::perceptual_hash_from_bytes(&tmp_bytes, fast_mode).ok()?;
             let modified = parse_exif_date(&tmp_bytes)
                 .unwrap_or_else(|| records[i].entry.modified.clone());
             let done = phase3b_counter.fetch_add(1, AOrdering::Relaxed) + 1;
