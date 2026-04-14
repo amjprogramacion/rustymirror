@@ -273,10 +273,9 @@ fn write_metadata_jpeg(path: &Path, update: &MetadataUpdate) -> Result<()> {
         .map_err(|e| anyhow!("EXIF encode error: {e}"))?;
     let tiff_bytes = buf.into_inner();
 
-    // Inject the new APP1 segment into the JPEG stream
+    // Inject the new APP1 segment into the JPEG stream and write atomically
     let new_jpeg = replace_app1_in_jpeg(&bytes, &tiff_bytes)?;
-    std::fs::write(path, &new_jpeg)?;
-    Ok(())
+    write_atomic(path, &new_jpeg)
 }
 
 /// Non-JPEG path: write basic fields using little-exif (GPS not supported).
@@ -300,10 +299,29 @@ fn write_metadata_little_exif(path: &Path, update: &MetadataUpdate) -> Result<()
         metadata.set_tag(ExifTag::Copyright(copy.clone()));
     }
 
-    metadata
-        .write_to_file(path)
-        .map_err(|e| anyhow!("Failed to write metadata: {e:?}"))?;
-    Ok(())
+    // little_exif writes in-place, so we write atomically by:
+    // 1. copying the original to a .tmp sibling (same filesystem → rename is cheap),
+    // 2. injecting EXIF into the temp copy,
+    // 3. renaming into place.
+    // The temp file is removed on any failure.
+    let mut tmp_name = path.as_os_str().to_owned();
+    tmp_name.push(".tmp");
+    let tmp = std::path::PathBuf::from(tmp_name);
+
+    let result = (|| -> Result<()> {
+        std::fs::copy(path, &tmp)
+            .map_err(|e| anyhow!("Failed to create temp file: {e}"))?;
+        metadata
+            .write_to_file(&tmp)
+            .map_err(|e| anyhow!("Failed to write metadata: {e:?}"))?;
+        std::fs::rename(&tmp, path)
+            .map_err(|e| anyhow!("Failed to rename temp file: {e}"))
+    })();
+
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 /// Decimal degrees → [degrees, minutes, seconds] as EXIF Rational triples.
@@ -318,6 +336,25 @@ fn decimal_to_dms(decimal: f64) -> [exif::Rational; 3] {
         Rational { num: minutes,     denom: 1 },
         Rational { num: seconds_num, denom: 10_000 },
     ]
+}
+
+/// Write `data` to `path` atomically:
+/// 1. Write to `{path}.tmp` in the same directory (same filesystem → rename is a rename, not a copy).
+/// 2. Rename into place — the original is replaced only once the new data is fully on disk.
+/// 3. Remove the temp file on any failure so no `.tmp` orphan is left behind.
+fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
+    let mut tmp_name = path.as_os_str().to_owned();
+    tmp_name.push(".tmp");
+    let tmp = std::path::PathBuf::from(tmp_name);
+
+    if let Err(e) = std::fs::write(&tmp, data) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(anyhow!("Failed to write temp file: {e}"));
+    }
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        anyhow!("Failed to rename temp file: {e}")
+    })
 }
 
 /// Replace (or insert) the EXIF APP1 segment in a JPEG byte stream.
