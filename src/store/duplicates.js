@@ -18,6 +18,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
     scanStartTime: null,
     _etaSamples: [],
     groups: [],
+    failedFiles: [],
     filter: 'all',
     extFilter: '',
     dupSortBy: 'group',
@@ -230,6 +231,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
       this.scanning = true
       this.scanDone = false
       this.groups = []
+      this.failedFiles = []
       this.filter = 'all'
       this.extFilter = ''
       this.dupSortBy = 'group'
@@ -296,8 +298,10 @@ export const useDuplicatesStore = defineStore('duplicates', {
         if (!groups) {
           logger.info('invoking scan_directories...')
           logger.info(`similarity threshold: ${this.similarityThreshold}% -> hamming ${hammingThreshold}`)
-          groups = await invoke('scan_directories', { paths: this.folders, hammingThreshold, crossDatePhash, fastMode })
-          logger.info(`scan returned ${groups?.length} groups`)
+          const result = await invoke('scan_directories', { paths: this.folders, hammingThreshold, crossDatePhash, fastMode })
+          groups = result.groups
+          this.failedFiles = result.failedFiles || []
+          logger.info(`scan returned ${groups?.length} groups, ${this.failedFiles.length} failed files`)
         }
 
         logger.info(`scan complete: ${groups.length} group(s) found`)

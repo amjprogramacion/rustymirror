@@ -14,6 +14,8 @@
 
   <!-- Results -->
   <template v-else>
+    <FailedFilesWarning :files="meta.failedFiles" />
+
     <!-- Action bar -->
     <div class="action-bar">
       <button
@@ -122,6 +124,7 @@ import { fileExt, fileName, formatSize, formatDate } from '../utils/formatters'
 import BatchEditPanel from './BatchEditPanel.vue'
 import SearchInput from './SearchInput.vue'
 import ScanProgress from './ScanProgress.vue'
+import FailedFilesWarning from './FailedFilesWarning.vue'
 
 const meta   = useMetadataStore()
 const panel  = usePanelStore()

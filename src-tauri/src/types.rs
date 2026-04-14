@@ -91,6 +91,14 @@ pub struct MetadataUpdate {
     pub gps_longitude: Option<f64>,
 }
 
+/// A file that could not be read or decoded during a scan.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FailedFile {
+    pub path: String,
+    pub reason: String,
+}
+
 /// Emitted during phase 1 (file hashing)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

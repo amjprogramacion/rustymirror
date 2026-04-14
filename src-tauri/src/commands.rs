@@ -18,7 +18,21 @@ fn cache_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, tauri::Error> {
 }
 
 use crate::scanner::find_duplicates;
-use crate::types::{AnalyzeProgress, DuplicateGroup, ScanProgress};
+use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, ScanProgress};
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanResult {
+    pub groups: Vec<DuplicateGroup>,
+    pub failed_files: Vec<FailedFile>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaScanResult {
+    pub images: Vec<crate::types::ImageEntry>,
+    pub failed_files: Vec<FailedFile>,
+}
 
 /// Shared atomic stop flag — set to true when the user clicks "Stop scan".
 /// Wrapped in Mutex<Arc<...>> so we can replace it for each new scan.
@@ -40,7 +54,7 @@ pub async fn scan_directories(
     app: AppHandle,
     scan_state: State<'_, ScanState>,
     file_list_cache: State<'_, FileListCache>,
-) -> Result<Vec<DuplicateGroup>, String> {
+) -> Result<ScanResult, String> {
     let stop = Arc::new(AtomicBool::new(false));
     *scan_state.0.lock().unwrap() = stop.clone();
 
@@ -104,9 +118,10 @@ pub async fn scan_directories(
 
     log::debug!("[RustyMirror:RS] spawn_blocking joined: {}", match &result { Ok(_) => "Ok", Err(_) => "JoinError" });
 
-    result
+    let (groups, failed_files) = result
         .map_err(|e| { let s = e.to_string(); log::debug!("[RustyMirror:RS] JoinError: {}", s); s })?
-        .map_err(|e| { let s = e.to_string(); log::debug!("[RustyMirror:RS] ScanError: {}", s); s })
+        .map_err(|e| { let s = e.to_string(); log::debug!("[RustyMirror:RS] ScanError: {}", s); s })?;
+    Ok(ScanResult { groups, failed_files })
 }
 
 #[tauri::command]
@@ -650,7 +665,7 @@ pub fn is_debug_build() -> bool {
 pub async fn scan_for_metadata(
     paths: Vec<String>,
     meta_scan_state: State<'_, MetaScanState>,
-) -> Result<Vec<crate::types::ImageEntry>, String> {
+) -> Result<MetaScanResult, String> {
     let stop = Arc::new(AtomicBool::new(false));
     *meta_scan_state.0.lock().unwrap() = stop.clone();
 
@@ -660,11 +675,16 @@ pub async fn scan_for_metadata(
         let directories: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
         let images = crate::scanner::collect_images(&directories);
 
-        let mut entries: Vec<crate::types::ImageEntry> = images
+        let stop_c = stop.clone();
+        let results: Vec<Result<crate::types::ImageEntry, String>> = images
             .into_par_iter()
-            .filter_map(|p| {
-                if stop.load(Ordering::Relaxed) { return None; }
-                let meta = std::fs::metadata(&p).ok()?;
+            .map(|p| {
+                if stop_c.load(Ordering::Relaxed) {
+                    return Err(String::new()); // empty = stopped, not a real error
+                }
+                let path_str = p.to_string_lossy().to_string();
+                let meta = std::fs::metadata(&p)
+                    .map_err(|e| format!("{}|Cannot read file metadata: {}", path_str, e))?;
                 let size_bytes = meta.len();
                 let modified = meta.modified().ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -712,8 +732,8 @@ pub async fn scan_for_metadata(
                         })
                         .unwrap_or((None, None, None, None));
 
-                Some(crate::types::ImageEntry {
-                    path: p.to_string_lossy().to_string(),
+                Ok(crate::types::ImageEntry {
+                    path: path_str,
                     size_bytes,
                     width,
                     height,
@@ -727,8 +747,27 @@ pub async fn scan_for_metadata(
             })
             .collect();
 
+        let was_stopped = stop.load(Ordering::Relaxed);
+        let mut entries = Vec::with_capacity(results.len());
+        let mut failed_files: Vec<FailedFile> = Vec::new();
+        for r in results {
+            match r {
+                Ok(entry) => entries.push(entry),
+                Err(msg) if !msg.is_empty() && !was_stopped => {
+                    // msg format: "path|reason"
+                    if let Some((path, reason)) = msg.split_once('|') {
+                        failed_files.push(FailedFile {
+                            path: path.to_string(),
+                            reason: reason.to_string(),
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+
         entries.sort_by(|a, b| a.path.cmp(&b.path));
-        Ok(entries)
+        Ok(MetaScanResult { images: entries, failed_files })
     })
     .await
     .map_err(|e| e.to_string())?

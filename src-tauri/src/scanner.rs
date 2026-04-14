@@ -11,7 +11,7 @@ use walkdir::WalkDir;
 use crate::cache::CachedFile;
 use crate::hasher::{perceptual_hash_from_bytes, read_file_data};
 use crate::heic::{batch_convert_heic, cleanup_temp};
-use crate::types::{AnalyzeProgress, DuplicateGroup, ImageEntry, SimilarityKind};
+use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, ImageEntry, SimilarityKind};
 
 // ── BK-tree for O(n log n) pHash similarity search ───────────────────────
 // A BK-tree organises hashes in a metric tree keyed by Hamming distance.
@@ -315,7 +315,7 @@ pub fn find_duplicates<F1, F2>(
     fast_mode: bool,
     scan_cb:    F1,
     analyze_cb: F2,
-) -> Result<Vec<DuplicateGroup>>
+) -> Result<(Vec<DuplicateGroup>, Vec<FailedFile>)>
 where
     F1: Fn(usize, usize) + Send + Sync,
     F2: Fn(AnalyzeProgress) + Send + Sync,
@@ -487,6 +487,21 @@ where
         dbg_hh_match.load(AOrdering::Relaxed),
         dbg_hh_read_fail.load(AOrdering::Relaxed));
 
+    // Collect failed files: paths where result is None and scan was not stopped.
+    let failed_files: Vec<FailedFile> = if stop.load(AOrdering::Relaxed) {
+        vec![]
+    } else {
+        results.iter().zip(paths.iter())
+            .filter(|(r, _)| r.is_none())
+            .map(|(_, p)| FailedFile {
+                path: p.to_string_lossy().to_string(),
+                reason: "Failed to read or decode image".to_string(),
+            })
+            .collect()
+    };
+    if !failed_files.is_empty() {
+        log::debug!("[RustyMirror:RS] phase 1: {} files failed to read", failed_files.len());
+    }
     let records: Vec<FileRecord> = results.into_iter().flatten().collect();
     log::debug!("[RustyMirror:RS] phase 1 done: {} records in {:.1}s", records.len(), t1.elapsed().as_secs_f32());
 
@@ -519,7 +534,7 @@ where
 
     if stop.load(AOrdering::Relaxed) {
         log::debug!("[RustyMirror:RS] scan stopped by user — partial cache saved ({} records)", records.len());
-        return Ok(vec![]);
+        return Ok((vec![], vec![]));
     }
 
     let mut grouped = vec![false; records.len()];
@@ -544,7 +559,7 @@ where
     // ── Phase 3: perceptual hash (user threshold) ─────────────────────────────
     if stop.load(AOrdering::Relaxed) {
         log::debug!("[RustyMirror:RS] scan stopped by user before phase 3");
-        return Ok(groups);
+        return Ok((groups, failed_files));
     }
     let ungrouped_ph: Vec<usize> = (0..records.len()).filter(|&i| !grouped[i]).collect();
     log::debug!("[RustyMirror:RS] phase 3 (pHash): {} files to compare", ungrouped_ph.len());
@@ -1050,8 +1065,8 @@ where
             .cmp(&b.entries.first().map(|e| e.modified.as_str()))
     });
 
-    log::debug!("[RustyMirror:RS] complete: {} groups", groups.len());
-    Ok(groups)
+    log::debug!("[RustyMirror:RS] complete: {} groups, {} failed files", groups.len(), failed_files.len());
+    Ok((groups, failed_files))
 }
 
 fn is_non_original_filename(path: &str) -> bool {

@@ -17,6 +17,8 @@
 
   <!-- Results -->
   <template v-else>
+    <FailedFilesWarning :files="store.failedFiles" />
+
     <!-- Action bar -->
     <div class="action-bar">
       <button class="btn btn-ghost" @click="store.selectCopies()">Select copies</button>
@@ -137,6 +139,7 @@ import SearchInput from './SearchInput.vue'
 import { useThumbnailStore } from '../store/thumbnails'
 import { fileName } from '../utils/formatters'
 import { DELETE_MAX_PREVIEW } from '../constants'
+import FailedFilesWarning from './FailedFilesWarning.vue'
 
 const store        = useDuplicatesStore()
 const thumbs       = useThumbnailStore()

@@ -54,6 +54,7 @@ export const useMetadataStore = defineStore('metadata', {
     filterLocation: '',   // exact location name or '' = all
     filterDevice:   '',   // exact device string  or '' = all
     error: null,
+    failedFiles: [],
     multiSelect: false,
     selected: new Set(),
     networkFolders: new Set(),
@@ -195,6 +196,7 @@ export const useMetadataStore = defineStore('metadata', {
       this.filterLocation = ''
       this.filterDevice   = ''
       this.error = null
+      this.failedFiles = []
       this.activeHistoryEntryId = null
       _geocodeAbortController = null
 
@@ -211,7 +213,9 @@ export const useMetadataStore = defineStore('metadata', {
         if (cached) {
           images = cached
         } else {
-          images = await invoke('scan_for_metadata', { paths: this.folders })
+          const result = await invoke('scan_for_metadata', { paths: this.folders })
+          images = result.images
+          this.failedFiles = result.failedFiles || []
         }
         const durationMs = cached ? null : (Date.now() - scanStart)
 
