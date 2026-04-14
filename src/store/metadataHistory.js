@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { load } from '@tauri-apps/plugin-store'
 import { HISTORY_MAX_ENTRIES } from '../constants'
+import { logger } from '../utils/logger'
 
 const STORE_FILE = 'rustymirror.json'
 const HISTORY_KEY = 'metaScanHistory'
@@ -73,8 +74,10 @@ export const useMetadataHistoryStore = defineStore('metadataHistory', {
     },
 
     async clearHistory() {
+      const count = this.entries.length
       this.entries = []
       await this._save()
+      logger.info(`metadata history cleared count=${count} key=${HISTORY_KEY}`)
     },
 
     async _save() {

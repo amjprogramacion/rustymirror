@@ -36,17 +36,17 @@ fn find_magick(resource_dir: Option<&Path>) -> Option<PathBuf> {
         }
 
         for candidate in &candidates {
-            log::debug!("[RustyMirror:RS] checking magick at: {}", candidate.display());
+            tracing::debug!("checking magick at: {}", candidate.display());
             if candidate.exists() {
-                log::debug!("[RustyMirror:RS] magick found: {}", candidate.display());
+                tracing::debug!("magick found: {}", candidate.display());
                 return Some(candidate.clone());
             }
         }
         if which_exists("magick") {
-            log::debug!("[RustyMirror:RS] magick found in PATH");
+            tracing::debug!("magick found in PATH");
             return Some(PathBuf::from("magick"));
         }
-        log::warn!("[RustyMirror:RS] magick NOT found — checked: {:?}", candidates);
+        tracing::warn!(checked = ?candidates, "magick NOT found");
         None
     }
     #[cfg(target_os = "macos")]

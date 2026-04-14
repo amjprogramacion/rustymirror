@@ -65,14 +65,14 @@ pub async fn scan_directories(
     let cache = cache_data_dir(&app).ok()
         .and_then(|d| crate::cache::Cache::open(&d).ok())
         .map(std::sync::Arc::new);
-    log::debug!("[RustyMirror:RS] cache: {}", if cache.is_some() { "ok" } else { "unavailable" });
-    log::debug!("[RustyMirror:RS] scan_directories called with {} paths", paths.len());
-    for p in &paths { log::debug!("[RustyMirror:RS]   path: {}", p); }
+    tracing::debug!("cache: {}", if cache.is_some() { "ok" } else { "unavailable" });
+    tracing::debug!("scan_directories called with {} paths", paths.len());
+    for p in &paths { tracing::debug!("  path: {}", p); }
 
     let threshold  = hamming_threshold.unwrap_or(6);
     let use_fast   = fast_mode.unwrap_or(false);
-    log::debug!("[RustyMirror:RS] hamming threshold: {}", threshold);
-    log::debug!("[RustyMirror:RS] fast mode: {}", use_fast);
+    tracing::debug!("hamming threshold: {}", threshold);
+    tracing::debug!("fast mode: {}", use_fast);
 
     // Reuse the file list from directory_fingerprint if it matches the current paths,
     // to avoid a second SMB directory traversal that may return fewer files (NAS cache cold).
@@ -80,7 +80,7 @@ pub async fn scan_directories(
         let mut guard = file_list_cache.0.lock().unwrap();
         if let Some((cached_paths, file_list)) = guard.take() {
             if cached_paths == paths {
-                log::debug!("[RustyMirror:RS] reusing {} prefetched paths from fingerprint", file_list.len());
+                tracing::debug!("reusing {} prefetched paths from fingerprint", file_list.len());
                 Some(file_list)
             } else {
                 None
@@ -91,7 +91,7 @@ pub async fn scan_directories(
     };
 
     let result = tokio::task::spawn_blocking(move || {
-        log::debug!("[RustyMirror:RS] spawn_blocking started");
+        tracing::debug!("spawn_blocking started");
         let r = find_duplicates(
             directories,
             prefetched,
@@ -103,7 +103,7 @@ pub async fn scan_directories(
             use_fast,
             move |scanned, total| {
                 if scanned == 1 || scanned % 50 == 0 || scanned == total {
-                    log::debug!("[RustyMirror:RS] progress {}/{}", scanned, total);
+                    tracing::debug!("progress {}/{}", scanned, total);
                 }
                 let _ = app_clone.emit("scan_progress", ScanProgress { scanned, total });
             },
@@ -111,28 +111,28 @@ pub async fn scan_directories(
                 let _ = app_clone2.emit("analyze_progress", &progress);
             },
         );
-        log::debug!("[RustyMirror:RS] find_duplicates returned: {}", if r.is_ok() { "Ok" } else { "Err" });
+        tracing::debug!("find_duplicates returned: {}", if r.is_ok() { "Ok" } else { "Err" });
         r
     })
     .await;
 
-    log::debug!("[RustyMirror:RS] spawn_blocking joined: {}", match &result { Ok(_) => "Ok", Err(_) => "JoinError" });
+    tracing::debug!("spawn_blocking joined: {}", match &result { Ok(_) => "Ok", Err(_) => "JoinError" });
 
     let (groups, failed_files) = result
-        .map_err(|e| { let s = e.to_string(); log::debug!("[RustyMirror:RS] JoinError: {}", s); s })?
-        .map_err(|e| { let s = e.to_string(); log::debug!("[RustyMirror:RS] ScanError: {}", s); s })?;
+        .map_err(|e| { let s = e.to_string(); tracing::debug!("JoinError: {}", s); s })?
+        .map_err(|e| { let s = e.to_string(); tracing::debug!("ScanError: {}", s); s })?;
     Ok(ScanResult { groups, failed_files })
 }
 
 #[tauri::command]
 pub fn stop_scan(scan_state: State<'_, ScanState>) {
-    log::debug!("[RustyMirror:RS] stop requested");
+    tracing::debug!("stop requested");
     scan_state.0.lock().unwrap().store(true, Ordering::Relaxed);
 }
 
 #[tauri::command]
 pub fn stop_meta_scan(meta_scan_state: State<'_, MetaScanState>) {
-    log::debug!("[RustyMirror:RS] meta scan stop requested");
+    tracing::debug!("meta scan stop requested");
     meta_scan_state.0.lock().unwrap().store(true, Ordering::Relaxed);
 }
 
@@ -140,7 +140,7 @@ pub fn stop_meta_scan(meta_scan_state: State<'_, MetaScanState>) {
 pub async fn delete_files(paths: Vec<String>, app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Emitter;
     let total = paths.len();
-    log::debug!("[RustyMirror:RS] delete_files: {} files", total);
+    tracing::debug!("delete_files: {} files", total);
 
     #[cfg(target_os = "windows")]
     {
@@ -200,14 +200,14 @@ foreach ($p in $lines) {{
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
 
-        log::debug!("[RustyMirror:RS] ps stdout: {}", stdout.trim());
+        tracing::debug!("ps stdout: {}", stdout.trim());
         if !stderr.trim().is_empty() {
-            log::debug!("[RustyMirror:RS] ps stderr: {}", stderr.trim());
+            tracing::debug!("ps stderr: {}", stderr.trim());
         }
 
         if !output.status.success() {
             let msg = format!("Delete failed: {}", stderr.trim());
-            log::debug!("[RustyMirror:RS] ERROR: {}", msg);
+            tracing::warn!(error = %msg, "delete_files failed");
             return Err(msg);
         }
 
@@ -220,7 +220,7 @@ foreach ($p in $lines) {{
                 }
             }
         }
-        log::debug!("[RustyMirror:RS] deleted {} / {} files", done, total);
+        tracing::debug!("deleted {} / {} files", done, total);
 
         // If PowerShell exited 0 but deleted nothing, treat it as a real error
         if done == 0 && total > 0 {
@@ -233,7 +233,7 @@ foreach ($p in $lines) {{
         if let Ok(data_dir) = cache_data_dir(&app) {
             if let Ok(cache) = crate::cache::Cache::open(&data_dir) {
                 cache.evict_deleted(&paths);
-                log::debug!("[RustyMirror:RS] evicted {} entries from cache", paths.len());
+                tracing::debug!(count = paths.len(), "cache entries evicted");
             }
         }
 
@@ -260,7 +260,7 @@ pub fn log_message(level: String, message: String) {
     match level.as_str() {
         "error" => eprintln!("[RustyMirror:JS] ERROR — {}", message),
         "warn"  => eprintln!("[RustyMirror:JS] WARN  — {}", message),
-        _       => log::debug!("[RustyMirror:JS] INFO  — {}", message),
+        _       => tracing::debug!(target: "rustymirror::js", "{}", message),
     }
 }
 
@@ -292,14 +292,14 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
             if let Some(ref cp) = cache_path {
                 if cp.exists() {
                     if let Ok(cached) = std::fs::read(cp) {
-                        log::debug!("[RustyMirror:RS] thumb HIT (heic): {}", path);
+                        tracing::debug!("thumb HIT (heic): {}", path);
                         return Ok(format!("data:image/jpeg;base64,{}",
                             base64::engine::general_purpose::STANDARD.encode(&cached)));
                     }
                 }
             }
 
-            log::debug!("[RustyMirror:RS] thumb MISS (heic): {}", path);
+            tracing::debug!("thumb MISS (heic): {}", path);
 
             let (tmp, _, _) = crate::heic::heic_to_temp_jpeg(
                 std::path::Path::new(&path),
@@ -326,7 +326,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
                     let _ = std::fs::create_dir_all(parent);
                 }
                 let _ = std::fs::write(cp, &thumb_bytes);
-                log::debug!("[RustyMirror:RS] thumb SAVE (heic): {}", path);
+                tracing::debug!("thumb SAVE (heic): {}", path);
             }
 
             return Ok(format!("data:image/jpeg;base64,{}",
@@ -346,14 +346,14 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
         if let Some(ref cp) = cache_path {
             if cp.exists() {
                 if let Ok(cached) = std::fs::read(cp) {
-                    log::debug!("[RustyMirror:RS] thumb HIT (jpg/net): {}", path);
+                    tracing::debug!("thumb HIT (jpg/net): {}", path);
                     return Ok(format!("data:image/jpeg;base64,{}",
                         base64::engine::general_purpose::STANDARD.encode(&cached)));
                 }
             }
         }
 
-        log::debug!("[RustyMirror:RS] thumb MISS (jpg/net): {}", path);
+        tracing::debug!("thumb MISS (jpg/net): {}", path);
 
         let img = match image::load_from_memory(&bytes) {
             Ok(img) => img,
@@ -361,7 +361,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
                 // The image crate failed to decode the file (unusual PNG variant,
                 // unsupported bit depth, etc.). Return the raw bytes as a data URI
                 // so the browser can still try to render it natively.
-                log::warn!("[RustyMirror:RS] thumb decode failed ({}): {} — returning raw", e, path);
+                tracing::warn!(error = %e, path = %path, "thumb decode failed, returning raw");
                 let ext = std::path::Path::new(&path)
                     .extension()
                     .and_then(|s| s.to_str())
@@ -395,7 +395,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
                 let _ = std::fs::create_dir_all(parent);
             }
             let _ = std::fs::write(cp, &thumb_bytes);
-            log::debug!("[RustyMirror:RS] thumb SAVE (jpg/net): {}", path);
+            tracing::debug!("thumb SAVE (jpg/net): {}", path);
         }
 
         Ok(format!("data:image/jpeg;base64,{}",
@@ -572,7 +572,7 @@ pub fn clear_cache(app: tauri::AppHandle) -> Result<(), String> {
         .join("rustymirror_cache.db");
     if path.exists() {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
-        log::debug!("[RustyMirror:RS] cache deleted: {}", path.display());
+        tracing::debug!(path = %path.display(), "hash cache cleared");
     }
     Ok(())
 }
@@ -601,7 +601,7 @@ pub fn clear_thumb_cache(app: tauri::AppHandle) -> Result<(), String> {
         .join("thumb_cache");
     if dir.exists() {
         std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
-        log::debug!("[RustyMirror:RS] thumb cache cleared: {}", dir.display());
+        tracing::debug!(path = %dir.display(), "thumb cache cleared");
     }
     Ok(())
 }
@@ -643,9 +643,9 @@ pub fn directory_fingerprint(
 
     let mut by_mtime: Vec<(&String, u64)> = map.iter().map(|(p, &(_, m))| (p, m)).collect();
     by_mtime.sort_by(|a, b| b.1.cmp(&a.1));
-    log::debug!("[RustyMirror:RS] fingerprint: {} ({} images)", &fingerprint[..12], map.len());
+    tracing::debug!("fingerprint: {} ({} images)", &fingerprint[..12], map.len());
     for (path, mtime) in by_mtime.iter().take(3) {
-        log::debug!("[RustyMirror:RS]   newest: {} (mtime={})", path, mtime);
+        tracing::debug!("  newest: {} (mtime={})", path, mtime);
     }
 
     // Store the enumerated file list so scan_directories can reuse it.

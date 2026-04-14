@@ -332,10 +332,11 @@ where
     }
     let mut ext_list: Vec<_> = ext_counts.into_iter().collect();
     ext_list.sort_by(|a, b| b.1.cmp(&a.1));
-    log::debug!("[RustyMirror:RS] {} images: {}", total,
+    tracing::debug!("{} images: {}", total,
         ext_list.iter().map(|(e, n)| format!("{}: {}", e, n)).collect::<Vec<_>>().join(", "));
 
     // ── Phase 1: incremental scan ────────────────────────────────────────────
+    let _p1 = tracing::info_span!("phase1_hash", total).entered();
     let t1 = std::time::Instant::now();
     let counter = std::sync::atomic::AtomicUsize::new(0);
     let stop_phase1 = stop.clone();
@@ -343,30 +344,16 @@ where
     let path_strings: Vec<String> = paths.iter()
         .map(|p| cache_key(&p.to_string_lossy())).collect();
 
-    // Diagnostic: print hex bytes of first 3 queried paths so we can compare
-    // with stored paths in case of encoding discrepancies.
-    for ps in path_strings.iter().take(3) {
-        let hex: String = ps.bytes().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-        log::debug!("[RustyMirror:RS] query path hex: {:?} = {}", ps, hex);
-    }
-
     let bulk_cache = cache.as_ref()
         .map(|c| c.get_bulk(&path_strings))
         .unwrap_or_default();
-
-    // Diagnostic: print hex bytes of first 3 stored cache keys (keys come back
-    // from get_bulk — they are the paths actually stored in SQLite).
-    for (k, _) in bulk_cache.iter().take(3) {
-        let hex: String = k.bytes().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-        log::debug!("[RustyMirror:RS] stored path hex: {:?} = {}", k, hex);
-    }
 
     let cache_hits        = std::sync::atomic::AtomicUsize::new(0);
     let dbg_size_match    = std::sync::atomic::AtomicUsize::new(0);
     let dbg_has_hh        = std::sync::atomic::AtomicUsize::new(0);
     let dbg_hh_match      = std::sync::atomic::AtomicUsize::new(0);
     let dbg_hh_read_fail  = std::sync::atomic::AtomicUsize::new(0);
-    log::debug!("[RustyMirror:RS] cache: {} entries ({} paths to check)",
+    tracing::debug!("cache: {} entries ({} paths to check)",
         cache.as_ref().map(|c| c.count()).unwrap_or(0), paths.len());
 
     // Process one file: returns the FileRecord (or None on failure/stop).
@@ -480,12 +467,16 @@ where
     }
 
     let hits = cache_hits.load(AOrdering::Relaxed);
-    log::debug!("[RustyMirror:RS] phase 1: {} hits, {} processed from disk", hits, total - hits);
-    log::debug!("[RustyMirror:RS] cache diag: size_match={} has_header_hash={} hh_match={} hh_read_fail={}",
-        dbg_size_match.load(AOrdering::Relaxed),
-        dbg_has_hh.load(AOrdering::Relaxed),
-        dbg_hh_match.load(AOrdering::Relaxed),
-        dbg_hh_read_fail.load(AOrdering::Relaxed));
+    tracing::debug!(
+        cache.hits = hits,
+        cache.misses = total - hits,
+        cache.hit_pct = hits * 100 / total.max(1),
+        cache.size_match = dbg_size_match.load(AOrdering::Relaxed),
+        cache.has_header_hash = dbg_has_hh.load(AOrdering::Relaxed),
+        cache.hh_match = dbg_hh_match.load(AOrdering::Relaxed),
+        cache.hh_read_fail = dbg_hh_read_fail.load(AOrdering::Relaxed),
+        "phase 1 cache stats"
+    );
 
     // Collect failed files: paths where result is None and scan was not stopped.
     let failed_files: Vec<FailedFile> = if stop.load(AOrdering::Relaxed) {
@@ -500,10 +491,16 @@ where
             .collect()
     };
     if !failed_files.is_empty() {
-        log::debug!("[RustyMirror:RS] phase 1: {} files failed to read", failed_files.len());
+        tracing::debug!("phase 1: {} files failed to read", failed_files.len());
     }
     let records: Vec<FileRecord> = results.into_iter().flatten().collect();
-    log::debug!("[RustyMirror:RS] phase 1 done: {} records in {:.1}s", records.len(), t1.elapsed().as_secs_f32());
+    tracing::info!(
+        records = records.len(),
+        failed = failed_files.len(),
+        elapsed_ms = t1.elapsed().as_millis(),
+        "phase 1 done"
+    );
+    drop(_p1);
 
     // Always persist to cache — even on cancellation, so partial results aren't lost.
     if let Some(ref c) = cache {
@@ -520,20 +517,15 @@ where
                 (cache_key(&r.entry.path), r.mtime_key.clone(), build_cached_file(r, phash, fast_phash))
             })
             .collect();
-        // Diagnostic: print hex bytes of first 3 paths being stored.
-        for (k, _, _) in to_cache.iter().take(3) {
-            let hex: String = k.bytes().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-            log::debug!("[RustyMirror:RS] write path hex: {:?} = {}", k, hex);
-        }
         if let Err(e) = c.put_batch(&to_cache) {
-            log::debug!("[RustyMirror:RS] cache write error: {}", e);
+            tracing::debug!("cache write error: {}", e);
         } else {
-            log::debug!("[RustyMirror:RS] cache: wrote {} entries", to_cache.len());
+            tracing::debug!("cache: wrote {} entries", to_cache.len());
         }
     }
 
     if stop.load(AOrdering::Relaxed) {
-        log::debug!("[RustyMirror:RS] scan stopped by user — partial cache saved ({} records)", records.len());
+        tracing::debug!("scan stopped by user — partial cache saved ({} records)", records.len());
         return Ok((vec![], vec![]));
     }
 
@@ -541,6 +533,7 @@ where
     let mut groups: Vec<DuplicateGroup> = Vec::new();
 
     // ── Phase 2: exact Blake3 hash ────────────────────────────────────────────
+    let _p2 = tracing::info_span!("phase2_exact", records = records.len()).entered();
     analyze_cb(AnalyzeProgress { analyzed: 0, total: records.len(),
         phase: "Grouping exact duplicates…".into() });
     let mut exact_map: HashMap<&str, Vec<usize>> = HashMap::new();
@@ -554,15 +547,17 @@ where
         indices.iter().for_each(|&i| grouped[i] = true);
         groups.push(DuplicateGroup { kind: SimilarityKind::Exact, entries, similarity: Some(100) });
     }
-    log::debug!("[RustyMirror:RS] phase 2: {} exact groups", groups.len());
+    tracing::info!(exact_groups = groups.len(), "phase 2 done");
+    drop(_p2);
 
     // ── Phase 3: perceptual hash (user threshold) ─────────────────────────────
     if stop.load(AOrdering::Relaxed) {
-        log::debug!("[RustyMirror:RS] scan stopped by user before phase 3");
+        tracing::debug!("scan stopped by user before phase 3");
         return Ok((groups, failed_files));
     }
     let ungrouped_ph: Vec<usize> = (0..records.len()).filter(|&i| !grouped[i]).collect();
-    log::debug!("[RustyMirror:RS] phase 3 (pHash): {} files to compare", ungrouped_ph.len());
+    let _p3 = tracing::info_span!("phase3_phash", candidates = ungrouped_ph.len()).entered();
+    tracing::debug!("phase 3 (pHash): {} files to compare", ungrouped_ph.len());
 
     let t3 = std::time::Instant::now();
 
@@ -582,7 +577,7 @@ where
     let heic_count = heic_need_convert.len();
     let heic_total_convert = heic_convert_paths.len();
 
-    log::debug!("[RustyMirror:RS] phase 3: {} HEIC ({} need pHash, {} from cache, {} grouped need dims)",
+    tracing::debug!("phase 3: {} HEIC ({} need pHash, {} from cache, {} grouped need dims)",
         ungrouped_heic_indices.len(), heic_count,
         ungrouped_heic_indices.len() - heic_count,
         heic_need_dims_only.len());
@@ -599,7 +594,7 @@ where
         }).into_iter().map(|(orig, tmp, w, h)| (orig, (tmp, w, h))).collect()
     } else { HashMap::new() };
 
-    log::debug!("[RustyMirror:RS] phase 3a: {}/{} HEIC converted in {:.1}s",
+    tracing::debug!("phase 3a: {}/{} HEIC converted in {:.1}s",
         conversions.len(), heic_total_convert, t3.elapsed().as_secs_f32());
 
     let t3b = std::time::Instant::now();
@@ -641,7 +636,7 @@ where
     }
 
     for (tmp, _, _) in conversions.values() { cleanup_temp(tmp); }
-    log::debug!("[RustyMirror:RS] phase 3b: {} HEIC pHashes in {:.1}s", heic_extra.len(), t3b.elapsed().as_secs_f32());
+    tracing::debug!("phase 3b: {} HEIC pHashes in {:.1}s", heic_extra.len(), t3b.elapsed().as_secs_f32());
 
     if let Some(ref c) = cache {
         let heic_updates: Vec<(String, String, CachedFile)> = heic_extra.iter()
@@ -743,7 +738,7 @@ where
         })
         .collect();
 
-    log::debug!("[RustyMirror:RS] phase 3c: comparing {} pHashes", ph_pairs.len());
+    tracing::debug!("phase 3c: comparing {} pHashes", ph_pairs.len());
     let t3c = std::time::Instant::now();
     let n = ph_pairs.len();
     let mut ph_grouped = vec![false; n];
@@ -812,10 +807,12 @@ where
                 phase: "Comparing similar images…".into() });
         }
     }
-    log::debug!("[RustyMirror:RS] phase 3c done in {:.1}s", t3c.elapsed().as_secs_f32());
+    tracing::info!(similar_groups = groups.len(), elapsed_ms = t3c.elapsed().as_millis(), "phase 3 done");
+    drop(_p3);
 
     // ── Phase 4: timestamp tag (fallback) ─────────────────────────────────────
     // Accumulates pHashes for sameDate members with NULL phash in older cache entries.
+    let _p4 = tracing::info_span!("phase4_timestamp", records = records.len()).entered();
     let mut on_demand_phashes: HashMap<usize, image_hasher::ImageHash> = HashMap::new();
 
     analyze_cb(AnalyzeProgress { analyzed: 0, total: records.len(),
@@ -863,7 +860,8 @@ where
         samedate_group_indices.push(indices.to_vec());
         groups.push(DuplicateGroup { kind: SimilarityKind::SameDate, entries, similarity });
     }
-    log::debug!("[RustyMirror:RS] phase 4: {} timestamp groups", groups.len() - before);
+    tracing::info!(samedate_groups = groups.len() - before, "phase 4 done");
+    drop(_p4);
 
     // Persist on-demand pHashes to cache
     if let Some(ref c) = cache {
@@ -874,7 +872,7 @@ where
                     build_cached_file(r, Some(phash_to_hex(ph)), None))
             }).collect();
         if !updates.is_empty() {
-            log::debug!("[RustyMirror:RS] phase 4: writing {} on-demand pHashes to cache", updates.len());
+            tracing::debug!("phase 4: writing {} on-demand pHashes to cache", updates.len());
             let _ = c.put_batch(&updates);
         }
     }
@@ -886,7 +884,8 @@ where
     // are removed from their original sameDate group; groups that become empty
     // or have only one member left are discarded.
     if cross_date_phash && samedate_group_indices.len() >= 2 {
-        log::debug!("[RustyMirror:RS] phase 5: cross-group pHash across {} sameDate groups", samedate_group_indices.len());
+        let _p5 = tracing::info_span!("phase5_cross_group", samedate_groups = samedate_group_indices.len()).entered();
+        tracing::debug!("phase 5: cross-group pHash across {} sameDate groups", samedate_group_indices.len());
 
         let min_hamming: u32 = 16;
 
@@ -1049,14 +1048,14 @@ where
                 groups.retain(|_| { let keep = !remove_flags[i]; i += 1; keep });
             }
 
-            log::debug!("[RustyMirror:RS] phase 5: {} cross-group clusters, {} sameDate groups removed, {} partially pruned",
+            tracing::debug!("phase 5: {} cross-group clusters, {} sameDate groups removed, {} partially pruned",
                 new_groups.len(),
                 fully_absorbed,
                 absorbed_paths.iter().filter(|s| !s.is_empty()).count().saturating_sub(fully_absorbed));
 
             groups.extend(new_groups);
         } else {
-            log::debug!("[RustyMirror:RS] phase 5: no cross-group clusters found");
+            tracing::debug!("phase 5: no cross-group clusters found");
         }
     }
 
@@ -1065,7 +1064,11 @@ where
             .cmp(&b.entries.first().map(|e| e.modified.as_str()))
     });
 
-    log::debug!("[RustyMirror:RS] complete: {} groups, {} failed files", groups.len(), failed_files.len());
+    tracing::info!(
+        groups = groups.len(),
+        failed_files = failed_files.len(),
+        "scan complete"
+    );
     Ok((groups, failed_files))
 }
 
