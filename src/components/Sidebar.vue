@@ -91,6 +91,7 @@ import { useSettings } from '../composables/useSettings'
 import { invoke } from '@tauri-apps/api/core'
 import { useDuplicatesStore } from '../store/duplicates'
 import { useMetadataStore } from '../store/metadata'
+import { useThumbnailStore } from '../store/thumbnails'
 import { useDuplicatesHistoryStore } from '../store/duplicatesHistory'
 import { useMetadataHistoryStore } from '../store/metadataHistory'
 import { formatSize } from '../utils/formatters'
@@ -102,8 +103,9 @@ import SidebarDuplicates from './SidebarDuplicates.vue'
 import SidebarMeta from './SidebarMeta.vue'
 
 const { activeMode } = useMode()
-const store       = useDuplicatesStore()   // needed for cache-size watchers
-const meta        = useMetadataStore()     // needed for geo-cache buttons
+const store       = useDuplicatesStore()
+const meta        = useMetadataStore()
+const thumbStore  = useThumbnailStore()
 const history     = useDuplicatesHistoryStore()
 const metaHistory = useMetadataHistoryStore()
 
@@ -131,9 +133,18 @@ onMounted(() => {
   setTimeout(loadCacheSize, 1500)
 })
 
-watch(() => store.scanDone,          (done)    => { if (done)     loadCacheSize() })
-watch(() => store.scanning,          (scanning) => { if (!scanning) loadCacheSize() })
-watch(() => store.heicThumbGenerated, ()        => { loadCacheSize() })
+// Duplicate scan
+watch(() => store.scanDone,  (done)     => { if (done)      loadCacheSize() })
+watch(() => store.scanning,  (scanning) => { if (!scanning) loadCacheSize() })
+// Metadata scan
+watch(() => meta.scanDone,   (done)     => { if (done)      loadCacheSize() })
+watch(() => meta.scanning,   (scanning) => { if (!scanning) loadCacheSize() })
+// Thumbnails — debounced to avoid one invoke per thumbnail when browsing
+let _thumbDebounce = null
+watch(() => thumbStore.heicThumbGenerated, () => {
+  clearTimeout(_thumbDebounce)
+  _thumbDebounce = setTimeout(loadCacheSize, 400)
+})
 
 // ── Sidebar resize ────────────────────────────────────────────────────────────
 const { sidebarWidth } = useSettings()
