@@ -144,91 +144,30 @@ pub async fn delete_files(paths: Vec<String>, app: tauri::AppHandle) -> Result<(
 
     #[cfg(target_os = "windows")]
     {
-        // Write paths to a temp file (UTF-8) to avoid any shell quoting issues
-        let tmp_list = std::env::temp_dir().join("rustymirror_delete_list.txt");
-        std::fs::write(&tmp_list, paths.join("\n"))
-            .map_err(|e| format!("Failed to write path list: {}", e))?;
+        for (i, path) in paths.iter().enumerate() {
+            let p = path.trim();
+            if p.is_empty() { continue; }
 
-        // Escape single quotes in the temp path for PowerShell
-        let tmp_str = tmp_list.to_string_lossy().replace('\'', "''");
-
-        // Key fixes:
-        //   1. -ExecutionPolicy Bypass — avoids silent block by corporate policies
-        //   2. Network paths (UNC \\...) use Remove-Item (permanent delete)
-        //   3. Local paths use SendToRecycleBin via VisualBasic FileSystem
-        //   4. Always log stdout/stderr so we can detect done=0 silently
-        let script = format!(
-            r#"$ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName Microsoft.VisualBasic
-$lines = Get-Content -LiteralPath '{tmp}' -Encoding UTF8
-$i = 0
-foreach ($p in $lines) {{
-    $p = $p.Trim()
-    if ($p -eq '') {{ continue }}
-    if ($p.StartsWith('\\') -or $p.StartsWith('//')) {{
-        Remove-Item -LiteralPath $p -Force
-    }} else {{
-        [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile(
-            $p,
-            [Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs,
-            [Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin
-        )
-    }}
-    $i++
-    Write-Output "PROGRESS:$i"
-}}"#,
-            tmp = tmp_str
-        );
-
-        let output = tokio::task::spawn_blocking(move || {
-            std::process::Command::new("powershell")
-                .args([
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-ExecutionPolicy", "Bypass",
-                    "-Command", &script,
-                ])
-                .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                .output()
-        })
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| format!("PowerShell launch failed: {}", e))?;
-
-        let _ = std::fs::remove_file(&tmp_list);
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        tracing::debug!("ps stdout: {}", stdout.trim());
-        if !stderr.trim().is_empty() {
-            tracing::debug!("ps stderr: {}", stderr.trim());
-        }
-
-        if !output.status.success() {
-            let msg = format!("Delete failed: {}", stderr.trim());
-            tracing::warn!(error = %msg, "delete_files failed");
-            return Err(msg);
-        }
-
-        let mut done = 0usize;
-        for line in stdout.lines() {
-            if let Some(n) = line.strip_prefix("PROGRESS:") {
-                if let Ok(i) = n.trim().parse::<usize>() {
-                    done = i;
-                    let _ = app.emit("delete_progress", serde_json::json!({ "done": done, "total": total }));
+            // Network paths (UNC) have no recycle bin — delete permanently.
+            // Local paths go to the recycle bin via the trash crate.
+            let is_network = p.starts_with("\\\\") || p.starts_with("//");
+            if is_network {
+                let meta = std::fs::metadata(p)
+                    .map_err(|e| format!("Failed to stat '{}': {}", p, e))?;
+                if meta.is_dir() {
+                    std::fs::remove_dir_all(p)
+                        .map_err(|e| format!("Failed to delete '{}': {}", p, e))?;
+                } else {
+                    std::fs::remove_file(p)
+                        .map_err(|e| format!("Failed to delete '{}': {}", p, e))?;
                 }
+            } else {
+                trash::delete(p)
+                    .map_err(|e| format!("Failed to delete '{}': {}", p, e))?;
             }
+            let _ = app.emit("delete_progress", serde_json::json!({ "done": i + 1, "total": total }));
         }
-        tracing::debug!("deleted {} / {} files", done, total);
-
-        // If PowerShell exited 0 but deleted nothing, treat it as a real error
-        if done == 0 && total > 0 {
-            return Err(format!(
-                "PowerShell ran but deleted 0 files. stderr: {}",
-                stderr.trim()
-            ));
-        }
+        tracing::debug!("deleted {} files", total);
 
         if let Ok(data_dir) = cache_data_dir(&app) {
             if let Ok(cache) = crate::cache::Cache::open(&data_dir) {
