@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { load } from '@tauri-apps/plugin-store'
 import { useSettings } from '../composables/useSettings'
+import { errorMessage } from '../utils/errors'
 import { useMetadataHistoryStore } from './metadataHistory'
 
 const STORE_FILE = 'rustymirror.json'
@@ -244,7 +245,7 @@ export const useMetadataStore = defineStore('metadata', {
           this.geocodeAll()
         }
       } catch (e) {
-        if (!String(e).includes('stopped')) this.error = String(e)
+        if (!errorMessage(e).includes('stopped')) this.error = errorMessage(e)
       } finally {
         this.scanning = false
       }

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
+import { errorMessage } from '../utils/errors'
 
 export const usePanelStore = defineStore('panel', {
   state: () => ({
@@ -16,7 +17,7 @@ export const usePanelStore = defineStore('panel', {
         const metadata = await invoke('read_metadata', { path: entry.path })
         if (this.activePanel) this.activePanel = { ...this.activePanel, metadata, loading: false }
       } catch (e) {
-        if (this.activePanel) this.activePanel = { ...this.activePanel, loading: false, error: String(e) }
+        if (this.activePanel) this.activePanel = { ...this.activePanel, loading: false, error: errorMessage(e) }
       }
     },
     async openBatchPanel(entries) {
@@ -25,7 +26,7 @@ export const usePanelStore = defineStore('panel', {
         const allMetadata = await Promise.all(entries.map(e => invoke('read_metadata', { path: e.path })))
         if (this.activePanel) this.activePanel = { ...this.activePanel, allMetadata, loading: false }
       } catch (e) {
-        if (this.activePanel) this.activePanel = { ...this.activePanel, loading: false, error: String(e) }
+        if (this.activePanel) this.activePanel = { ...this.activePanel, loading: false, error: errorMessage(e) }
       }
     },
     closePanel() {

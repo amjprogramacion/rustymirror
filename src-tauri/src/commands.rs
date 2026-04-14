@@ -20,6 +20,38 @@ fn cache_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, tauri::Error> {
 use crate::scanner::find_duplicates;
 use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, ScanProgress};
 
+/// Structured error type returned by all Tauri commands.
+/// Serialises as `{ "type": "...", "message": "...", "path": "..." }` so the
+/// frontend can display context-rich messages and, if needed, branch on `type`.
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum AppError {
+    /// Scan or duplicate-detection failure.
+    Scan { message: String },
+    /// File deletion failure (network or local).
+    Delete { path: String, message: String },
+    /// Generic I/O or filesystem error.
+    Io { message: String },
+    /// EXIF metadata read/write failure.
+    Metadata { path: String, message: String },
+    /// Thumbnail or full-image generation failure.
+    Thumbnail { message: String },
+    /// Unexpected internal error (task panic, join failure, etc.).
+    Internal { message: String },
+}
+
+impl From<tokio::task::JoinError> for AppError {
+    fn from(e: tokio::task::JoinError) -> Self {
+        AppError::Internal { message: e.to_string() }
+    }
+}
+
+impl From<tauri::Error> for AppError {
+    fn from(e: tauri::Error) -> Self {
+        AppError::Io { message: e.to_string() }
+    }
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanResult {
@@ -54,7 +86,7 @@ pub async fn scan_directories(
     app: AppHandle,
     scan_state: State<'_, ScanState>,
     file_list_cache: State<'_, FileListCache>,
-) -> Result<ScanResult, String> {
+) -> Result<ScanResult, AppError> {
     let stop = Arc::new(AtomicBool::new(false));
     *scan_state.0.lock().unwrap() = stop.clone();
 
@@ -119,8 +151,8 @@ pub async fn scan_directories(
     tracing::debug!("spawn_blocking joined: {}", match &result { Ok(_) => "Ok", Err(_) => "JoinError" });
 
     let (groups, failed_files) = result
-        .map_err(|e| { let s = e.to_string(); tracing::debug!("JoinError: {}", s); s })?
-        .map_err(|e| { let s = e.to_string(); tracing::debug!("ScanError: {}", s); s })?;
+        .map_err(|e| { tracing::debug!("JoinError: {}", e); AppError::from(e) })?
+        .map_err(|e| { tracing::debug!("ScanError: {}", e); AppError::Scan { message: e.to_string() } })?;
     Ok(ScanResult { groups, failed_files })
 }
 
@@ -137,7 +169,7 @@ pub fn stop_meta_scan(meta_scan_state: State<'_, MetaScanState>) {
 }
 
 #[tauri::command]
-pub async fn delete_files(paths: Vec<String>, app: tauri::AppHandle) -> Result<(), String> {
+pub async fn delete_files(paths: Vec<String>, app: tauri::AppHandle) -> Result<(), AppError> {
     use tauri::Emitter;
     let total = paths.len();
     tracing::debug!("delete_files: {} files", total);
@@ -153,17 +185,17 @@ pub async fn delete_files(paths: Vec<String>, app: tauri::AppHandle) -> Result<(
             let is_network = p.starts_with("\\\\") || p.starts_with("//");
             if is_network {
                 let meta = std::fs::metadata(p)
-                    .map_err(|e| format!("Failed to stat '{}': {}", p, e))?;
+                    .map_err(|e| AppError::Delete { path: p.to_string(), message: e.to_string() })?;
                 if meta.is_dir() {
                     std::fs::remove_dir_all(p)
-                        .map_err(|e| format!("Failed to delete '{}': {}", p, e))?;
+                        .map_err(|e| AppError::Delete { path: p.to_string(), message: e.to_string() })?;
                 } else {
                     std::fs::remove_file(p)
-                        .map_err(|e| format!("Failed to delete '{}': {}", p, e))?;
+                        .map_err(|e| AppError::Delete { path: p.to_string(), message: e.to_string() })?;
                 }
             } else {
                 trash::delete(p)
-                    .map_err(|e| format!("Failed to delete '{}': {}", p, e))?;
+                    .map_err(|e| AppError::Delete { path: p.to_string(), message: e.to_string() })?;
             }
             let _ = app.emit("delete_progress", serde_json::json!({ "done": i + 1, "total": total }));
         }
@@ -182,7 +214,8 @@ pub async fn delete_files(paths: Vec<String>, app: tauri::AppHandle) -> Result<(
     #[cfg(not(target_os = "windows"))]
     {
         for (i, path) in paths.iter().enumerate() {
-            trash::delete(path).map_err(|e| format!("Failed to delete '{}': {}", path, e))?;
+            trash::delete(path)
+                .map_err(|e| AppError::Delete { path: path.clone(), message: e.to_string() })?;
             let _ = app.emit("delete_progress", serde_json::json!({ "done": i + 1, "total": total }));
         }
         if let Ok(data_dir) = cache_data_dir(&app) {
@@ -204,23 +237,25 @@ pub fn log_message(level: String, message: String) {
 }
 
 #[tauri::command]
-pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String, String> {
+pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String, AppError> {
     use tauri::Manager;
 
     let resource_dir    = app.path().resource_dir().ok();
     let thumb_cache_dir = cache_data_dir(&app).ok().map(|d| d.join("thumb_cache"));
 
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || -> Result<String, AppError> {
         use image::imageops::FilterType;
         use std::io::{Cursor, Seek, SeekFrom};
         use base64::Engine;
+
+        let thumb_err = |msg: String| AppError::Thumbnail { message: msg };
 
         let lower   = path.to_lowercase();
         let is_heic = lower.ends_with(".heic") || lower.ends_with(".heif");
 
         if is_heic {
             // Read once — used for the cache key.
-            let heic_bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+            let heic_bytes = std::fs::read(&path).map_err(|e| thumb_err(e.to_string()))?;
 
             let cache_path = thumb_cache_dir.as_ref().map(|dir| {
                 let hash = blake3::hash(&heic_bytes);
@@ -244,20 +279,20 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
                 std::path::Path::new(&path),
                 resource_dir.as_deref(),
                 None, // full resolution for thumbnail/viewer
-            ).ok_or_else(|| "heic-no-converter".to_string())?;
+            ).ok_or_else(|| thumb_err("HEIC converter not available".to_string()))?;
 
-            let jpeg_bytes = std::fs::read(&tmp).map_err(|e| e.to_string())?;
+            let jpeg_bytes = std::fs::read(&tmp).map_err(|e| thumb_err(e.to_string()))?;
             let _ = std::fs::remove_file(&tmp);
 
-            let img = image::load_from_memory(&jpeg_bytes).map_err(|e| e.to_string())?;
+            let img = image::load_from_memory(&jpeg_bytes).map_err(|e| thumb_err(e.to_string()))?;
             // Normalise to 8-bit RGB — mirrors the PNG fix; prevents JPEG encoder
             // failures when magick/sips produces output with an unusual bit depth
             // or colour space (e.g. HDR/wide-gamut HEICs from iPhone Pro models).
             let img   = image::DynamicImage::ImageRgb8(img.into_rgb8());
             let thumb = img.resize(180, 180, FilterType::Nearest);
             let mut buf = Cursor::new(Vec::<u8>::new());
-            thumb.write_to(&mut buf, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
-            buf.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+            thumb.write_to(&mut buf, image::ImageFormat::Jpeg).map_err(|e| thumb_err(e.to_string()))?;
+            buf.seek(SeekFrom::Start(0)).map_err(|e| thumb_err(e.to_string()))?;
             let thumb_bytes = buf.into_inner();
 
             if let Some(ref cp) = cache_path {
@@ -274,7 +309,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
 
         // Non-HEIC: handles local PNGs (WebView2 struggles with some variants)
         // and network paths (which cannot use convertFileSrc).
-        let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+        let bytes = std::fs::read(&path).map_err(|e| thumb_err(e.to_string()))?;
 
         let cache_path = thumb_cache_dir.as_ref().and_then(|dir| {
             let hash = blake3::hash(&bytes);
@@ -325,8 +360,8 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
         let img   = image::DynamicImage::ImageRgb8(img.into_rgb8());
         let thumb = img.resize(180, 180, FilterType::Nearest);
         let mut buf = Cursor::new(Vec::<u8>::new());
-        thumb.write_to(&mut buf, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
-        buf.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+        thumb.write_to(&mut buf, image::ImageFormat::Jpeg).map_err(|e| thumb_err(e.to_string()))?;
+        buf.seek(SeekFrom::Start(0)).map_err(|e| thumb_err(e.to_string()))?;
         let thumb_bytes = buf.into_inner();
 
         if let Some(ref cp) = cache_path {
@@ -340,8 +375,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
         Ok(format!("data:image/jpeg;base64,{}",
             base64::engine::general_purpose::STANDARD.encode(thumb_bytes)))
     })
-    .await
-    .map_err(|e| e.to_string())?
+    .await?
 }
 
 fn apply_exif_orientation(bytes: &[u8], img: image::DynamicImage) -> image::DynamicImage {
@@ -369,13 +403,15 @@ fn read_exif_orientation(bytes: &[u8]) -> Option<u32> {
 }
 
 #[tauri::command]
-pub async fn get_full_image(path: String, app: tauri::AppHandle) -> Result<String, String> {
+pub async fn get_full_image(path: String, app: tauri::AppHandle) -> Result<String, AppError> {
     use tauri::Manager;
     let resource_dir = app.path().resource_dir().ok();
 
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || -> Result<String, AppError> {
         use std::io::{Cursor, Seek, SeekFrom};
         use base64::Engine;
+
+        let thumb_err = |msg: String| AppError::Thumbnail { message: msg };
 
         let lower   = path.to_lowercase();
         let is_heic = lower.ends_with(".heic") || lower.ends_with(".heif");
@@ -385,29 +421,28 @@ pub async fn get_full_image(path: String, app: tauri::AppHandle) -> Result<Strin
                 std::path::Path::new(&path),
                 resource_dir.as_deref(),
                 None, // full resolution for thumbnail/viewer
-            ).ok_or_else(|| "heic-no-converter".to_string())?;
-            let b = std::fs::read(&tmp).map_err(|e| e.to_string())?;
+            ).ok_or_else(|| thumb_err("HEIC converter not available".to_string()))?;
+            let b = std::fs::read(&tmp).map_err(|e| thumb_err(e.to_string()))?;
             let _ = std::fs::remove_file(&tmp);
             b
         } else {
-            std::fs::read(&path).map_err(|e| e.to_string())?
+            std::fs::read(&path).map_err(|e| thumb_err(e.to_string()))?
         };
 
-        let img = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+        let img = image::load_from_memory(&bytes).map_err(|e| thumb_err(e.to_string()))?;
         let img = if !is_heic { apply_exif_orientation(&bytes, img) } else { img };
         // Normalise to 8-bit RGB — prevents JPEG encoder failures on HDR/wide-gamut
         // or CMYK output from ImageMagick (mirrors the same fix in get_thumbnail).
         let img = image::DynamicImage::ImageRgb8(img.into_rgb8());
 
         let mut buf = Cursor::new(Vec::<u8>::new());
-        img.write_to(&mut buf, image::ImageFormat::Jpeg).map_err(|e| e.to_string())?;
-        buf.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+        img.write_to(&mut buf, image::ImageFormat::Jpeg).map_err(|e| thumb_err(e.to_string()))?;
+        buf.seek(SeekFrom::Start(0)).map_err(|e| thumb_err(e.to_string()))?;
 
         Ok(format!("data:image/jpeg;base64,{}",
             base64::engine::general_purpose::STANDARD.encode(buf.into_inner())))
     })
-    .await
-    .map_err(|e| e.to_string())?
+    .await?
 }
 
 /// Opens a file with its default application.
@@ -415,26 +450,26 @@ pub async fn get_full_image(path: String, app: tauri::AppHandle) -> Result<Strin
 /// dialog that appears when launching files via ShellExecuteW from an
 /// unsigned process — explorer.exe is a trusted system process.
 #[tauri::command]
-pub fn open_file(path: String) -> Result<(), String> {
+pub fn open_file(path: String) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
             .arg(&path)
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Io { message: e.to_string() })?;
         return Ok(());
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        open::that(&path).map_err(|e| e.to_string())
+        open::that(&path).map_err(|e| AppError::Io { message: e.to_string() })
     }
 }
 
 /// Opens the folder containing the file, selecting it if the OS supports it.
 #[tauri::command]
-pub fn open_folder(path: String) -> Result<(), String> {
+pub fn open_folder(path: String) -> Result<(), AppError> {
     #[cfg(target_os = "windows")]
     {
         // /select highlights the file inside Explorer
@@ -442,7 +477,7 @@ pub fn open_folder(path: String) -> Result<(), String> {
             .args(["/select,", &path])
             .creation_flags(0x08000000)
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Io { message: e.to_string() })?;
         return Ok(());
     }
 
@@ -451,7 +486,7 @@ pub fn open_folder(path: String) -> Result<(), String> {
         std::process::Command::new("open")
             .args(["-R", &path])
             .spawn()
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Io { message: e.to_string() })?;
         return Ok(());
     }
 
@@ -459,8 +494,8 @@ pub fn open_folder(path: String) -> Result<(), String> {
     {
         let folder = std::path::Path::new(&path)
             .parent()
-            .ok_or_else(|| format!("Cannot resolve parent folder for: {}", path))?;
-        open::that(folder).map_err(|e| e.to_string())
+            .ok_or_else(|| AppError::Io { message: format!("Cannot resolve parent folder for: {}", path) })?;
+        open::that(folder).map_err(|e| AppError::Io { message: e.to_string() })
     }
 }
 
@@ -505,12 +540,11 @@ pub fn get_cache_size(app: tauri::AppHandle) -> u64 {
 
 /// Deletes the hash cache database file.
 #[tauri::command]
-pub fn clear_cache(app: tauri::AppHandle) -> Result<(), String> {
-    let path = cache_data_dir(&app)
-        .map_err(|e| e.to_string())?
-        .join("rustymirror_cache.db");
+pub fn clear_cache(app: tauri::AppHandle) -> Result<(), AppError> {
+    let path = cache_data_dir(&app)?.join("rustymirror_cache.db");
     if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&path)
+            .map_err(|e| AppError::Io { message: e.to_string() })?;
         tracing::debug!(path = %path.display(), "hash cache cleared");
     }
     Ok(())
@@ -534,12 +568,11 @@ pub fn get_thumb_cache_size(app: tauri::AppHandle) -> u64 {
 
 /// Deletes all cached thumbnails.
 #[tauri::command]
-pub fn clear_thumb_cache(app: tauri::AppHandle) -> Result<(), String> {
-    let dir = cache_data_dir(&app)
-        .map_err(|e| e.to_string())?
-        .join("thumb_cache");
+pub fn clear_thumb_cache(app: tauri::AppHandle) -> Result<(), AppError> {
+    let dir = cache_data_dir(&app)?.join("thumb_cache");
     if dir.exists() {
-        std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+        std::fs::remove_dir_all(&dir)
+            .map_err(|e| AppError::Io { message: e.to_string() })?;
         tracing::debug!(path = %dir.display(), "thumb cache cleared");
     }
     Ok(())
@@ -552,7 +585,7 @@ pub fn clear_thumb_cache(app: tauri::AppHandle) -> Result<(), String> {
 pub fn directory_fingerprint(
     paths: Vec<String>,
     file_list_cache: State<'_, FileListCache>,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     use std::collections::BTreeMap;
 
     let directories: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
@@ -604,7 +637,7 @@ pub fn is_debug_build() -> bool {
 pub async fn scan_for_metadata(
     paths: Vec<String>,
     meta_scan_state: State<'_, MetaScanState>,
-) -> Result<MetaScanResult, String> {
+) -> Result<MetaScanResult, AppError> {
     let stop = Arc::new(AtomicBool::new(false));
     *meta_scan_state.0.lock().unwrap() = stop.clone();
 
@@ -708,19 +741,18 @@ pub async fn scan_for_metadata(
         entries.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(MetaScanResult { images: entries, failed_files })
     })
-    .await
-    .map_err(|e| e.to_string())?
+    .await?
 }
 
 /// Reads all EXIF and file metadata for a single image.
 #[tauri::command]
-pub async fn read_metadata(path: String) -> Result<crate::types::ImageMetadata, String> {
+pub async fn read_metadata(path: String) -> Result<crate::types::ImageMetadata, AppError> {
+    let path_clone = path.clone();
     tokio::task::spawn_blocking(move || {
-        crate::metadata::read_metadata(std::path::Path::new(&path))
-            .map_err(|e| e.to_string())
+        crate::metadata::read_metadata(std::path::Path::new(&path_clone))
+            .map_err(|e| AppError::Metadata { path: path_clone.clone(), message: e.to_string() })
     })
-    .await
-    .map_err(|e| e.to_string())?
+    .await?
 }
 
 /// Writes editable EXIF fields back to an image file and invalidates the
@@ -730,14 +762,13 @@ pub async fn write_metadata(
     path: String,
     update: crate::types::MetadataUpdate,
     app: tauri::AppHandle,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let path_clone = path.clone();
     tokio::task::spawn_blocking(move || {
         crate::metadata::write_metadata(std::path::Path::new(&path_clone), &update)
-            .map_err(|e| e.to_string())
+            .map_err(|e| AppError::Metadata { path: path_clone.clone(), message: e.to_string() })
     })
-    .await
-    .map_err(|e| e.to_string())??;
+    .await??;
 
     // Invalidate the SQLite cache entry so the next scan picks up the new date
     if let Ok(data_dir) = cache_data_dir(&app) {

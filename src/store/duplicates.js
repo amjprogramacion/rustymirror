@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { logger } from '../utils/logger'
+import { errorMessage } from '../utils/errors'
 import { useDuplicatesHistoryStore } from './duplicatesHistory'
 import { useMetadataStore } from './metadata'
 import { useSettings } from '../composables/useSettings'
@@ -328,8 +329,8 @@ export const useDuplicatesStore = defineStore('duplicates', {
           } catch { /* ignore */ }
         }
       } catch (e) {
-        logger.error('scan failed:', String(e))
-        this.error = String(e)
+        logger.error('scan failed:', errorMessage(e))
+        this.error = errorMessage(e)
       } finally {
         this.scanning = false
         this.fingerprinting = false
@@ -389,7 +390,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
         useMetadataStore().updateEntryFromMetadata(path, metadata)
         this.updateGroupEntry(path, metadata)
       } catch (e) {
-        panel.activePanel = { ...panel.activePanel, saving: false, error: String(e) }
+        panel.activePanel = { ...panel.activePanel, saving: false, error: errorMessage(e) }
       }
     },
     async saveBatchMetadata(update) {
@@ -408,7 +409,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
           })
         }
       } catch (e) {
-        if (panel.activePanel) panel.activePanel = { ...panel.activePanel, saving: false, error: String(e) }
+        if (panel.activePanel) panel.activePanel = { ...panel.activePanel, saving: false, error: errorMessage(e) }
       }
     },
     lightboxNext() {
@@ -438,7 +439,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
         await invoke('delete_files', { paths })
         logger.info('delete_files returned ok')
       } catch (e) {
-        logger.error(`delete_files failed: ${e}`)
+        logger.error(`delete_files failed: ${errorMessage(e)}`)
         throw e
       }
 
