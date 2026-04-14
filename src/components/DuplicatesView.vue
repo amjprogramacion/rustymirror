@@ -65,15 +65,38 @@
 
   <!-- Confirm delete dialog -->
   <Transition name="overlay-fade">
-    <div class="overlay" v-if="showConfirm" @click.self="showConfirm = false">
-      <div class="dialog">
-        <div class="dialog-icon">🗑️</div>
+    <div class="overlay" v-if="showConfirm" @click.self="closeConfirm">
+      <div class="dialog" :class="{ 'dialog--thumbs': viewMode === 'thumbs' }">
 
-        <h3 class="dialog-title">Delete {{ store.selectedCount }} image{{ store.selectedCount !== 1 ? 's' : '' }}?</h3>
+        <!-- Header row: icon + title + view toggle -->
+        <div class="dialog-header">
+          <div class="dialog-icon">🗑️</div>
+          <h3 class="dialog-title">Delete {{ store.selectedCount }} image{{ store.selectedCount !== 1 ? 's' : '' }}?</h3>
+          <button
+            class="view-toggle"
+            :title="viewMode === 'list' ? 'Show thumbnails' : 'Show list'"
+            @click="toggleViewMode"
+          >
+            <!-- grid icon -->
+            <svg v-if="viewMode === 'list'" width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <rect x="1" y="1" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+              <rect x="8.5" y="1" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+              <rect x="1" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+              <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/>
+            </svg>
+            <!-- list icon -->
+            <svg v-else width="15" height="15" viewBox="0 0 15 15" fill="none">
+              <rect x="1" y="2.5" width="13" height="1.5" rx="0.75" fill="currentColor"/>
+              <rect x="1" y="6.75" width="13" height="1.5" rx="0.75" fill="currentColor"/>
+              <rect x="1" y="11" width="13" height="1.5" rx="0.75" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
 
-        <div class="dialog-files">
+        <!-- List mode: all files, scrollable -->
+        <div v-if="viewMode === 'list'" class="dialog-files dialog-files--list">
           <div
-            v-for="path in previewPaths"
+            v-for="path in allPaths"
             :key="path"
             class="dialog-file"
             :title="path"
@@ -86,8 +109,33 @@
             />
             {{ fileName(path) }}
           </div>
-          <div v-if="store.selectedCount > DELETE_MAX_PREVIEW" class="dialog-file dialog-more">
-            +{{ store.selectedCount - DELETE_MAX_PREVIEW }} more…
+        </div>
+
+        <!-- Thumbnail mode: grid -->
+        <div v-else class="dialog-files dialog-files--thumbs">
+          <div
+            v-for="path in allPaths"
+            :key="path"
+            class="dialog-thumb"
+            :title="path"
+          >
+            <img
+              v-if="thumbSrc(path)"
+              :src="thumbSrc(path)"
+              class="thumb-img"
+              loading="lazy"
+            />
+            <div v-else class="thumb-loading">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+                <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <span
+              v-if="networkRoots.size > 0"
+              class="thumb-badge"
+              :class="pathIsNetwork(path) ? 'dot-network' : 'dot-local'"
+            />
           </div>
         </div>
 
@@ -112,7 +160,7 @@
         <p v-if="deleteError" class="dialog-error">{{ deleteError }}</p>
 
         <div class="dialog-actions">
-          <button class="btn btn-ghost" @click="showConfirm = false; deleteError = null">Cancel</button>
+          <button class="btn btn-ghost" @click="closeConfirm">Cancel</button>
           <button class="btn btn-danger" @click="doDelete" :disabled="deleting">
             <span v-if="deleting && deleteProgress.total > 0">
               Deleting {{ deleteProgress.done }}/{{ deleteProgress.total }}…
@@ -138,13 +186,13 @@ import ImageDetailPanel from './ImageDetailPanel.vue'
 import SearchInput from './SearchInput.vue'
 import { useThumbnailStore } from '../store/thumbnails'
 import { fileName } from '../utils/formatters'
-import { DELETE_MAX_PREVIEW } from '../constants'
 import FailedFilesWarning from './FailedFilesWarning.vue'
 
 const store        = useDuplicatesStore()
 const thumbs       = useThumbnailStore()
 const showConfirm  = ref(false)
 const deleteError  = ref(null)
+const viewMode     = ref('list') // 'list' | 'thumbs'
 
 function focusFirstCard() {
   const first = document.querySelector('[data-card-path]')
@@ -195,9 +243,28 @@ const hasMixed = computed(() =>
   hasNetworkFiles.value && [...store.selected].some(p => !pathIsNetwork(p))
 )
 
-const previewPaths = computed(() =>
-  [...store.selected].slice(0, DELETE_MAX_PREVIEW)
-)
+const allPaths = computed(() => [...store.selected])
+
+function thumbSrc(path) {
+  const cached = thumbs.thumbCache[path]
+  if (cached && cached !== '__error__') return cached
+  const direct = thumbs.directSrcCache[path]
+  if (direct) return direct
+  return null
+}
+
+function toggleViewMode() {
+  viewMode.value = viewMode.value === 'list' ? 'thumbs' : 'list'
+  if (viewMode.value === 'thumbs') {
+    for (const path of store.selected) thumbs.enqueueThumbnail(path)
+  }
+}
+
+function closeConfirm() {
+  showConfirm.value = false
+  deleteError.value = null
+  viewMode.value = 'list'
+}
 
 async function confirmDelete() {
   if (store.selectedCount === 0) return
@@ -225,7 +292,7 @@ async function doDelete() {
 
   try {
     await store.deleteSelected()
-    showConfirm.value = false
+    closeConfirm()
     store.multiSelect = false
   } catch (e) {
     deleteError.value = `Delete failed: ${e}`
@@ -334,46 +401,113 @@ async function doDelete() {
   flex-direction: column;
   gap: var(--space-3);
   box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  transition: width 220ms ease;
 }
+.dialog--thumbs { width: 640px; }
 
+/* Header: icon + title + toggle button */
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 .dialog-icon {
-  font-size: 28px;
-  text-align: center;
+  font-size: 22px;
+  flex-shrink: 0;
 }
-
 .dialog-title {
+  flex: 1;
   font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
-  text-align: center;
   margin: 0;
 }
+.view-toggle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.view-toggle:hover { background: var(--bg-secondary); color: var(--text-primary); }
 
+/* Files area shared */
 .dialog-files {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
+  overflow-y: auto;
+  transition: max-height 220ms ease;
+}
+
+/* List mode */
+.dialog-files--list {
+  max-height: 220px;
   padding: var(--space-2);
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
-
 .dialog-file {
   display: flex;
   align-items: center;
-  font-size: 11px;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 2px var(--space-1);
+  padding: 5px var(--space-2);
   border-radius: 3px;
+  min-height: 28px;
 }
 .dialog-file:nth-child(odd) { background: rgba(255,255,255,0.03); }
-.dialog-more {
+
+/* Thumbnail mode */
+.dialog-files--thumbs {
+  max-height: 420px;
+  padding: var(--space-2);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 4px;
+}
+.dialog-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-tertiary, rgba(255,255,255,0.05));
+}
+.thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.thumb-loading {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-muted);
-  font-style: italic;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.thumb-badge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.4);
 }
 
 .file-dot {
