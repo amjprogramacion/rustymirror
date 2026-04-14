@@ -145,6 +145,38 @@
                     </label>
                   </div>
                   <p class="settings-hint">Uses the embedded EXIF thumbnail for perceptual hashing (~2× faster on cold scans, slightly less precise)</p>
+
+                  <div class="settings-row">
+                    <span class="settings-row-label">Original selection rule</span>
+                    <select class="settings-select" :value="dups.retentionRule.kind" @change="onRuleKindChange($event.target.value)">
+                      <option value="highestResolution">Highest resolution</option>
+                      <option value="oldestDate">Oldest date</option>
+                      <option value="newestDate">Newest date</option>
+                      <option value="highestSharpness">Sharpest image</option>
+                      <option value="filenamePattern">Filename pattern…</option>
+                    </select>
+                  </div>
+                  <p class="settings-hint">
+                    Determines which copy within a duplicate group is marked as the original (and skipped by "Select copies").
+                    <template v-if="dups.retentionRule.kind === 'highestResolution'">Keeps the file with the most pixels, preferring files without "copy/copia" in the name.</template>
+                    <template v-else-if="dups.retentionRule.kind === 'oldestDate'">Keeps the earliest capture date (EXIF DateTimeOriginal, or file mtime as fallback).</template>
+                    <template v-else-if="dups.retentionRule.kind === 'newestDate'">Keeps the most recent capture date.</template>
+                    <template v-else-if="dups.retentionRule.kind === 'highestSharpness'">Keeps the sharpest copy based on Laplacian variance · requires a fresh scan to compute scores.</template>
+                    <template v-else-if="dups.retentionRule.kind === 'filenamePattern'">Keeps the file whose name matches the glob pattern below · falls back to highest resolution if no match.</template>
+                  </p>
+                  <template v-if="dups.retentionRule.kind === 'filenamePattern'">
+                    <div class="settings-row">
+                      <span class="settings-row-label">Pattern</span>
+                      <input
+                        class="settings-input settings-input--wide"
+                        type="text"
+                        placeholder="e.g. IMG_* or DSC_*"
+                        :value="dups.retentionRule.pattern ?? ''"
+                        @change="onPatternChange($event.target.value)"
+                      />
+                    </div>
+                    <p class="settings-hint">Case-insensitive glob matched against the filename stem (without extension). Supports * and ?.</p>
+                  </template>
                 </section>
 
                 <div class="settings-divider" />
@@ -227,6 +259,20 @@
                       Clear
                     </button>
                   </div>
+                  <div class="settings-row">
+                    <span class="settings-row-label">
+                      Thumbnail cache
+                      <span class="cache-hint" v-if="thumbCacheSize > 0">{{ formatSize(thumbCacheSize) }}</span>
+                    </span>
+                    <button
+                      class="btn-setting"
+                      :class="{ 'btn-setting--active': thumbCacheSize > 0 }"
+                      :disabled="thumbCacheSize === 0"
+                      @click="clearThumbCache"
+                    >
+                      Clear
+                    </button>
+                  </div>
                 </section>
               </template>
 
@@ -242,6 +288,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useDuplicatesHistoryStore } from '../store/duplicatesHistory'
+import { useDuplicatesStore } from '../store/duplicates'
 import { useMetadataStore } from '../store/metadata'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
@@ -259,7 +306,19 @@ const tabs = [
 const activeTab = ref('general')
 
 const history = useDuplicatesHistoryStore()
+const dups    = useDuplicatesStore()
 const meta    = useMetadataStore()
+
+function onRuleKindChange(kind) {
+  const rule = kind === 'filenamePattern'
+    ? { kind, pattern: dups.retentionRule.pattern ?? '' }
+    : { kind }
+  dups.applyRetentionRule(rule)
+}
+
+function onPatternChange(pattern) {
+  dups.applyRetentionRule({ kind: 'filenamePattern', pattern })
+}
 const version = ref(import.meta.env.VITE_APP_VERSION ?? '0.1.0')
 
 const { maxHistory, thumbConcurrency, crossDatePhash, fastMode, autoUpdate: autoCheck, notifyOnUpdate, prefetchFilters } = useSettings()
@@ -446,6 +505,22 @@ onMounted(loadCacheSizes)
   text-align: left;
 }
 .settings-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+.settings-input--wide { width: 140px; }
+
+/* ── Select ── */
+.settings-select {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  padding: 4px var(--space-2);
+  cursor: pointer;
+}
+.settings-select:focus {
   outline: none;
   border-color: var(--color-accent);
 }

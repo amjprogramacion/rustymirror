@@ -17,8 +17,8 @@ fn cache_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, tauri::Error> {
     }
 }
 
-use crate::scanner::find_duplicates;
-use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, ScanProgress};
+use crate::scanner::{apply_retention_rule, find_duplicates};
+use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, RetentionRule, ScanProgress};
 
 /// Structured error type returned by all Tauri commands.
 /// Serialises as `{ "type": "...", "message": "...", "path": "..." }` so the
@@ -83,6 +83,7 @@ pub async fn scan_directories(
     hamming_threshold: Option<u32>,
     cross_date_phash: Option<bool>,
     fast_mode: Option<bool>,
+    retention_rule: Option<RetentionRule>,
     app: AppHandle,
     scan_state: State<'_, ScanState>,
     file_list_cache: State<'_, FileListCache>,
@@ -101,8 +102,9 @@ pub async fn scan_directories(
     tracing::debug!("scan_directories called with {} paths", paths.len());
     for p in &paths { tracing::debug!("  path: {}", p); }
 
-    let threshold  = hamming_threshold.unwrap_or(6);
-    let use_fast   = fast_mode.unwrap_or(false);
+    let threshold    = hamming_threshold.unwrap_or(6);
+    let use_fast     = fast_mode.unwrap_or(false);
+    let rule         = retention_rule.unwrap_or(RetentionRule::HighestResolution);
     tracing::debug!("hamming threshold: {}", threshold);
     tracing::debug!("fast mode: {}", use_fast);
 
@@ -133,6 +135,7 @@ pub async fn scan_directories(
             cache,
             cross_date_phash.unwrap_or(true),
             use_fast,
+            rule,
             move |scanned, total| {
                 if scanned == 1 || scanned % 50 == 0 || scanned == total {
                     tracing::debug!("progress {}/{}", scanned, total);
@@ -154,6 +157,16 @@ pub async fn scan_directories(
         .map_err(|e| { tracing::debug!("JoinError: {}", e); AppError::from(e) })?
         .map_err(|e| { tracing::debug!("ScanError: {}", e); AppError::Scan { message: e.to_string() } })?;
     Ok(ScanResult { groups, failed_files })
+}
+
+/// Re-apply a retention rule to an existing set of groups without a full rescan.
+/// Returns the same groups with updated `is_original` flags.
+#[tauri::command]
+pub fn apply_retention_rule_cmd(
+    groups: Vec<DuplicateGroup>,
+    rule: RetentionRule,
+) -> Vec<DuplicateGroup> {
+    apply_retention_rule(groups, &rule)
 }
 
 #[tauri::command]
@@ -714,6 +727,7 @@ pub async fn scan_for_metadata(
                     date_taken,
                     gps_latitude,
                     gps_longitude,
+                    blur_score: None,
                     device,
                 })
             })

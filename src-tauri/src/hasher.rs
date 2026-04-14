@@ -1,6 +1,6 @@
 use std::path::Path;
 use anyhow::Result;
-use image::imageops::FilterType;
+use image::{imageops::FilterType, GenericImageView};
 use image_hasher::{HashAlg, HasherConfig, ImageHash};
 
 /// Reads the file once and returns Blake3 hash + raw bytes.
@@ -134,4 +134,52 @@ pub fn perceptual_hash(path: &Path, use_thumbnail: bool) -> Result<ImageHash, im
     let bytes = std::fs::read(path)
         .map_err(|e| image::ImageError::IoError(e))?;
     perceptual_hash_from_bytes(&bytes, use_thumbnail)
+}
+
+/// Sharpness score via Laplacian variance.
+///
+/// Decodes to luma and downsamples to at most 256 px on the longest side
+/// before applying the 4-neighbour Laplacian kernel — cheap enough to run on
+/// every image during the scan without meaningfully slowing it down.
+///
+/// Returns `None` if the image cannot be decoded or is smaller than 3×3 px.
+/// Higher values mean a sharper image (typical range: ~10 for blurry, ~500+
+/// for very sharp; depends on image content and resolution).
+pub fn laplacian_variance(bytes: &[u8]) -> Option<f64> {
+    let img = image::load_from_memory(bytes).ok()?;
+    let (w, h) = img.dimensions();
+
+    // Downsample to ≤256 px on the longest side so computation stays O(1) in practice.
+    let scale = (256.0_f32 / w.max(h) as f32).min(1.0_f32);
+    let sw = ((w as f32 * scale) as u32).max(3);
+    let sh = ((h as f32 * scale) as u32).max(3);
+
+    let gray = img
+        .resize_exact(sw, sh, image::imageops::FilterType::Nearest)
+        .to_luma8();
+
+    let pixels = gray.as_raw();
+    let w = sw as usize;
+    let h = sh as usize;
+    let n = (w - 2) * (h - 2);
+
+    // Apply 4-neighbour Laplacian: [0,1,0; 1,-4,1; 0,1,0]
+    // Compute variance = E[X²] - E[X]² in a single pass.
+    let mut sum    = 0.0_f64;
+    let mut sum_sq = 0.0_f64;
+    for y in 1..h - 1 {
+        for x in 1..w - 1 {
+            let c = pixels[y * w + x] as f64;
+            let v = pixels[(y - 1) * w + x] as f64
+                  + pixels[(y + 1) * w + x] as f64
+                  + pixels[y * w + (x - 1)] as f64
+                  + pixels[y * w + (x + 1)] as f64
+                  - 4.0 * c;
+            sum    += v;
+            sum_sq += v * v;
+        }
+    }
+    let n = n as f64;
+    let mean = sum / n;
+    Some(sum_sq / n - mean * mean)
 }

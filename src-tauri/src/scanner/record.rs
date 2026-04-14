@@ -117,6 +117,7 @@ pub(super) fn build_cached_file(r: &FileRecord, phash: Option<String>, fast_phas
         width:       r.entry.width,
         height:      r.entry.height,
         modified:    r.entry.modified.clone(),
+        blur_score:  r.entry.blur_score,
     }
 }
 
@@ -167,6 +168,10 @@ pub(super) fn make_record(path: &Path, fast_mode: bool) -> Option<FileRecord> {
         perceptual_hash_from_bytes(&bytes, fast_mode).ok()
     } else { None };
 
+    let blur_score = if !heic {
+        crate::hasher::laplacian_variance(&bytes)
+    } else { None };
+
     let header_hash = Some(blake3::hash(&bytes[..bytes.len().min(4096)]).to_hex().to_string());
 
     Some(FileRecord {
@@ -174,6 +179,7 @@ pub(super) fn make_record(path: &Path, fast_mode: bool) -> Option<FileRecord> {
             path: path_str.clone(),
             size_bytes, width, height,
             modified: modified.clone(),
+            blur_score,
             is_original: false,
             ..Default::default()
         },

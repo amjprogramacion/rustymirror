@@ -14,6 +14,7 @@ pub struct CachedFile {
     pub width:       u32,
     pub height:      u32,
     pub modified:    String,
+    pub blur_score:  Option<f64>,     // Laplacian variance (higher = sharper)
 }
 
 /// A cache entry key — used to check if a file has changed.
@@ -63,6 +64,10 @@ impl Cache {
             conn.execute_batch("ALTER TABLE file_cache ADD COLUMN header_hash TEXT;")?;
             conn.execute_batch("PRAGMA user_version = 2")?;
         }
+        if version < 3 {
+            conn.execute_batch("ALTER TABLE file_cache ADD COLUMN blur_score REAL;")?;
+            conn.execute_batch("PRAGMA user_version = 3")?;
+        }
         Ok(())
     }
 
@@ -88,7 +93,7 @@ impl Cache {
                 .map(|i| format!("?{}", i))
                 .collect::<Vec<_>>().join(",");
             let sql = format!(
-                "SELECT path, size_bytes, mtime, blake3, phash, fast_phash, header_hash, width, height, modified
+                "SELECT path, size_bytes, mtime, blake3, phash, fast_phash, header_hash, width, height, modified, blur_score
                  FROM file_cache WHERE path IN ({})", placeholders
             );
             let mut stmt = match conn.prepare(&sql) { Ok(s) => s, Err(_) => continue };
@@ -108,6 +113,7 @@ impl Cache {
                     row.get::<_, i64>(7)? as u32,
                     row.get::<_, i64>(8)? as u32,
                     row.get::<_, String>(9)?,
+                    row.get::<_, Option<f64>>(10)?,
                 ))
             }) {
                 Ok(r) => r.flatten().collect(),
@@ -127,6 +133,7 @@ impl Cache {
                         width:       row.7,
                         height:      row.8,
                         modified:    row.9,
+                        blur_score:  row.10,
                     },
                 });
             }
@@ -139,11 +146,11 @@ impl Cache {
         if let Ok(conn) = self.conn.lock() {
             let _ = conn.execute(
                 "INSERT OR REPLACE INTO file_cache
-                 (path, size_bytes, mtime, blake3, phash, fast_phash, header_hash, width, height, modified)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                 (path, size_bytes, mtime, blake3, phash, fast_phash, header_hash, width, height, modified, blur_score)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
                 params![path, e.size_bytes as i64, mtime,
                         &e.blake3, &e.phash, &e.fast_phash, &e.header_hash,
-                        e.width as i64, e.height as i64, &e.modified],
+                        e.width as i64, e.height as i64, &e.modified, e.blur_score],
             );
         }
     }
@@ -156,14 +163,14 @@ impl Cache {
         {
             let mut stmt = tx.prepare_cached(
                 "INSERT OR REPLACE INTO file_cache
-                 (path, size_bytes, mtime, blake3, phash, fast_phash, header_hash, width, height, modified)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)"
+                 (path, size_bytes, mtime, blake3, phash, fast_phash, header_hash, width, height, modified, blur_score)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)"
             )?;
             for (path, mtime, e) in entries {
                 stmt.execute(params![
                     path, e.size_bytes as i64, mtime,
                     &e.blake3, &e.phash, &e.fast_phash, &e.header_hash,
-                    e.width as i64, e.height as i64, &e.modified
+                    e.width as i64, e.height as i64, &e.modified, e.blur_score
                 ])?;
             }
         }

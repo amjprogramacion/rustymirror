@@ -42,6 +42,10 @@ export const useDuplicatesStore = defineStore('duplicates', {
     // When set (by loadFromHistory), overrides the localStorage cross-date phash setting
     // for exactly one scan. Consumed and reset to null at the start of startScan.
     crossDatePhashOverride: null,
+    // Retention rule: which copy to treat as the original in each group.
+    // Serialises as { kind: 'highestResolution' | 'oldestDate' | 'newestDate' |
+    //                 'highestSharpness' | 'filenamePattern', pattern?: string }
+    retentionRule: { kind: 'highestResolution' },
   }),
 
   getters: {
@@ -224,6 +228,16 @@ export const useDuplicatesStore = defineStore('duplicates', {
           .map(e => e.path)
       )
     },
+
+    async applyRetentionRule(rule) {
+      if (!this.groups.length) return
+      this.retentionRule = rule
+      try {
+        this.groups = await invoke('apply_retention_rule_cmd', { groups: this.groups, rule })
+      } catch (e) {
+        logger.warn('apply_retention_rule_cmd failed:', errorMessage(e))
+      }
+    },
     clearSelection() {
       this.selected = new Set()
     },
@@ -299,7 +313,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
         if (!groups) {
           logger.info('invoking scan_directories...')
           logger.info(`similarity threshold: ${this.similarityThreshold}% -> hamming ${hammingThreshold}`)
-          const result = await invoke('scan_directories', { paths: this.folders, hammingThreshold, crossDatePhash, fastMode })
+          const result = await invoke('scan_directories', { paths: this.folders, hammingThreshold, crossDatePhash, fastMode, retentionRule: this.retentionRule })
           groups = result.groups
           this.failedFiles = result.failedFiles || []
           logger.info(`scan returned ${groups?.length} groups, ${this.failedFiles.length} failed files`)
