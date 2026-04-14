@@ -134,7 +134,7 @@ pub(super) fn resolve_phash_owned(
     let path = Path::new(&records[i].entry.path);
     if !is_heic(path) {
         if let Some(ph) = std::fs::read(path).ok()
-            .and_then(|bytes| std::panic::catch_unwind(|| perceptual_hash_from_bytes(&bytes, fast_mode)).ok().flatten())
+            .and_then(|bytes| perceptual_hash_from_bytes(&bytes, fast_mode).ok())
         {
             on_demand.insert(i, ph.clone());
             return Some(ph);
@@ -156,17 +156,15 @@ pub(super) fn make_record(path: &Path, fast_mode: bool) -> Option<FileRecord> {
     let modified = if !heic { read_capture_date(path, &bytes, &meta) } else { fs_modified.clone() };
 
     let (width, height) = if !heic {
-        std::panic::catch_unwind(|| {
-            let cursor = std::io::Cursor::new(&bytes);
-            image::io::Reader::new(cursor)
-                .with_guessed_format().ok()
-                .and_then(|r| r.into_dimensions().ok())
-                .unwrap_or((0, 0))
-        }).unwrap_or((0, 0))
+        let cursor = std::io::Cursor::new(&bytes);
+        image::io::Reader::new(cursor)
+            .with_guessed_format().ok()
+            .and_then(|r| r.into_dimensions().ok())
+            .unwrap_or((0, 0))
     } else { (0, 0) };
 
     let ph = if !heic {
-        std::panic::catch_unwind(|| perceptual_hash_from_bytes(&bytes, fast_mode)).ok().flatten()
+        perceptual_hash_from_bytes(&bytes, fast_mode).ok()
     } else { None };
 
     let header_hash = Some(blake3::hash(&bytes[..bytes.len().min(4096)]).to_hex().to_string());

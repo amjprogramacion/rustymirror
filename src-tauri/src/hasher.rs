@@ -104,7 +104,10 @@ fn extract_exif_thumbnail(data: &[u8]) -> Option<Vec<u8>> {
 ///
 /// Either path pre-resizes to 64×64 with Nearest before hashing, so hash
 /// dimensions are identical regardless of which source was used.
-pub fn perceptual_hash_from_bytes(bytes: &[u8], use_thumbnail: bool) -> Option<ImageHash> {
+///
+/// Returns `Err` if the image cannot be decoded; callers that want to skip
+/// undecoded files can call `.ok()` at the use site.
+pub fn perceptual_hash_from_bytes(bytes: &[u8], use_thumbnail: bool) -> Result<ImageHash, image::ImageError> {
     let hasher = HasherConfig::new()
         .hash_size(8, 8)
         .hash_alg(HashAlg::Gradient)
@@ -114,20 +117,21 @@ pub fn perceptual_hash_from_bytes(bytes: &[u8], use_thumbnail: bool) -> Option<I
         if let Some(thumb) = extract_exif_thumbnail(bytes) {
             if let Ok(img) = image::load_from_memory(&thumb) {
                 let small = img.resize_exact(64, 64, FilterType::Nearest);
-                return Some(hasher.hash_image(&small));
+                return Ok(hasher.hash_image(&small));
             }
         }
     }
 
     // Full image decode (always used in precise mode; fallback in fast mode)
-    let img = image::load_from_memory(bytes).ok()?;
+    let img = image::load_from_memory(bytes)?;
     let small = img.resize_exact(64, 64, FilterType::Nearest);
-    Some(hasher.hash_image(&small))
+    Ok(hasher.hash_image(&small))
 }
 
 /// Computes pHash by reading the file fresh.
 #[allow(dead_code)]
-pub fn perceptual_hash(path: &Path, use_thumbnail: bool) -> Option<ImageHash> {
-    let bytes = std::fs::read(path).ok()?;
+pub fn perceptual_hash(path: &Path, use_thumbnail: bool) -> Result<ImageHash, image::ImageError> {
+    let bytes = std::fs::read(path)
+        .map_err(|e| image::ImageError::IoError(e))?;
     perceptual_hash_from_bytes(&bytes, use_thumbnail)
 }
