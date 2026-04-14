@@ -1,3 +1,8 @@
+mod bktree;
+mod grouping;
+mod record;
+mod walk;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -5,304 +10,26 @@ use std::sync::atomic::{AtomicBool, Ordering as AOrdering};
 
 use anyhow::Result;
 use rayon::prelude::*;
-use unicode_normalization::UnicodeNormalization;
-use walkdir::WalkDir;
 
 use crate::cache::CachedFile;
-use crate::hasher::{perceptual_hash_from_bytes, read_file_data};
 use crate::heic::{batch_convert_heic, cleanup_temp};
 use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, ImageEntry, SimilarityKind};
 
-// ── BK-tree for O(n log n) pHash similarity search ───────────────────────
-// A BK-tree organises hashes in a metric tree keyed by Hamming distance.
-// Querying for "all hashes within distance T of X" visits only a fraction
-// of nodes (O(log n + k)) instead of scanning everything (O(n)).
-struct BkNode {
-    ph_idx:   usize,                  // index into ph_pairs
-    hash:     image_hasher::ImageHash,
-    children: HashMap<u32, usize>,   // hamming distance → arena index
-}
+use self::bktree::BkTree;
+use self::grouping::{mark_original, sort_by_date};
+use self::record::{
+    FileRecord, HeicExtra,
+    build_cached_file, cache_key, hex_to_phash, make_record,
+    mtime_rfc3339, parse_exif_date, phash_to_hex, read_header_hash,
+    resolve_phash_owned,
+};
+use self::walk::is_heic;
 
-struct BkTree {
-    nodes: Vec<BkNode>,
-}
-
-impl BkTree {
-    fn new(capacity: usize) -> Self {
-        Self { nodes: Vec::with_capacity(capacity) }
-    }
-
-    fn insert(&mut self, ph_idx: usize, hash: image_hasher::ImageHash) {
-        if self.nodes.is_empty() {
-            self.nodes.push(BkNode { ph_idx, hash, children: HashMap::new() });
-            return;
-        }
-        let mut cur = 0;
-        loop {
-            let d = self.nodes[cur].hash.dist(&hash);
-            // Separate immutable get from mutable insert to satisfy borrow checker.
-            if let Some(&next) = self.nodes[cur].children.get(&d) {
-                cur = next;
-            } else {
-                let new_idx = self.nodes.len();
-                self.nodes[cur].children.insert(d, new_idx);
-                self.nodes.push(BkNode { ph_idx, hash, children: HashMap::new() });
-                return;
-            }
-        }
-    }
-
-    /// Returns ph_pairs indices for all entries with Hamming distance ≤ threshold.
-    fn query(&self, query: &image_hasher::ImageHash, threshold: u32) -> Vec<usize> {
-        let mut results = Vec::new();
-        if self.nodes.is_empty() { return results; }
-        let mut stack = vec![0usize];
-        while let Some(node_idx) = stack.pop() {
-            let node = &self.nodes[node_idx];
-            let d = node.hash.dist(query);
-            if d <= threshold { results.push(node.ph_idx); }
-            // Triangle inequality prunes subtrees that cannot contain matches.
-            let lo = d.saturating_sub(threshold);
-            let hi = d.saturating_add(threshold);
-            for (&child_dist, &child_idx) in &node.children {
-                if child_dist >= lo && child_dist <= hi {
-                    stack.push(child_idx);
-                }
-            }
-        }
-        results
-    }
-}
+pub use self::walk::collect_images;
 
 // Upper bound for the O(n²) distance matrix used in phase 5 cross-date comparison.
 // Above this size the matrix is skipped to avoid large allocations.
 const MATRIX_LIMIT: usize = 4_000;
-
-static IMAGE_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "webp", "bmp", "gif", "tiff", "tif", "heic", "heif",
-];
-static HEIC_EXTENSIONS: &[&str] = &["heic", "heif"];
-
-fn is_image(path: &Path) -> bool {
-    path.extension().and_then(|e| e.to_str())
-        .map(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str()))
-        .unwrap_or(false)
-}
-
-fn is_heic(path: &Path) -> bool {
-    path.extension().and_then(|e| e.to_str())
-        .map(|e| HEIC_EXTENSIONS.contains(&e.to_lowercase().as_str()))
-        .unwrap_or(false)
-}
-
-fn extract_timestamp_tag(path: &Path) -> Option<String> {
-    let stem = path.file_stem()?.to_string_lossy().to_string();
-    let b = stem.as_bytes();
-    for i in 0..b.len().saturating_sub(14) {
-        if b[i..i+8].iter().all(|c| c.is_ascii_digit())
-            && b[i+8] == b'_'
-            && b[i+9..i+15].iter().all(|c| c.is_ascii_digit())
-        {
-            return Some(stem[i..i+15].to_string());
-        }
-    }
-    None
-}
-
-fn read_capture_date(path: &Path, bytes: &[u8], meta: &std::fs::Metadata) -> String {
-    if let Some(ts) = extract_timestamp_tag(path) {
-        if ts.len() == 15 {
-            return format!("{}-{}-{}T{}:{}:{}Z",
-                &ts[0..4], &ts[4..6], &ts[6..8],
-                &ts[9..11], &ts[11..13], &ts[13..15]);
-        }
-    }
-    parse_exif_date(bytes).unwrap_or_else(|| mtime_rfc3339(meta))
-}
-
-pub fn collect_images(directories: &[PathBuf]) -> Vec<PathBuf> {
-    let single_pass = || -> std::collections::HashSet<PathBuf> {
-        directories.iter().flat_map(|dir| {
-            WalkDir::new(dir).follow_links(false).into_iter()
-                .filter_map(|e| e.ok())
-                .filter(|e| e.file_type().is_file())
-                .map(|e| e.into_path())
-                .filter(|p| is_image(p))
-        }).collect()
-    };
-
-    // Two passes: on SMB/NAS drives the first WalkDir traversal warms the
-    // server-side directory cache, so a second pass consistently finds all
-    // files that the cold-cache first pass may have missed.  Always take
-    // the union so neither pass can silently drop files.
-    let first  = single_pass();
-    let second = single_pass();
-
-    let mut all: Vec<PathBuf> = first.into_iter().chain(second)
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
-
-    all.sort();
-    all
-}
-
-struct FileRecord {
-    entry:       ImageEntry,
-    ex_hash:     String,
-    ts_tag:      Option<String>,
-    ph:          Option<image_hasher::ImageHash>,
-    mtime_key:   String,
-    header_hash: Option<String>,
-}
-
-/// Normalize a file path for use as a cache key.
-/// Normalises a path to a stable cache key that survives cold/warm SMB traversal
-/// differences: first apply Unicode NFC normalisation (fixes accented characters
-/// like `GALERÍA` returning as NFD vs NFC across traversals), then lowercase
-/// (fixes drive-letter / folder-name casing differences).
-#[inline]
-fn cache_key(path_str: &str) -> String {
-    path_str.nfc().collect::<String>().to_lowercase()
-}
-
-/// Blake3 hash of the first 4096 bytes of a file.
-/// Used as a cheap, mtime-independent cache validity check.
-/// Uses take+read_to_end to guarantee reading up to 4096 bytes even on SMB/NAS,
-/// where a single read() call may return fewer bytes than requested.
-fn read_header_hash(path: &Path) -> Option<String> {
-    use std::io::{Read, BufReader};
-    let f = std::fs::File::open(path).ok()?;
-    let mut buf = Vec::with_capacity(4096);
-    BufReader::new(f).take(4096).read_to_end(&mut buf).ok()?;
-    Some(blake3::hash(&buf).to_hex().to_string())
-}
-
-/// Convert file mtime metadata to an RFC3339 string, falling back to the Unix epoch.
-fn mtime_rfc3339(meta: &std::fs::Metadata) -> String {
-    meta.modified().ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .and_then(|d| chrono::DateTime::<chrono::Utc>::from_timestamp(d.as_secs() as i64, 0))
-        .map(|dt| dt.to_rfc3339())
-        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
-}
-
-/// Parse the DateTimeOriginal EXIF field from raw image bytes into an RFC3339 string.
-fn parse_exif_date(bytes: &[u8]) -> Option<String> {
-    let exif = exif::Reader::new()
-        .read_from_container(&mut std::io::Cursor::new(bytes)).ok()?;
-    let field = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY)?;
-    let s = field.display_value().to_string();
-    if s.len() >= 19 {
-        Some(format!("{}-{}-{}T{}:{}:{}Z",
-            &s[0..4], &s[5..7], &s[8..10],
-            &s[11..13], &s[14..16], &s[17..19]))
-    } else {
-        None
-    }
-}
-
-/// Build a `CachedFile` from a `FileRecord`, supplying the two pHash variants explicitly.
-fn build_cached_file(r: &FileRecord, phash: Option<String>, fast_phash: Option<String>) -> crate::cache::CachedFile {
-    crate::cache::CachedFile {
-        blake3:      r.ex_hash.clone(),
-        size_bytes:  r.entry.size_bytes,
-        phash,
-        fast_phash,
-        header_hash: r.header_hash.clone(),
-        width:       r.entry.width,
-        height:      r.entry.height,
-        modified:    r.entry.modified.clone(),
-    }
-}
-
-struct HeicExtra {
-    ph:       image_hasher::ImageHash,
-    width:    u32,
-    height:   u32,
-    modified: String,
-}
-
-fn hex_to_phash(hex: &str) -> Option<image_hasher::ImageHash> {
-    let bytes: Vec<u8> = (0..hex.len())
-        .step_by(2)
-        .filter_map(|i| u8::from_str_radix(&hex[i..i+2], 16).ok())
-        .collect();
-    image_hasher::ImageHash::from_bytes(&bytes).ok()
-}
-
-fn phash_to_hex(ph: &image_hasher::ImageHash) -> String {
-    ph.as_bytes().iter().map(|b| format!("{:02x}", b)).collect()
-}
-
-
-/// Resolve pHash by value. Tries: records[i].ph → heic_extra → on_demand → disk.
-fn resolve_phash_owned(
-    i: usize,
-    records: &[FileRecord],
-    heic_extra: &HashMap<usize, HeicExtra>,
-    on_demand: &mut HashMap<usize, image_hasher::ImageHash>,
-    fast_mode: bool,
-) -> Option<image_hasher::ImageHash> {
-    if let Some(ph) = &records[i].ph { return Some(ph.clone()); }
-    if let Some(extra) = heic_extra.get(&i) { return Some(extra.ph.clone()); }
-    if let Some(ph) = on_demand.get(&i) { return Some(ph.clone()); }
-    let path = Path::new(&records[i].entry.path);
-    if !is_heic(path) {
-        if let Some(ph) = std::fs::read(path).ok()
-            .and_then(|bytes| std::panic::catch_unwind(|| perceptual_hash_from_bytes(&bytes, fast_mode)).ok().flatten())
-        {
-            on_demand.insert(i, ph.clone());
-            return Some(ph);
-        }
-    }
-    None
-}
-
-/// Read a file from disk and build a `FileRecord` without consulting the cache.
-fn make_record(path: &Path, fast_mode: bool) -> Option<FileRecord> {
-    let meta = std::fs::metadata(path).ok()?;
-    let fs_modified = mtime_rfc3339(&meta);
-    let size_bytes = meta.len();
-    let path_str = path.to_string_lossy().to_string();
-
-    let (ex_hash, _, bytes) = read_file_data(path).ok()?;
-
-    let heic = is_heic(path);
-    let modified = if !heic { read_capture_date(path, &bytes, &meta) } else { fs_modified.clone() };
-
-    let (width, height) = if !heic {
-        std::panic::catch_unwind(|| {
-            let cursor = std::io::Cursor::new(&bytes);
-            image::io::Reader::new(cursor)
-                .with_guessed_format().ok()
-                .and_then(|r| r.into_dimensions().ok())
-                .unwrap_or((0, 0))
-        }).unwrap_or((0, 0))
-    } else { (0, 0) };
-
-    let ph = if !heic {
-        std::panic::catch_unwind(|| perceptual_hash_from_bytes(&bytes, fast_mode)).ok().flatten()
-    } else { None };
-
-
-    let header_hash = Some(blake3::hash(&bytes[..bytes.len().min(4096)]).to_hex().to_string());
-
-    Some(FileRecord {
-        entry: ImageEntry {
-            path: path_str.clone(),
-            size_bytes, width, height,
-            modified: modified.clone(),
-            is_original: false,
-            ..Default::default()
-        },
-        ex_hash: ex_hash.clone(),
-        ts_tag: extract_timestamp_tag(path),
-        ph: ph.clone(),
-        mtime_key: fs_modified,
-        header_hash,
-    })
-}
 
 pub fn find_duplicates<F1, F2>(
     directories: Vec<PathBuf>,
@@ -404,7 +131,7 @@ where
                                 ..Default::default()
                             },
                             ex_hash:     entry.data.blake3.clone(),
-                            ts_tag:      extract_timestamp_tag(path),
+                            ts_tag:      record::extract_timestamp_tag(path),
                             ph:          cached_ph,
                             mtime_key:   mtime,
                             header_hash: entry.data.header_hash.clone(),
@@ -441,7 +168,7 @@ where
     let mut results: Vec<Option<FileRecord>> = (0..paths.len()).map(|_| None).collect();
 
     // Build groups of (start_index, len) sharing the same parent directory.
-    let mut groups: Vec<(usize, usize)> = Vec::new();
+    let mut folder_groups: Vec<(usize, usize)> = Vec::new();
     let mut group_start = 0usize;
     while group_start < paths.len() {
         let parent = paths[group_start].parent().map(|p| p.to_path_buf());
@@ -449,11 +176,11 @@ where
         while end < paths.len() && paths[end].parent().map(|p| p.to_path_buf()) == parent {
             end += 1;
         }
-        groups.push((group_start, end - group_start));
+        folder_groups.push((group_start, end - group_start));
         group_start = end;
     }
 
-    'folders: for (start, len) in groups {
+    'folders: for (start, len) in folder_groups {
         if stop_phase1.load(AOrdering::Relaxed) { break 'folders; }
 
         let folder_results: Vec<Option<FileRecord>> = paths[start..start + len]
@@ -586,8 +313,8 @@ where
         phase: format!("Converting {} HEIC files…", heic_total_convert) });
 
     let conversions: HashMap<PathBuf, (PathBuf, u32, u32)> = if heic_total_convert > 0 {
-        // max_dim=512: temp JPEGs are ~50× smaller than full-res, cutting 3b I/O
-        // dramatically. pHash quality is identical — it only needs a small image.
+        // max_dim=512: temp JPEGs are ~50× smaller than full-res, cutting I/O dramatically.
+        // pHash quality is identical — it only needs a small image.
         batch_convert_heic(&heic_convert_paths, resource_dir.as_deref(), Some(512), |done, total| {
             analyze_cb(AnalyzeProgress { analyzed: done, total: total.max(1),
                 phase: format!("Converting HEIC files ({}/{})…", done, total) });
@@ -613,7 +340,7 @@ where
             let (tmp, w, h) = conversions.get(&orig)?;
             let tmp_bytes = std::fs::read(tmp).ok()?;
             // Reuse already-read bytes — avoids a second disk read of the temp JPEG.
-            let ph = std::panic::catch_unwind(|| perceptual_hash_from_bytes(&tmp_bytes, fast_mode)).ok().flatten()?;
+            let ph = std::panic::catch_unwind(|| crate::hasher::perceptual_hash_from_bytes(&tmp_bytes, fast_mode)).ok().flatten()?;
             let modified = parse_exif_date(&tmp_bytes)
                 .unwrap_or_else(|| records[i].entry.modified.clone());
             let done = phase3b_counter.fetch_add(1, AOrdering::Relaxed) + 1;
@@ -939,8 +666,6 @@ where
         };
 
         // For each sameDate group: flat indices absorbed into a cross-group cluster.
-        // Vec<Vec> instead of Vec<HashSet> — sd_grouped prevents any element from
-        // being added to more than one cluster, so duplicates are impossible.
         let mut absorbed_by_group: Vec<Vec<usize>> =
             vec![Vec::new(); samedate_group_indices.len()];
 
@@ -1070,63 +795,4 @@ where
         "scan complete"
     );
     Ok((groups, failed_files))
-}
-
-fn is_non_original_filename(path: &str) -> bool {
-    let stem = std::path::Path::new(path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-
-    let lower = stem.to_lowercase();
-
-    // Rule 1: name explicitly marks it as a copy
-    if lower.contains("copy") || lower.contains("copia") {
-        return true;
-    }
-
-    // Rule 2: name does not follow canonical pattern IMG_YYYYMMDD_HHMMSS_XXXX
-    // where XXXX is exactly 4 alphanumeric characters
-    let canonical = regex_is_canonical(stem);
-    !canonical
-}
-
-fn regex_is_canonical(stem: &str) -> bool {
-    // Pattern: IMG_ + 8 digits + _ + 6 digits + _ + 4 alphanumeric chars
-    // Example: IMG_20210828_132922_A23C
-    if !stem.starts_with("IMG_") { return false; }
-    let rest = &stem[4..]; // skip "IMG_"
-    // Expect: 8 digits
-    if rest.len() < 8 { return false; }
-    if !rest[..8].chars().all(|c| c.is_ascii_digit()) { return false; }
-    let rest = &rest[8..]; // skip date
-    // Expect: _ + 6 digits
-    if !rest.starts_with('_') { return false; }
-    let rest = &rest[1..];
-    if rest.len() < 6 { return false; }
-    if !rest[..6].chars().all(|c| c.is_ascii_digit()) { return false; }
-    let rest = &rest[6..]; // skip time
-    // Expect: _ + exactly 4 alphanumeric chars, nothing more
-    if !rest.starts_with('_') { return false; }
-    let rest = &rest[1..];
-    rest.len() == 4 && rest.chars().all(|c| c.is_ascii_alphanumeric())
-}
-
-fn mark_original(entries: &mut Vec<ImageEntry>) {
-    let has_canonical = entries.iter().any(|e| !is_non_original_filename(&e.path));
-
-    let candidates: Vec<usize> = entries.iter().enumerate()
-        .filter(|(_, e)| !has_canonical || !is_non_original_filename(&e.path))
-        .map(|(i, _)| i)
-        .collect();
-
-    if let Some(&best) = candidates.iter()
-        .max_by_key(|&&i| (entries[i].size_bytes, entries[i].width as u64 * entries[i].height as u64))
-    {
-        entries[best].is_original = true;
-    }
-}
-
-fn sort_by_date(entries: &mut Vec<ImageEntry>) {
-    entries.sort_by(|a, b| a.modified.cmp(&b.modified));
 }
