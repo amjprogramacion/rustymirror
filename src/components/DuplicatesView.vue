@@ -186,6 +186,7 @@ import ImageDetailPanel from './ImageDetailPanel.vue'
 import SearchInput from './SearchInput.vue'
 import { useThumbnailStore } from '../store/thumbnails'
 import { fileName } from '../utils/formatters'
+import { errorMessage } from '../utils/errors'
 import FailedFilesWarning from './FailedFilesWarning.vue'
 
 const store        = useDuplicatesStore()
@@ -295,7 +296,7 @@ async function doDelete() {
     closeConfirm()
     store.multiSelect = false
   } catch (e) {
-    deleteError.value = `Delete failed: ${e}`
+    deleteError.value = `Delete failed: ${errorMessage(e)}`
   } finally {
     unlisten()
     deleting.value = false
