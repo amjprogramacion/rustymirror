@@ -49,62 +49,57 @@ export const useDuplicatesStore = defineStore('duplicates', {
   }),
 
   getters: {
-    filteredGroups(state) {
-      // Helper: is this group a sameDate with a similarity score?
+    // Each stage is a separate computed so Vue caches it independently.
+    // Changing only searchQuery skips the kind/ext stages; changing only
+    // dupSortBy skips all filter stages, etc.
+
+    // Stage 1 — filter by group kind
+    _groupsByKind(state) {
       const isSameDateSimilar = g => g.kind === 'sameDate' && g.similarity != null
-      // Helper: is this group a sameDate without a similarity score?
-      const isSameDateOnly   = g => g.kind === 'sameDate' && g.similarity == null
+      const isSameDateOnly    = g => g.kind === 'sameDate' && g.similarity == null
+      if (state.filter === 'all')      return state.groups
+      if (state.filter === 'exact')    return state.groups.filter(g => g.kind === 'exact')
+      if (state.filter === 'similar')  return state.groups.filter(g => g.kind === 'similar' || isSameDateSimilar(g))
+      if (state.filter === 'sameDate') return state.groups.filter(g => isSameDateOnly(g))
+      return state.groups.filter(g => g.kind === state.filter)
+    },
 
-      // ── Filter by kind ──────────────────────────────────────────────────────
-      // 'similar' filter shows: similar + sameDate-with-similarity
-      // 'sameDate' filter shows: only sameDate-without-similarity
-      // 'exact'   filter shows: only exact
-      // 'all'     filter shows: everything
-      let filtered
-      if (state.filter === 'all') {
-        filtered = [...state.groups]
-      } else if (state.filter === 'exact') {
-        filtered = state.groups.filter(g => g.kind === 'exact')
-      } else if (state.filter === 'similar') {
-        filtered = state.groups.filter(g => g.kind === 'similar' || isSameDateSimilar(g))
-      } else if (state.filter === 'sameDate') {
-        filtered = state.groups.filter(g => isSameDateOnly(g))
-      } else {
-        filtered = state.groups.filter(g => g.kind === state.filter)
-      }
+    // Stage 2 — filter by file extension
+    _groupsByExt(state) {
+      if (!state.extFilter) return this._groupsByKind
+      const ext = state.extFilter.toLowerCase()
+      return this._groupsByKind.filter(g =>
+        g.entries.some(e => (e.path.split('.').pop()?.toLowerCase() ?? '') === ext)
+      )
+    },
 
-      // ── Extension filter ────────────────────────────────────────────────────
-      if (state.extFilter) {
-        const ext = state.extFilter.toLowerCase()
-        filtered = filtered.filter(g =>
-          g.entries.some(e => (e.path.split('.').pop()?.toLowerCase() ?? '') === ext)
-        )
-      }
-
-      // ── Search ──────────────────────────────────────────────────────────────
+    // Stage 3 — filter by search query
+    _groupsBySearch(state) {
       const q = state.searchQuery.trim().toLowerCase()
-      if (q) {
-        filtered = filtered.filter(g =>
-          g.entries.some(e => {
-            const name = e.path.split(/[/\\]/).pop() ?? ''
-            return name.toLowerCase().includes(q)
-          })
-        )
-      }
+      if (!q) return this._groupsByExt
+      return this._groupsByExt.filter(g =>
+        g.entries.some(e => {
+          const name = e.path.split(/[/\\]/).pop() ?? ''
+          return name.toLowerCase().includes(q)
+        })
+      )
+    },
 
-      // ── Sort ────────────────────────────────────────────────────────────────
+    // Stage 4 — sort
+    _groupsSorted(state) {
+      const isSameDateSimilar = g => g.kind === 'sameDate' && g.similarity != null
       const sortKey = g => {
         if (g.kind === 'exact')   return 0
         if (g.kind === 'similar') return 1
         if (isSameDateSimilar(g)) return 2
-        return 3 // sameDate without similarity
+        return 3
       }
-
+      const arr = [...this._groupsBySearch]
       if (state.dupSortBy === 'group') {
         // desc: exact → similar → sameDate-similar → sameDate
         // asc:  sameDate → sameDate-similar → similar → exact
         const dir = state.dupSortDir === 'asc' ? -1 : 1
-        filtered.sort((a, b) => {
+        arr.sort((a, b) => {
           const ka = sortKey(a)
           const kb = sortKey(b)
           if (ka !== kb) return (ka - kb) * dir
@@ -116,7 +111,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
       } else {
         // Date or title: pure sort, kind order is ignored
         const dir = state.dupSortDir === 'desc' ? -1 : 1
-        filtered.sort((a, b) => {
+        arr.sort((a, b) => {
           if (state.dupSortBy === 'title') {
             const aName = (a.entries[0]?.path.split(/[/\\]/).pop() ?? '').toLowerCase()
             const bName = (b.entries[0]?.path.split(/[/\\]/).pop() ?? '').toLowerCase()
@@ -128,12 +123,14 @@ export const useDuplicatesStore = defineStore('duplicates', {
           return aDate < bDate ? -dir : aDate > bDate ? dir : 0
         })
       }
+      return arr
+    },
 
-      // ── Within-group entry order ─────────────────────────────────────────────
-      // Original first, then copies:
-      //   - exact groups  → alphabetical by filename ascending (case-insensitive)
-      //   - other groups  → by date ascending
-      return filtered.map(g => ({
+    // Stage 5 — reorder entries within each group (original first, then copies)
+    //   - exact groups  → alphabetical by filename ascending (case-insensitive)
+    //   - other groups  → by date ascending
+    filteredGroups() {
+      return this._groupsSorted.map(g => ({
         ...g,
         entries: [
           ...g.entries.filter(e => e.isOriginal),
