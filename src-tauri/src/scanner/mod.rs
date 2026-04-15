@@ -667,42 +667,12 @@ where
         let m = flat.len();
         let mut sd_grouped = vec![false; m];
 
-        // Sparse distance map: store only pairs within the Hamming threshold.
-        // O(k) memory where k = matching pairs — avoids the dense upper-triangular
-        // matrix that allocated up to ~32 MB and required a hard MATRIX_LIMIT cutoff
-        // above which distances were recomputed on every access.
-        let mut sparse_dist: HashMap<(usize, usize), u32> = HashMap::new();
-        for a in 0..m {
-            if ph_flat[a].is_none() { continue; }
-            for b in (a + 1)..m {
-                if let (Some(pa), Some(pb)) = (&ph_flat[a], &ph_flat[b]) {
-                    let d = pa.dist(pb);
-                    if d <= min_hamming {
-                        sparse_dist.insert((a, b), d);
-                    }
-                }
-            }
+        // Build a BK-tree for O(n log n) cross-group candidate lookup,
+        // mirroring phase 3. Avoids the O(n²) distance precomputation.
+        let mut sd_tree = BkTree::new(m);
+        for (i, ph) in ph_flat.iter().enumerate() {
+            if let Some(hash) = ph { sd_tree.insert(i, hash.clone()); }
         }
-
-        // Returns Some(d) only when d ≤ min_hamming — used for seed expansion.
-        let pair_in_threshold = |a: usize, b: usize| -> Option<u32> {
-            let (lo, hi) = if a < b { (a, b) } else { (b, a) };
-            sparse_dist.get(&(lo, hi)).copied()
-        };
-
-        // Full distance for post-cluster max_dist augmentation. Non-seed pairs inside
-        // a cluster may not be in the sparse map (their distance could exceed the
-        // threshold), so we fall back to direct computation from ph_flat.
-        let get_full_dist = |a: usize, b: usize| -> Option<u32> {
-            let (lo, hi) = if a < b { (a, b) } else { (b, a) };
-            if let Some(&d) = sparse_dist.get(&(lo, hi)) {
-                return Some(d);
-            }
-            match (&ph_flat[lo], &ph_flat[hi]) {
-                (Some(pa), Some(pb)) => Some(pa.dist(pb)),
-                _ => None,
-            }
-        };
 
         // For each sameDate group: set of absorbed record indices.
         // HashSet<usize> avoids the previous HashSet<String> (path clones).
@@ -718,14 +688,18 @@ where
             // augmented in the post-loop below.
             let mut max_dist = 0u32;
 
-            for b in (a + 1)..m {
-                if sd_grouped[b] { continue; }
+            // BK-tree returns only images within min_hamming of seed — O(log n + k).
+            let mut candidates = sd_tree.query(ph_flat[a].as_ref().unwrap(), min_hamming);
+            candidates.sort_unstable();
+
+            for b in candidates {
+                if b <= a || sd_grouped[b] { continue; }
                 if flat[a].1 == flat[b].1 { continue; } // skip same-group pairs
-                if let Some(d) = pair_in_threshold(a, b) {
-                    if d > max_dist { max_dist = d; }
-                    cluster.push(b);
-                    sd_grouped[b] = true;
-                }
+                // ph_flat[b] is Some since it was inserted into the BK-tree.
+                let d = ph_flat[a].as_ref().unwrap().dist(ph_flat[b].as_ref().unwrap());
+                if d > max_dist { max_dist = d; }
+                cluster.push(b);
+                sd_grouped[b] = true;
             }
 
             if cluster.len() < 2 { continue; }
@@ -738,7 +712,8 @@ where
             // Augment max_dist with non-seed pairwise distances.
             for x in 1..cluster.len() {
                 for y in (x + 1)..cluster.len() {
-                    if let Some(d) = get_full_dist(cluster[x], cluster[y]) {
+                    if let (Some(pa), Some(pb)) = (&ph_flat[cluster[x]], &ph_flat[cluster[y]]) {
+                        let d = pa.dist(pb);
                         if d > max_dist { max_dist = d; }
                     }
                 }
