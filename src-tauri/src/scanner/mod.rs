@@ -3,7 +3,7 @@ mod grouping;
 mod record;
 mod walk;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering as AOrdering};
@@ -259,7 +259,17 @@ where
     }
 
     let mut grouped = vec![false; records.len()];
-    let mut groups: Vec<DuplicateGroup> = Vec::new();
+
+    // Internal accumulator: stores record indices only during phases 2-5.
+    // ImageEntry is cloned exactly once per group member in the final conversion
+    // pass, after phase 5 has pruned any absorbed sameDate members — avoiding
+    // allocations for entries that would otherwise be discarded.
+    struct GroupBuild {
+        kind:       SimilarityKind,
+        indices:    Vec<usize>,    // indices into `records`, sorted by modified date
+        similarity: Option<u8>,
+    }
+    let mut groups: Vec<GroupBuild> = Vec::new();
 
     // ── Phase 2: exact Blake3 hash ────────────────────────────────────────────
     let _p2 = tracing::info_span!("phase2_exact", records = records.len()).entered();
@@ -271,10 +281,8 @@ where
     }
     for (_, indices) in &exact_map {
         if indices.len() < 2 { continue; }
-        let mut entries: Vec<ImageEntry> = indices.iter().map(|&i| records[i].entry.clone()).collect();
-        mark_original(&mut entries, &retention_rule); sort_by_date(&mut entries);
         indices.iter().for_each(|&i| grouped[i] = true);
-        groups.push(DuplicateGroup { kind: SimilarityKind::Exact, entries, similarity: Some(100) });
+        groups.push(GroupBuild { kind: SimilarityKind::Exact, indices: indices.to_vec(), similarity: Some(100) });
     }
     tracing::info!(exact_groups = groups.len(), "phase 2 done");
     drop(_p2);
@@ -282,7 +290,15 @@ where
     // ── Phase 3: perceptual hash (user threshold) ─────────────────────────────
     if stop.load(AOrdering::Relaxed) {
         tracing::debug!("scan stopped by user before phase 3");
-        return Ok((groups, failed_files));
+        // HEIC extras not yet computed — use raw record entries directly.
+        let partial: Vec<DuplicateGroup> = groups.into_iter().map(|gb| {
+            let mut entries: Vec<ImageEntry> = gb.indices.iter()
+                .map(|&i| records[i].entry.clone()).collect();
+            mark_original(&mut entries, &retention_rule);
+            sort_by_date(&mut entries);
+            DuplicateGroup { kind: gb.kind, entries, similarity: gb.similarity }
+        }).collect();
+        return Ok((partial, failed_files));
     }
     let ungrouped_ph: Vec<usize> = (0..records.len()).filter(|&i| !grouped[i]).collect();
     let _p3 = tracing::info_span!("phase3_phash", candidates = ungrouped_ph.len()).entered();
@@ -439,23 +455,9 @@ where
         e
     };
 
-    for group in &mut groups {
-        for entry in &mut group.entries {
-            let path = PathBuf::from(&entry.path);
-            if is_heic(&path) {
-                if let Some(i) = records.iter().position(|r| r.entry.path == entry.path) {
-                    if let Some(extra) = heic_extra.get(&i) {
-                        if extra.width > 0  { entry.width  = extra.width;  }
-                        if extra.height > 0 { entry.height = extra.height; }
-                        entry.modified = extra.modified.clone();
-                    } else if let Some(&(w, h)) = grouped_heic_dims.get(&i) {
-                        entry.width  = w;
-                        entry.height = h;
-                    }
-                }
-            }
-        }
-    }
+    // Note: HEIC dimension/date corrections for exact-duplicate groups (phase 2)
+    // are applied by `entry_corrected` in the final conversion pass — no need
+    // to patch groups[].entries here since GroupBuild stores only indices.
 
     // 3c — pHash comparison with user threshold
     analyze_cb(AnalyzeProgress { analyzed: 0, total: ungrouped_ph.len(),
@@ -528,11 +530,9 @@ where
             let pct = (((64 - max_dist) as f32 / 64.0) * 100.0).round() as u8;
             (SimilarityKind::Similar, Some(pct))
         };
-        let mut entries: Vec<ImageEntry> = cluster.iter()
-            .map(|&pos| entry_corrected(ph_pairs[pos].0)).collect();
-        mark_original(&mut entries, &retention_rule); sort_by_date(&mut entries);
+        let g_indices: Vec<usize> = cluster.iter().map(|&pos| ph_pairs[pos].0).collect();
         for &pos in &cluster { grouped[ph_pairs[pos].0] = true; }
-        groups.push(DuplicateGroup { kind, entries, similarity });
+        groups.push(GroupBuild { kind, indices: g_indices, similarity });
 
         let now = std::time::Instant::now();
         if now.duration_since(last_ph_progress).as_millis() >= 100 || a == n.saturating_sub(1) {
@@ -557,10 +557,8 @@ where
         if let Some(tag) = &r.ts_tag { ts_map.entry(tag.as_str()).or_default().push(i); }
     }
 
-    // samedate_group_indices tracks which record indices belong to each sameDate
-    // group (by group index in `groups`), needed for the cross-group phase 5.
-    let mut samedate_group_indices: Vec<Vec<usize>> = Vec::new();
-
+    // `before` marks where sameDate groups start in `groups`; phase 5 reads
+    // groups[before..].indices directly — no separate samedate_group_indices needed.
     let before = groups.len();
     for (_, indices) in &ts_map {
         if indices.len() < 2 { continue; }
@@ -588,11 +586,8 @@ where
             } else { None }
         } else { None };
 
-        let mut entries: Vec<ImageEntry> = indices.iter().map(|&i| records[i].entry.clone()).collect();
-        mark_original(&mut entries, &retention_rule); sort_by_date(&mut entries);
         indices.iter().for_each(|&i| grouped[i] = true);
-        samedate_group_indices.push(indices.to_vec());
-        groups.push(DuplicateGroup { kind: SimilarityKind::SameDate, entries, similarity });
+        groups.push(GroupBuild { kind: SimilarityKind::SameDate, indices: indices.to_vec(), similarity });
     }
     tracing::info!(samedate_groups = groups.len() - before, "phase 4 done");
     drop(_p4);
@@ -617,16 +612,18 @@ where
     // with a similarity percentage. Members absorbed into a cross-group cluster
     // are removed from their original sameDate group; groups that become empty
     // or have only one member left are discarded.
-    if cross_date_phash && samedate_group_indices.len() >= 2 {
-        let _p5 = tracing::info_span!("phase5_cross_group", samedate_groups = samedate_group_indices.len()).entered();
-        tracing::debug!("phase 5: cross-group pHash across {} sameDate groups", samedate_group_indices.len());
+    let num_samedate = groups.len() - before;
+    if cross_date_phash && num_samedate >= 2 {
+        let _p5 = tracing::info_span!("phase5_cross_group", samedate_groups = num_samedate).entered();
+        tracing::debug!("phase 5: cross-group pHash across {} sameDate groups", num_samedate);
 
         let min_hamming: u32 = 16;
 
         // flat[i] = (record_idx, samedate_group_idx)
+        // Built directly from groups[before..].indices — no separate Vec needed.
         let mut flat: Vec<(usize, usize)> = Vec::new();
-        for (g, members) in samedate_group_indices.iter().enumerate() {
-            for &r in members {
+        for (g, gb) in groups[before..].iter().enumerate() {
+            for &r in &gb.indices {
                 flat.push((r, g));
             }
         }
@@ -672,11 +669,11 @@ where
             }
         };
 
-        // For each sameDate group: flat indices absorbed into a cross-group cluster.
-        let mut absorbed_by_group: Vec<Vec<usize>> =
-            vec![Vec::new(); samedate_group_indices.len()];
+        // For each sameDate group: set of absorbed record indices.
+        // HashSet<usize> avoids the previous HashSet<String> (path clones).
+        let mut absorbed_by_group: Vec<HashSet<usize>> = vec![HashSet::new(); num_samedate];
 
-        let mut new_groups: Vec<DuplicateGroup> = Vec::new();
+        let mut new_groups: Vec<GroupBuild> = Vec::new();
 
         for a in 0..m {
             if sd_grouped[a] || ph_flat[a].is_none() { continue; }
@@ -720,58 +717,39 @@ where
                 Some((((64 - max_dist) as f32 / 64.0) * 100.0).round() as u8)
             };
 
-            // Mark absorbed members per source group so we can prune them
+            // Record absorbed record indices per source group for later pruning.
             for &idx in &cluster {
-                absorbed_by_group[flat[idx].1].push(idx);
+                absorbed_by_group[flat[idx].1].insert(flat[idx].0);
             }
 
-            let mut entries: Vec<ImageEntry> = cluster.iter()
-                .map(|&idx| entry_corrected(flat[idx].0))
-                .collect();
-            mark_original(&mut entries, &retention_rule); sort_by_date(&mut entries);
+            // Store record indices only — ImageEntry cloned in the final pass.
+            let g_indices: Vec<usize> = cluster.iter().map(|&idx| flat[idx].0).collect();
 
             // Cross-group clusters are labelled SameDate with a similarity score
             // so the user can see they were linked by date AND visual similarity.
-            new_groups.push(DuplicateGroup {
-                kind: SimilarityKind::SameDate,
-                entries,
-                similarity,
-            });
+            new_groups.push(GroupBuild { kind: SimilarityKind::SameDate, indices: g_indices, similarity });
         }
 
         if !new_groups.is_empty() {
             // Rebuild sameDate groups: remove absorbed members, drop groups with < 2 left.
-            // groups[before + g] corresponds to samedate_group_indices[g].
+            // groups[before + g] corresponds to the g-th sameDate group.
             let samedate_start = before;
-            let num_samedate = samedate_group_indices.len();
-
-            // Build set of paths absorbed from each sameDate group (HashSet<String>
-            // for O(1) membership test during retain).
-            let absorbed_paths: Vec<std::collections::HashSet<String>> = (0..num_samedate)
-                .map(|g| {
-                    absorbed_by_group[g].iter()
-                        .map(|&idx| records[flat[idx].0].entry.path.clone())
-                        .collect()
-                })
-                .collect();
 
             // Vec<bool> instead of HashSet<usize> — group positions are contiguous
             // indices bounded by groups.len(), so a flag array gives O(1) lookup
             // with better cache behaviour.
             let mut remove_flags = vec![false; groups.len()];
             for g in 0..num_samedate {
-                if absorbed_paths[g].is_empty() { continue; }
+                if absorbed_by_group[g].is_empty() { continue; }
                 let group_pos = samedate_start + g;
                 if group_pos >= groups.len() { continue; }
-                // Remove absorbed entries
-                groups[group_pos].entries.retain(|e| !absorbed_paths[g].contains(&e.path));
-                // If fewer than 2 members remain, mark for removal
-                if groups[group_pos].entries.len() < 2 {
+                // Remove absorbed record indices — O(1) per member, no string comparison.
+                groups[group_pos].indices.retain(|i| !absorbed_by_group[g].contains(i));
+                // If fewer than 2 members remain, mark for removal.
+                if groups[group_pos].indices.len() < 2 {
                     remove_flags[group_pos] = true;
-                } else {
-                    // Re-mark original among remaining entries
-                    mark_original(&mut groups[group_pos].entries, &retention_rule);
                 }
+                // mark_original is deferred to the final conversion pass.
             }
 
             let fully_absorbed = remove_flags.iter().filter(|&&f| f).count();
@@ -783,7 +761,7 @@ where
             tracing::debug!("phase 5: {} cross-group clusters, {} sameDate groups removed, {} partially pruned",
                 new_groups.len(),
                 fully_absorbed,
-                absorbed_paths.iter().filter(|s| !s.is_empty()).count().saturating_sub(fully_absorbed));
+                absorbed_by_group.iter().filter(|s| !s.is_empty()).count().saturating_sub(fully_absorbed));
 
             groups.extend(new_groups);
         } else {
@@ -791,17 +769,29 @@ where
         }
     }
 
-    groups.sort_by(|a, b| {
+    // ── Final conversion: GroupBuild → DuplicateGroup ─────────────────────────
+    // Exactly one ImageEntry clone per group member, after all phases have
+    // settled the final member sets. mark_original and sort_by_date are applied
+    // here so they see the corrected dimensions and the definitive membership.
+    let mut final_groups: Vec<DuplicateGroup> = groups.into_iter().map(|gb| {
+        let mut entries: Vec<ImageEntry> = gb.indices.iter()
+            .map(|&i| entry_corrected(i)).collect();
+        mark_original(&mut entries, &retention_rule);
+        sort_by_date(&mut entries);
+        DuplicateGroup { kind: gb.kind, entries, similarity: gb.similarity }
+    }).collect();
+
+    final_groups.sort_by(|a, b| {
         a.entries.first().map(|e| e.modified.as_str())
             .cmp(&b.entries.first().map(|e| e.modified.as_str()))
     });
 
     tracing::info!(
-        groups = groups.len(),
+        groups = final_groups.len(),
         failed_files = failed_files.len(),
         "scan complete"
     );
-    Ok((groups, failed_files))
+    Ok((final_groups, failed_files))
 }
 
 /// Re-apply a retention rule to an already-scanned set of groups without a full rescan.
