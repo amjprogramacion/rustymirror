@@ -333,7 +333,7 @@ where
         // pHash quality is identical — it only needs a small image.
         batch_convert_heic(&heic_convert_paths, resource_dir.as_deref(), Some(512), |done, total| {
             analyze_cb(AnalyzeProgress { analyzed: done, total: total.max(1),
-                phase: format!("Converting HEIC files ({}/{})…", done, total) });
+                phase: format!("Converting HEIC/AVIF files ({}/{})…", done, total) });
         }).into_iter().map(|(orig, tmp, w, h)| (orig, (tmp, w, h))).collect()
     } else { HashMap::new() };
 
@@ -346,7 +346,7 @@ where
     let phase3b_total = heic_need_convert.len();
     let phase3b_counter = std::sync::atomic::AtomicUsize::new(0);
     analyze_cb(AnalyzeProgress { analyzed: 0, total: phase3b_total.max(1),
-        phase: format!("Hashing {} HEIC images…", phase3b_total) });
+        phase: format!("Hashing {} HEIC/AVIF images…", phase3b_total) });
 
     let mut heic_extra: HashMap<usize, HeicExtra> = heic_need_convert
         .par_iter()

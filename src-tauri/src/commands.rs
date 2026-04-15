@@ -264,7 +264,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
         let thumb_err = |msg: String| AppError::Thumbnail { message: msg };
 
         let lower   = path.to_lowercase();
-        let is_heic = lower.ends_with(".heic") || lower.ends_with(".heif");
+        let is_heic = lower.ends_with(".heic") || lower.ends_with(".heif") || lower.ends_with(".avif");
 
         if is_heic {
             // Read once — used for the cache key.
@@ -427,7 +427,7 @@ pub async fn get_full_image(path: String, app: tauri::AppHandle) -> Result<Strin
         let thumb_err = |msg: String| AppError::Thumbnail { message: msg };
 
         let lower   = path.to_lowercase();
-        let is_heic = lower.ends_with(".heic") || lower.ends_with(".heif");
+        let is_heic = lower.ends_with(".heic") || lower.ends_with(".heif") || lower.ends_with(".avif");
 
         let bytes = if is_heic {
             let (tmp, _, _) = crate::heic::heic_to_temp_jpeg(
@@ -677,7 +677,13 @@ pub async fn scan_for_metadata(
                     .map(|dt| dt.to_rfc3339())
                     .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string());
 
-                let (width, height) = image::image_dimensions(&p).unwrap_or((0, 0));
+                let lower_ext = p.extension().and_then(|e| e.to_str())
+                    .map(|e| e.to_lowercase()).unwrap_or_default();
+                let (width, height) = if matches!(lower_ext.as_str(), "heic" | "heif" | "avif") {
+                    crate::heic::heic_dimensions(&p, None)
+                } else {
+                    image::image_dimensions(&p).unwrap_or((0, 0))
+                };
 
                 // Read lightweight EXIF for sort fields (BufReader avoids loading the full file)
                 let (date_taken, gps_latitude, gps_longitude, device) =

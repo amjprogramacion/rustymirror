@@ -22,11 +22,17 @@ pub fn read_metadata(path: &Path) -> Result<ImageMetadata> {
         "gif"          => "GIF",
         "tiff" | "tif" => "TIFF",
         "heic" | "heif"=> "HEIC",
+        "avif"         => "AVIF",
         other          => other,
     }.to_string();
 
-    // Read image dimensions via image crate
-    let (width, height) = image::image_dimensions(path).unwrap_or((0, 0));
+    // Read image dimensions. HEIC/AVIF cannot be decoded by the image crate,
+    // so we delegate to magick identify (same tool used for pHash conversion).
+    let (width, height) = if matches!(ext.as_str(), "heic" | "heif" | "avif") {
+        crate::heic::heic_dimensions(path, None)
+    } else {
+        image::image_dimensions(path).unwrap_or((0, 0))
+    };
 
     // Parse EXIF
     let exif_result = exif::Reader::new()

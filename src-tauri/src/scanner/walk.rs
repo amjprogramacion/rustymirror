@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 pub(super) static IMAGE_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "webp", "bmp", "gif", "tiff", "tif", "heic", "heif",
+    "jpg", "jpeg", "png", "webp", "bmp", "gif", "tiff", "tif", "heic", "heif", "avif",
 ];
-pub(super) static HEIC_EXTENSIONS: &[&str] = &["heic", "heif"];
+/// Formats that cannot be decoded by the `image` crate and require ImageMagick conversion.
+pub(super) static MAGICK_EXTENSIONS: &[&str] = &["heic", "heif", "avif"];
 
 pub(super) fn is_image(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str())
@@ -15,7 +16,7 @@ pub(super) fn is_image(path: &Path) -> bool {
 
 pub(super) fn is_heic(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str())
-        .map(|e| HEIC_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+        .map(|e| MAGICK_EXTENSIONS.contains(&e.to_lowercase().as_str()))
         .unwrap_or(false)
 }
 

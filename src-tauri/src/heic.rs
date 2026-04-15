@@ -137,10 +137,13 @@ pub fn heic_to_temp_jpeg(
         .unwrap_or_else(|| "heic_tmp".to_string());
     let tmp = std::env::temp_dir().join(format!("rustymirror_{}.jpg", stem));
 
+    // Capture original dimensions before any resize so callers always get the
+    // source resolution, not the downscaled temp-file resolution.
+    let (w, h) = heic_dimensions(heic_path, resource_dir);
+
     convert_one(heic_path, &tmp, resource_dir, max_dim).ok()?;
     if !tmp.exists() { return None; }
 
-    let (w, h) = image::image_dimensions(&tmp).unwrap_or((0, 0));
     Some((tmp, w, h))
 }
 
