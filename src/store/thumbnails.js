@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { useSettings } from '../composables/useSettings'
 
+const MAX_QUEUE = 10_000
+
 export const useThumbnailStore = defineStore('thumbnails', {
   state: () => ({
     thumbCache: {},
@@ -39,6 +41,7 @@ export const useThumbnailStore = defineStore('thumbnails', {
       if (path in this.thumbCache) return
       if (this.directSrcCache[path]) return
       if (this._thumbQueue.includes(path)) return
+      if (this._thumbQueue.length >= MAX_QUEUE) return
       this._thumbQueue.push(path)
       this._flushThumbQueue()
     },
