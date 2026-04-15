@@ -270,6 +270,8 @@ async function openFolder(path) {
   transition: border-color var(--transition), background var(--transition);
   contain: layout style;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ::after overlay covers the entire card surface including the image area.
@@ -295,7 +297,8 @@ async function openFolder(path) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 4px;
+  margin-top: auto;
+  padding-top: 4px;
 }
 
 .btn-group {
@@ -375,6 +378,7 @@ async function openFolder(path) {
 .meta {
   padding: var(--space-2);
   display: flex; flex-direction: column; gap: 2px;
+  flex: 1;
 }
 .meta-name {
   font-size: var(--font-size-xs); color: var(--text-primary);
