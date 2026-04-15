@@ -176,7 +176,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, provide, onMounted, onBeforeUnmount } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useDuplicatesStore } from '../store/duplicates'
@@ -194,6 +194,25 @@ const thumbs       = useThumbnailStore()
 const showConfirm  = ref(false)
 const deleteError  = ref(null)
 const viewMode     = ref('list') // 'list' | 'thumbs'
+
+// Single global IntersectionObserver shared by all DuplicateGroup instances.
+// Created here in setup() (not onMounted) so it exists before children mount.
+const thumbObserver = new IntersectionObserver((entries, obs) => {
+  for (const e of entries) {
+    const path = e.target.dataset.cardPath
+    if (!path) continue
+    if (path in thumbs.thumbCache) {
+      obs.unobserve(e.target)
+      continue
+    }
+    if (e.isIntersecting) {
+      thumbs.enqueueThumbnail(path)
+    } else {
+      thumbs.dequeueThumbnail(path)
+    }
+  }
+}, { rootMargin: '400px', threshold: 0 })
+provide('thumbObserver', thumbObserver)
 
 function focusFirstCard() {
   const first = document.querySelector('[data-card-path]')
@@ -224,7 +243,10 @@ function onWindowKeydown(e) {
 }
 
 onMounted(()       => window.addEventListener('keydown', onWindowKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onWindowKeydown))
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onWindowKeydown)
+  thumbObserver.disconnect()
+})
 
 const deleting       = ref(false)
 const deleteProgress = ref({ done: 0, total: 0 })

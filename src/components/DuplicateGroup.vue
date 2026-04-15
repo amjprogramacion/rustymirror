@@ -84,7 +84,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, inject, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { useDuplicatesStore } from '../store/duplicates'
 import { useThumbnailStore } from '../store/thumbnails'
@@ -102,8 +102,9 @@ const HEIC_EXTS = new Set(['heic', 'heif'])
 // Rust decodes and re-encodes as a plain JPEG thumbnail, which WebView2 handles fine.
 const RUST_THUMB_EXTS = new Set(['png'])
 
-let observer = null
+const thumbObserver = inject('thumbObserver')
 const groupEl = ref(null)
+const observedEls = []
 
 function needsRust(path) {
   const ext = fileExt(path)
@@ -123,36 +124,24 @@ onMounted(() => {
 
   if (toObserve.length === 0) return
 
-  observer = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      const path = e.target.dataset.cardPath
-      if (!path) continue
-      if (path in thumbs.thumbCache) {
-        observer.unobserve(e.target)
-        continue
-      }
-      if (e.isIntersecting) {
-        thumbs.enqueueThumbnail(path)
-      } else {
-        thumbs.dequeueThumbnail(path)
-      }
-    }
-  }, { rootMargin: '400px', threshold: 0 })
-
   nextTick(() => {
-    if (!groupEl.value) return
+    if (!groupEl.value || !thumbObserver) return
     const pathsToObserve = new Set(toObserve.map(e => e.path))
     const cards = groupEl.value.querySelectorAll('.card[data-card-path]')
     cards.forEach(el => {
       const path = el.dataset.cardPath
       if (pathsToObserve.has(path) && !(path in thumbs.thumbCache)) {
-        observer.observe(el)
+        thumbObserver.observe(el)
+        observedEls.push(el)
       }
     })
   })
 })
 
-onBeforeUnmount(() => observer?.disconnect())
+onBeforeUnmount(() => {
+  for (const el of observedEls) thumbObserver?.unobserve(el)
+  observedEls.length = 0
+})
 
 // Called when the browser fails to load a file via convertFileSrc (e.g. very
 // large PNG, unusual color profile, WebView2 rendering issue). Clear the direct
