@@ -14,7 +14,7 @@
     <ul v-if="expanded" class="failed-list">
       <li v-for="f in files" :key="f.path" class="failed-item">
         <span class="failed-path" :title="f.path">{{ basename(f.path) }}</span>
-        <span class="failed-reason">{{ f.reason }}</span>
+        <span class="failed-reason">{{ kindLabel(f.kind) }}</span>
       </li>
     </ul>
   </div>
@@ -35,6 +35,18 @@ watch(() => props.files, () => {
   dismissed.value = false
   expanded.value = false
 })
+
+const KIND_LABELS = {
+  PERMISSION_DENIED:  'Permission denied',
+  NOT_FOUND:          'File not found',
+  UNSUPPORTED_FORMAT: 'Unsupported format',
+  CORRUPTED_FILE:     'Corrupted file',
+  IO_ERROR:           'I/O error',
+}
+
+function kindLabel(kind) {
+  return KIND_LABELS[kind] ?? 'Unknown error'
+}
 
 function basename(path) {
   return path.replace(/\\/g, '/').split('/').pop() || path

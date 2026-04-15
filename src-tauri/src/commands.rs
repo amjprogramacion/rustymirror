@@ -18,7 +18,7 @@ fn cache_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, tauri::Error> {
 }
 
 use crate::scanner::{apply_retention_rule, find_duplicates};
-use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, RetentionRule, ScanProgress};
+use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, FailedFileKind, RetentionRule, ScanProgress};
 
 /// Structured error type returned by all Tauri commands.
 /// Serialises as `{ "type": "...", "message": "...", "path": "..." }` so the
@@ -661,15 +661,15 @@ pub async fn scan_for_metadata(
         let images = crate::scanner::collect_images(&directories);
 
         let stop_c = stop.clone();
-        let results: Vec<Result<crate::types::ImageEntry, String>> = images
+        let results: Vec<Result<crate::types::ImageEntry, FailedFile>> = images
             .into_par_iter()
             .map(|p| {
                 if stop_c.load(Ordering::Relaxed) {
-                    return Err(String::new()); // empty = stopped, not a real error
+                    return Err(FailedFile { path: String::new(), kind: FailedFileKind::IoError }); // sentinel = stopped
                 }
                 let path_str = p.to_string_lossy().to_string();
                 let meta = std::fs::metadata(&p)
-                    .map_err(|e| format!("{}|Cannot read file metadata: {}", path_str, e))?;
+                    .map_err(|e| FailedFile { path: path_str.clone(), kind: FailedFileKind::from_io(&e) })?;
                 let size_bytes = meta.len();
                 let modified = meta.modified().ok()
                     .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
@@ -739,14 +739,8 @@ pub async fn scan_for_metadata(
         for r in results {
             match r {
                 Ok(entry) => entries.push(entry),
-                Err(msg) if !msg.is_empty() && !was_stopped => {
-                    // msg format: "path|reason"
-                    if let Some((path, reason)) = msg.split_once('|') {
-                        failed_files.push(FailedFile {
-                            path: path.to_string(),
-                            reason: reason.to_string(),
-                        });
-                    }
+                Err(f) if !f.path.is_empty() && !was_stopped => {
+                    failed_files.push(f);
                 }
                 _ => {}
             }

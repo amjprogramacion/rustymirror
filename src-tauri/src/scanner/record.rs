@@ -4,7 +4,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::cache::CachedFile;
 use crate::hasher::{perceptual_hash_from_bytes, read_file_data};
-use crate::types::ImageEntry;
+use crate::types::{FailedFileKind, ImageEntry};
 
 use super::walk::is_heic;
 
@@ -145,13 +145,17 @@ pub(super) fn resolve_phash_owned(
 }
 
 /// Read a file from disk and build a `FileRecord` without consulting the cache.
-pub(super) fn make_record(path: &Path, fast_mode: bool) -> Option<FileRecord> {
-    let meta = std::fs::metadata(path).ok()?;
+pub(super) fn make_record(path: &Path, fast_mode: bool) -> Result<FileRecord, FailedFileKind> {
+    let meta = std::fs::metadata(path).map_err(|e| FailedFileKind::from_io(&e))?;
     let fs_modified = mtime_rfc3339(&meta);
     let size_bytes = meta.len();
     let path_str = path.to_string_lossy().to_string();
 
-    let (ex_hash, _, bytes) = read_file_data(path).ok()?;
+    let (ex_hash, _, bytes) = read_file_data(path).map_err(|e| {
+        e.downcast_ref::<std::io::Error>()
+            .map(FailedFileKind::from_io)
+            .unwrap_or(FailedFileKind::IoError)
+    })?;
 
     let heic = is_heic(path);
     let modified = if !heic { read_capture_date(path, &bytes, &meta) } else { fs_modified.clone() };
@@ -174,7 +178,7 @@ pub(super) fn make_record(path: &Path, fast_mode: bool) -> Option<FileRecord> {
 
     let header_hash = Some(blake3::hash(&bytes[..bytes.len().min(4096)]).to_hex().to_string());
 
-    Some(FileRecord {
+    Ok(FileRecord {
         entry: ImageEntry {
             path: path_str.clone(),
             size_bytes, width, height,

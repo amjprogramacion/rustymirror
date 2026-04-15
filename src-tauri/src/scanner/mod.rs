@@ -13,7 +13,7 @@ use rayon::prelude::*;
 
 use crate::cache::CachedFile;
 use crate::heic::{batch_convert_heic, cleanup_temp};
-use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, ImageEntry, RetentionRule, SimilarityKind};
+use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, FailedFileKind, ImageEntry, RetentionRule, SimilarityKind};
 
 use self::bktree::BkTree;
 use self::grouping::{mark_original, sort_by_date};
@@ -81,15 +81,18 @@ where
     tracing::debug!("cache: {} entries ({} paths to check)",
         cache.as_ref().map(|c| c.count()).unwrap_or(0), paths.len());
 
-    // Process one file: returns the FileRecord (or None on failure/stop).
+    // Process one file: returns the FileRecord (or None on stop, Err on failure).
     // `path_cache_key` is pre-computed by the caller (already normalised in
     // `path_strings`) — avoids a redundant NFC+lowercase pass per file.
-    let process_one = |path: &PathBuf, path_cache_key: &str| -> Option<FileRecord> {
+    let process_one = |path: &PathBuf, path_cache_key: &str| -> Option<Result<FileRecord, FailedFileKind>> {
         if stop_phase1.load(AOrdering::Relaxed) { return None; }
 
         let path_str = path.to_string_lossy().to_string();
 
-        let meta = std::fs::metadata(path).ok()?;
+        let meta = match std::fs::metadata(path) {
+            Ok(m) => m,
+            Err(e) => return Some(Err(FailedFileKind::from_io(&e))),
+        };
         let size  = meta.len();
         let mtime = mtime_rfc3339(&meta);
 
@@ -118,7 +121,7 @@ where
                     };
                     if cached_ph.is_some() || entry.data.phash.is_none() && entry.data.fast_phash.is_none() {
                         cache_hits.fetch_add(1, AOrdering::Relaxed);
-                        Some(FileRecord {
+                        Ok(FileRecord {
                             entry: ImageEntry {
                                 path:        path_str,
                                 size_bytes:  size,
@@ -154,7 +157,7 @@ where
 
         let done = counter.fetch_add(1, AOrdering::Relaxed) + 1;
         scan_cb(done, total);
-        record
+        Some(record)
     };
 
     // ── Folder-sequential, intra-folder parallel processing ──────────────────
@@ -164,7 +167,7 @@ where
     // current one is fully done.  This guarantees that a cancelled scan always
     // leaves complete folders in cache, so the next scan resumes with a clean
     // fast segment rather than scattered cache hits.
-    let mut results: Vec<Option<FileRecord>> = (0..paths.len()).map(|_| None).collect();
+    let mut results: Vec<Option<Result<FileRecord, FailedFileKind>>> = (0..paths.len()).map(|_| None).collect();
 
     // Build groups of (start_index, len) sharing the same parent directory.
     let mut folder_groups: Vec<(usize, usize)> = Vec::new();
@@ -182,7 +185,7 @@ where
     'folders: for (start, len) in folder_groups {
         if stop_phase1.load(AOrdering::Relaxed) { break 'folders; }
 
-        let folder_results: Vec<Option<FileRecord>> = (start..start + len)
+        let folder_results: Vec<Option<Result<FileRecord, FailedFileKind>>> = (start..start + len)
             .into_par_iter()
             .map(|idx| process_one(&paths[idx], &path_strings[idx]))
             .collect();
@@ -204,22 +207,27 @@ where
         "phase 1 cache stats"
     );
 
-    // Collect failed files: paths where result is None and scan was not stopped.
+    // Collect failed files: paths where result is Err and scan was not stopped.
     let failed_files: Vec<FailedFile> = if stop.load(AOrdering::Relaxed) {
         vec![]
     } else {
         results.iter().zip(paths.iter())
-            .filter(|(r, _)| r.is_none())
-            .map(|(_, p)| FailedFile {
-                path: p.to_string_lossy().to_string(),
-                reason: "Failed to read or decode image".to_string(),
+            .filter_map(|(r, p)| match r {
+                Some(Err(kind)) => Some(FailedFile {
+                    path: p.to_string_lossy().to_string(),
+                    kind: kind.clone(),
+                }),
+                _ => None,
             })
             .collect()
     };
     if !failed_files.is_empty() {
         tracing::debug!("phase 1: {} files failed to read", failed_files.len());
     }
-    let records: Vec<FileRecord> = results.into_iter().flatten().collect();
+    let records: Vec<FileRecord> = results.into_iter()
+        .flatten()
+        .filter_map(|r| r.ok())
+        .collect();
     tracing::info!(
         records = records.len(),
         failed = failed_files.len(),

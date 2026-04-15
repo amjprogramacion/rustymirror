@@ -112,12 +112,33 @@ pub struct MetadataUpdate {
     pub gps_longitude: Option<f64>,
 }
 
+/// Reason a file was skipped during a scan.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum FailedFileKind {
+    PermissionDenied,
+    NotFound,
+    UnsupportedFormat,
+    CorruptedFile,
+    IoError,
+}
+
+impl FailedFileKind {
+    pub fn from_io(e: &std::io::Error) -> Self {
+        match e.kind() {
+            std::io::ErrorKind::PermissionDenied => Self::PermissionDenied,
+            std::io::ErrorKind::NotFound => Self::NotFound,
+            _ => Self::IoError,
+        }
+    }
+}
+
 /// A file that could not be read or decoded during a scan.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FailedFile {
     pub path: String,
-    pub reason: String,
+    pub kind: FailedFileKind,
 }
 
 /// Emitted during phase 1 (file hashing)
