@@ -85,18 +85,18 @@ where
         cache.as_ref().map(|c| c.count()).unwrap_or(0), paths.len());
 
     // Process one file: returns the FileRecord (or None on failure/stop).
-    // Extracted so the folder-sequential loop below stays readable.
-    let process_one = |path: &PathBuf| -> Option<FileRecord> {
+    // `path_cache_key` is pre-computed by the caller (already normalised in
+    // `path_strings`) — avoids a redundant NFC+lowercase pass per file.
+    let process_one = |path: &PathBuf, path_cache_key: &str| -> Option<FileRecord> {
         if stop_phase1.load(AOrdering::Relaxed) { return None; }
 
         let path_str = path.to_string_lossy().to_string();
-        let path_cache_key = cache_key(&path_str);
 
         let meta = std::fs::metadata(path).ok()?;
         let size  = meta.len();
         let mtime = mtime_rfc3339(&meta);
 
-        let record = if let Some(entry) = bulk_cache.get(&path_cache_key) {
+        let record = if let Some(entry) = bulk_cache.get(path_cache_key) {
             if entry.size_bytes == size {
                 dbg_size_match.fetch_add(1, AOrdering::Relaxed);
                 // Validate the entry: prefer header_hash (mtime-independent),
@@ -185,9 +185,9 @@ where
     'folders: for (start, len) in folder_groups {
         if stop_phase1.load(AOrdering::Relaxed) { break 'folders; }
 
-        let folder_results: Vec<Option<FileRecord>> = paths[start..start + len]
-            .par_iter()
-            .map(|path| process_one(path))
+        let folder_results: Vec<Option<FileRecord>> = (start..start + len)
+            .into_par_iter()
+            .map(|idx| process_one(&paths[idx], &path_strings[idx]))
             .collect();
 
         for (i, rec) in folder_results.into_iter().enumerate() {
@@ -473,6 +473,7 @@ where
     let t3c = std::time::Instant::now();
     let n = ph_pairs.len();
     let mut ph_grouped = vec![false; n];
+    let mut last_ph_progress = std::time::Instant::now();
 
     // Build a BK-tree for O(n log n) candidate lookup instead of O(n²) scan.
     // For each ungrouped image A, the tree returns only the images within
@@ -533,7 +534,9 @@ where
         for &pos in &cluster { grouped[ph_pairs[pos].0] = true; }
         groups.push(DuplicateGroup { kind, entries, similarity });
 
-        if a % 100 == 0 || a == n.saturating_sub(1) {
+        let now = std::time::Instant::now();
+        if now.duration_since(last_ph_progress).as_millis() >= 100 || a == n.saturating_sub(1) {
+            last_ph_progress = now;
             analyze_cb(AnalyzeProgress { analyzed: a + 1, total: n,
                 phase: "Comparing similar images…".into() });
         }
