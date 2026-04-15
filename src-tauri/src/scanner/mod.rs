@@ -474,15 +474,50 @@ where
     let mut ph_grouped = vec![false; n];
     let mut last_ph_progress = std::time::Instant::now();
 
+    // Fingerprint: blake3 over every (path, phash_bytes) in ph_pairs order.
+    // A fingerprint match means the exact same ordered set of hashes will be
+    // inserted into the tree, so the stored ph_idx values remain valid.
+    let bktree_fingerprint = {
+        let mut h = blake3::Hasher::new();
+        for &(i, ph) in &ph_pairs {
+            h.update(records[i].entry.path.as_bytes());
+            h.update(ph.as_bytes());
+        }
+        h.finalize().to_hex().to_string()
+    };
+
+    // Try to load a previously serialised BK-tree for this exact hash set.
+    // Fall back to building from scratch if absent or corrupt.
+    let cached_blob = cache.as_ref()
+        .and_then(|c| c.load_bktree_blob(&bktree_fingerprint, fast_mode));
+    let tree_from_cache = cached_blob.is_some();
+
     // Build a BK-tree for O(n log n) candidate lookup instead of O(n²) scan.
     // For each ungrouped image A, the tree returns only the images within
     // `phash_threshold` Hamming distance — skipping the rest entirely.
     // Since A is always in its own cluster, complete-linkage requires every
     // member to be within threshold of A, so querying on A's hash yields the
     // complete candidate set without missing any valid member.
-    let mut bk_tree = BkTree::new(n);
-    for (i, (_, hash)) in ph_pairs.iter().enumerate() {
-        bk_tree.insert(i, (*hash).clone());
+    let bk_tree = if let Some(tree) = cached_blob.as_deref()
+        .and_then(|b| BkTree::deserialize(b))
+        .filter(|t| t.nodes.len() == n)
+    {
+        tracing::debug!("phase 3c: BK-tree loaded from cache ({} nodes)", n);
+        tree
+    } else {
+        let mut t = BkTree::new(n);
+        for (i, (_, hash)) in ph_pairs.iter().enumerate() {
+            t.insert(i, (*hash).clone());
+        }
+        t
+    };
+
+    // Persist the tree if it was freshly built.
+    if !tree_from_cache {
+        if let Some(ref c) = cache {
+            c.save_bktree_blob(&bktree_fingerprint, fast_mode, &bk_tree.serialize());
+            tracing::debug!("phase 3c: BK-tree saved to cache ({} nodes)", n);
+        }
     }
 
     // Complete-linkage greedy clustering (same semantics as before):

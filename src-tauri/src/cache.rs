@@ -68,6 +68,17 @@ impl Cache {
             conn.execute_batch("ALTER TABLE file_cache ADD COLUMN blur_score REAL;")?;
             conn.execute_batch("PRAGMA user_version = 3")?;
         }
+        if version < 4 {
+            conn.execute_batch("
+                CREATE TABLE IF NOT EXISTS bktree_cache (
+                    fingerprint TEXT    NOT NULL,
+                    fast_mode   INTEGER NOT NULL,
+                    blob        BLOB    NOT NULL,
+                    PRIMARY KEY (fingerprint, fast_mode)
+                );
+            ")?;
+            conn.execute_batch("PRAGMA user_version = 4")?;
+        }
         Ok(())
     }
 
@@ -188,5 +199,27 @@ impl Cache {
                 );
             }
         }
+    }
+
+    /// Persist a serialised BK-tree blob, keyed by (fingerprint, fast_mode).
+    /// Only one blob per (fingerprint, fast_mode) pair is kept (INSERT OR REPLACE).
+    pub fn save_bktree_blob(&self, fingerprint: &str, fast_mode: bool, blob: &[u8]) {
+        if let Ok(conn) = self.conn.lock() {
+            let _ = conn.execute(
+                "INSERT OR REPLACE INTO bktree_cache (fingerprint, fast_mode, blob) VALUES (?1, ?2, ?3)",
+                params![fingerprint, fast_mode as i32, blob],
+            );
+        }
+    }
+
+    /// Load a previously saved BK-tree blob by (fingerprint, fast_mode).
+    /// Returns None if no matching entry exists.
+    pub fn load_bktree_blob(&self, fingerprint: &str, fast_mode: bool) -> Option<Vec<u8>> {
+        let conn = self.conn.lock().ok()?;
+        conn.query_row(
+            "SELECT blob FROM bktree_cache WHERE fingerprint = ?1 AND fast_mode = ?2",
+            params![fingerprint, fast_mode as i32],
+            |row| row.get::<_, Vec<u8>>(0),
+        ).ok()
     }
 }
