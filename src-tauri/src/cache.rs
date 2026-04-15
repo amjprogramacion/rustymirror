@@ -17,6 +17,25 @@ pub struct CachedFile {
     pub blur_score:  Option<f64>,     // Laplacian variance (higher = sharper)
 }
 
+impl CachedFile {
+    /// Returns the hex pHash for the requested scan mode.
+    /// `fast_mode = true` → `fast_phash` (thumbnail-based); `false` → `phash` (full decode).
+    /// This is the single authoritative mapping between scan mode and cache slot.
+    pub fn phash_hex_for_mode(&self, fast_mode: bool) -> Option<&str> {
+        if fast_mode { self.fast_phash.as_deref() } else { self.phash.as_deref() }
+    }
+
+    /// Builds the `(phash, fast_phash)` pair for a cache write.
+    /// Places `computed` in the slot for `fast_mode` and `preserve` in the other slot.
+    pub fn phash_pair_for_mode(
+        fast_mode: bool,
+        computed:  Option<String>,
+        preserve:  Option<String>,
+    ) -> (Option<String>, Option<String>) {
+        if fast_mode { (preserve, computed) } else { (computed, preserve) }
+    }
+}
+
 /// A cache entry key — used to check if a file has changed.
 #[derive(Debug, Clone)]
 pub struct CacheKey {

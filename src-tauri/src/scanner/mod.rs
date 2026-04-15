@@ -114,11 +114,7 @@ where
 
                 if valid {
                     // Check if the pHash for the requested mode is already cached.
-                    let cached_ph = if fast_mode {
-                        entry.data.fast_phash.as_deref().and_then(hex_to_phash)
-                    } else {
-                        entry.data.phash.as_deref().and_then(hex_to_phash)
-                    };
+                    let cached_ph = entry.data.phash_hex_for_mode(fast_mode).and_then(hex_to_phash);
                     if cached_ph.is_some() || entry.data.phash.is_none() && entry.data.fast_phash.is_none() {
                         cache_hits.fetch_add(1, AOrdering::Relaxed);
                         Ok(FileRecord {
@@ -243,11 +239,8 @@ where
                 let ph_hex = r.ph.as_ref().map(phash_to_hex);
                 // Preserve the pHash for the other mode from the bulk cache, if present.
                 let existing = bulk_cache.get(&cache_key(&r.entry.path));
-                let (phash, fast_phash) = if fast_mode {
-                    (existing.and_then(|e| e.data.phash.clone()), ph_hex)
-                } else {
-                    (ph_hex, existing.and_then(|e| e.data.fast_phash.clone()))
-                };
+                let preserve = existing.and_then(|e| e.data.phash_hex_for_mode(!fast_mode).map(str::to_owned));
+                let (phash, fast_phash) = CachedFile::phash_pair_for_mode(fast_mode, ph_hex, preserve);
                 (cache_key(&r.entry.path), r.mtime_key.clone(), build_cached_file(r, phash, fast_phash))
             })
             .collect();
