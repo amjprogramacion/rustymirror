@@ -144,6 +144,7 @@ pub fn read_metadata(path: &Path) -> Result<ImageMetadata> {
 
 /// Writes editable EXIF fields back to the file.
 /// JPEG uses kamadak-exif writer (supports GPS + preserves existing fields).
+/// HEIC/HEIF/AVIF use an in-place ISOBMFF EXIF replacement.
 /// TIFF/PNG/WebP fall back to little-exif (no GPS support for those formats).
 pub fn write_metadata(path: &Path, update: &MetadataUpdate) -> Result<()> {
     let ext = path
@@ -152,24 +153,112 @@ pub fn write_metadata(path: &Path, update: &MetadataUpdate) -> Result<()> {
         .unwrap_or("")
         .to_lowercase();
 
-    match ext.as_str() {
+    // Detect real format by magic bytes — a recovered file may have the wrong
+    // extension (e.g. a JPEG saved with a .heic name).
+    let actual_format = detect_format_by_magic(path).unwrap_or_else(|| ext.clone());
+
+    match actual_format.as_str() {
         "jpg" | "jpeg" => write_metadata_jpeg(path, update),
+        "heic" | "heif" | "avif" => write_metadata_heic(path, update),
         "tiff" | "tif" | "png" | "webp" => write_metadata_little_exif(path, update),
-        other => Err(anyhow!("Metadata writing not supported for .{}", other)),
+        _ => match ext.as_str() {
+            "jpg" | "jpeg" => write_metadata_jpeg(path, update),
+            "heic" | "heif" | "avif" => write_metadata_heic(path, update),
+            "tiff" | "tif" | "png" | "webp" => write_metadata_little_exif(path, update),
+            other => Err(anyhow!("Metadata writing not supported for .{}", other)),
+        },
+    }
+}
+
+/// Reads the first few bytes of a file and returns the actual format name if
+/// the magic bytes are recognised, or `None` if unknown / unreadable.
+fn detect_format_by_magic(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut buf = [0u8; 12];
+    let n = std::fs::File::open(path).ok()?.read(&mut buf).ok()?;
+    let buf = &buf[..n];
+    if buf.starts_with(b"\xff\xd8\xff") {
+        Some("jpeg".into())
+    } else if buf.starts_with(b"\x89PNG") {
+        Some("png".into())
+    } else if buf.starts_with(b"RIFF") && buf.get(8..12) == Some(b"WEBP") {
+        Some("webp".into())
+    } else if buf.starts_with(b"II") || buf.starts_with(b"MM") {
+        Some("tiff".into())
+    } else {
+        None // HEIC/AVIF/unknown — let extension routing handle it
+    }
+}
+
+/// Applies the `MetadataUpdate` fields onto an existing `field_map` built from
+/// `exif::parse_exif`.  Each `Some` field in `update` overwrites or inserts the
+/// corresponding EXIF tag; `None` fields are left untouched.
+fn apply_metadata_updates(
+    field_map: &mut std::collections::HashMap<(exif::Tag, exif::In), exif::Field>,
+    update: &MetadataUpdate,
+) {
+    use exif::{Field, In, Tag, Value};
+
+    if let Some(ref dt) = update.date_time_original {
+        let exif_dt = iso_to_exif_date(dt);
+        field_map.insert(
+            (Tag::DateTimeOriginal, In::PRIMARY),
+            Field { tag: Tag::DateTimeOriginal, ifd_num: In::PRIMARY, value: Value::Ascii(vec![exif_dt.into_bytes()]) },
+        );
+    }
+    if let Some(ref desc) = update.image_description {
+        field_map.insert(
+            (Tag::ImageDescription, In::PRIMARY),
+            Field { tag: Tag::ImageDescription, ifd_num: In::PRIMARY, value: Value::Ascii(vec![desc.as_bytes().to_vec()]) },
+        );
+    }
+    if let Some(ref artist) = update.artist {
+        field_map.insert(
+            (Tag::Artist, In::PRIMARY),
+            Field { tag: Tag::Artist, ifd_num: In::PRIMARY, value: Value::Ascii(vec![artist.as_bytes().to_vec()]) },
+        );
+    }
+    if let Some(ref copy) = update.copyright {
+        field_map.insert(
+            (Tag::Copyright, In::PRIMARY),
+            Field { tag: Tag::Copyright, ifd_num: In::PRIMARY, value: Value::Ascii(vec![copy.as_bytes().to_vec()]) },
+        );
+    }
+    if let (Some(lat), Some(lon)) = (update.gps_latitude, update.gps_longitude) {
+        let lat_ref = if lat >= 0.0 { b"N".to_vec() } else { b"S".to_vec() };
+        let lon_ref = if lon >= 0.0 { b"E".to_vec() } else { b"W".to_vec() };
+        let lat_dms = decimal_to_dms(lat.abs());
+        let lon_dms = decimal_to_dms(lon.abs());
+        field_map.insert(
+            (Tag::GPSLatitudeRef, In::PRIMARY),
+            Field { tag: Tag::GPSLatitudeRef, ifd_num: In::PRIMARY, value: Value::Ascii(vec![lat_ref]) },
+        );
+        field_map.insert(
+            (Tag::GPSLatitude, In::PRIMARY),
+            Field { tag: Tag::GPSLatitude, ifd_num: In::PRIMARY, value: Value::Rational(lat_dms.to_vec()) },
+        );
+        field_map.insert(
+            (Tag::GPSLongitudeRef, In::PRIMARY),
+            Field { tag: Tag::GPSLongitudeRef, ifd_num: In::PRIMARY, value: Value::Ascii(vec![lon_ref]) },
+        );
+        field_map.insert(
+            (Tag::GPSLongitude, In::PRIMARY),
+            Field { tag: Tag::GPSLongitude, ifd_num: In::PRIMARY, value: Value::Rational(lon_dms.to_vec()) },
+        );
     }
 }
 
 /// JPEG path: read all existing EXIF fields, apply updates (including GPS),
 /// re-encode with kamadak-exif Writer, and inject the new APP1 segment.
 fn write_metadata_jpeg(path: &Path, update: &MetadataUpdate) -> Result<()> {
-    use exif::{experimental::Writer, Field, In, Tag, Value};
+    use exif::{experimental::Writer, Field, In};
     use std::collections::HashMap;
     use std::io::BufReader;
 
     let bytes = std::fs::read(path)?;
 
     // Collect existing EXIF fields so we preserve camera data, orientation, etc.
-    let mut field_map: HashMap<(Tag, In), Field> = HashMap::new();
+    let mut field_map: HashMap<(exif::Tag, In), Field> = HashMap::new();
     if let Ok(exif_bytes) =
         exif::get_exif_attr_from_jpeg(&mut BufReader::new(std::io::Cursor::new(&bytes)))
     {
@@ -181,91 +270,7 @@ fn write_metadata_jpeg(path: &Path, update: &MetadataUpdate) -> Result<()> {
     }
 
     // Apply updates — each Some field overwrites (or inserts) the corresponding entry.
-
-    if let Some(ref dt) = update.date_time_original {
-        let exif_dt = iso_to_exif_date(dt);
-        field_map.insert(
-            (Tag::DateTimeOriginal, In::PRIMARY),
-            Field {
-                tag: Tag::DateTimeOriginal,
-                ifd_num: In::PRIMARY,
-                value: Value::Ascii(vec![exif_dt.into_bytes()]),
-            },
-        );
-    }
-
-    if let Some(ref desc) = update.image_description {
-        field_map.insert(
-            (Tag::ImageDescription, In::PRIMARY),
-            Field {
-                tag: Tag::ImageDescription,
-                ifd_num: In::PRIMARY,
-                value: Value::Ascii(vec![desc.as_bytes().to_vec()]),
-            },
-        );
-    }
-
-    if let Some(ref artist) = update.artist {
-        field_map.insert(
-            (Tag::Artist, In::PRIMARY),
-            Field {
-                tag: Tag::Artist,
-                ifd_num: In::PRIMARY,
-                value: Value::Ascii(vec![artist.as_bytes().to_vec()]),
-            },
-        );
-    }
-
-    if let Some(ref copy) = update.copyright {
-        field_map.insert(
-            (Tag::Copyright, In::PRIMARY),
-            Field {
-                tag: Tag::Copyright,
-                ifd_num: In::PRIMARY,
-                value: Value::Ascii(vec![copy.as_bytes().to_vec()]),
-            },
-        );
-    }
-
-    if let (Some(lat), Some(lon)) = (update.gps_latitude, update.gps_longitude) {
-        let lat_ref = if lat >= 0.0 { b"N".to_vec() } else { b"S".to_vec() };
-        let lon_ref = if lon >= 0.0 { b"E".to_vec() } else { b"W".to_vec() };
-        let lat_dms = decimal_to_dms(lat.abs());
-        let lon_dms = decimal_to_dms(lon.abs());
-
-        field_map.insert(
-            (Tag::GPSLatitudeRef, In::PRIMARY),
-            Field {
-                tag: Tag::GPSLatitudeRef,
-                ifd_num: In::PRIMARY,
-                value: Value::Ascii(vec![lat_ref]),
-            },
-        );
-        field_map.insert(
-            (Tag::GPSLatitude, In::PRIMARY),
-            Field {
-                tag: Tag::GPSLatitude,
-                ifd_num: In::PRIMARY,
-                value: Value::Rational(lat_dms.to_vec()),
-            },
-        );
-        field_map.insert(
-            (Tag::GPSLongitudeRef, In::PRIMARY),
-            Field {
-                tag: Tag::GPSLongitudeRef,
-                ifd_num: In::PRIMARY,
-                value: Value::Ascii(vec![lon_ref]),
-            },
-        );
-        field_map.insert(
-            (Tag::GPSLongitude, In::PRIMARY),
-            Field {
-                tag: Tag::GPSLongitude,
-                ifd_num: In::PRIMARY,
-                value: Value::Rational(lon_dms.to_vec()),
-            },
-        );
-    }
+    apply_metadata_updates(&mut field_map, update);
 
     // Encode to TIFF bytes
     let fields: Vec<Field> = field_map.into_values().collect();
@@ -282,6 +287,115 @@ fn write_metadata_jpeg(path: &Path, update: &MetadataUpdate) -> Result<()> {
     // Inject the new APP1 segment into the JPEG stream and write atomically
     let new_jpeg = replace_app1_in_jpeg(&bytes, &tiff_bytes)?;
     write_atomic(path, &new_jpeg)
+}
+
+/// HEIC/HEIF/AVIF path: locate the EXIF item in the ISOBMFF container via the
+/// `iloc` box, update the TIFF/EXIF payload in-place (zero-padded to the
+/// original slot size), and write atomically.
+///
+/// Requires that the file already contains an EXIF item and that the updated
+/// EXIF fits within the existing slot.  Camera-produced files satisfy both
+/// conditions in practice.
+fn write_metadata_heic(path: &Path, update: &MetadataUpdate) -> Result<()> {
+    use exif::{experimental::Writer, Field, In, Value};
+    use std::collections::HashMap;
+
+    let mut file_bytes = std::fs::read(path)?;
+
+    // Locate the EXIF item payload (offset + length) in the ISOBMFF container.
+    // This must succeed before we attempt any field parsing.
+    let (item_offset, item_length) = crate::heic::find_exif_in_heic(&file_bytes)?;
+    if item_length < 4 {
+        return Err(anyhow!("HEIC EXIF item too small ({item_length} B)"));
+    }
+
+    // Build the field map from the existing EXIF using kamadak-exif's own
+    // read_from_container, which correctly handles:
+    //   • tiff_header_offset (the 4-byte prefix that precedes the TIFF data)
+    //   • both big- and little-endian TIFF
+    //   • ExifIFD / GPS IFD sub-IFD resolution
+    // This is the same path used by read_metadata, so it is reliable.
+    //
+    // Fallback: if read_from_container fails (e.g. AVIF or non-standard brand),
+    // parse the TIFF bytes manually after respecting tiff_header_offset.
+    let mut field_map: HashMap<(exif::Tag, In), Field> = HashMap::new();
+
+    let exif_reader_ok = if let Ok(exif) = exif::Reader::new()
+        .read_from_container(&mut std::io::Cursor::new(&file_bytes))
+    {
+        for f in exif.fields() {
+            // Only preserve primary-image fields (ifd_num 0).  Thumbnail IFDs
+            // are not part of the HEIC EXIF item and would confuse the writer.
+            // Skip Value::Unknown — the Writer cannot serialise those and would
+            // return an error; proprietary/unknown tags are a minor data loss
+            // acceptable in exchange for a successful write.
+            if f.ifd_num == In::PRIMARY && !matches!(f.value, Value::Unknown(..)) {
+                field_map.insert((f.tag, f.ifd_num), f.clone());
+            }
+        }
+        true
+    } else {
+        false
+    };
+
+    if !exif_reader_ok {
+        // Manual fallback: skip the 4-byte tiff_header_offset prefix, then
+        // additionally skip `header_off` more bytes as the spec allows.
+        let header_off = u32::from_be_bytes(
+            file_bytes[item_offset..item_offset + 4].try_into().unwrap()
+        ) as usize;
+        let tiff_start = item_offset + 4 + header_off;
+        let tiff_len   = item_length.saturating_sub(4 + header_off);
+        if tiff_start + tiff_len <= file_bytes.len() {
+            if let Ok((fields, _)) =
+                exif::parse_exif(&file_bytes[tiff_start..tiff_start + tiff_len])
+            {
+                for f in fields {
+                    if f.ifd_num == In::PRIMARY && !matches!(f.value, Value::Unknown(..)) {
+                        field_map.insert((f.tag, f.ifd_num), f);
+                    }
+                }
+            }
+        }
+    }
+
+    // Apply updates.
+    apply_metadata_updates(&mut field_map, update);
+
+    // Encode new EXIF (TIFF bytes).
+    let fields: Vec<Field> = field_map.into_values().collect();
+    let mut writer = Writer::new();
+    for f in &fields {
+        writer.push_field(f);
+    }
+    let mut buf = std::io::Cursor::new(Vec::<u8>::new());
+    writer
+        .write(&mut buf, false) // big-endian — matches the byte order read_from_container finds
+        .map_err(|e| anyhow!("EXIF encode error: {e}"))?;
+    let new_tiff_bytes = buf.into_inner();
+
+    // Total new item size: 4-byte prefix (tiff_header_offset=0) + TIFF payload.
+    let new_item_size = 4 + new_tiff_bytes.len();
+    if new_item_size > item_length {
+        return Err(anyhow!(
+            "Updated EXIF ({} B) exceeds the existing EXIF slot ({} B) in the HEIC \
+             container — in-place update not possible",
+            new_item_size, item_length
+        ));
+    }
+
+    // Overwrite in-place:
+    //   bytes[item_offset..+4]   = 0x00000000 (tiff_header_offset = 0)
+    //   bytes[item_offset+4..+N] = new TIFF bytes
+    //   remainder                = zero padding
+    file_bytes[item_offset..item_offset + 4].copy_from_slice(&[0, 0, 0, 0]);
+    let payload_end = item_offset + 4 + new_tiff_bytes.len();
+    file_bytes[item_offset + 4..payload_end].copy_from_slice(&new_tiff_bytes);
+    for b in &mut file_bytes[payload_end..item_offset + item_length] {
+        *b = 0;
+    }
+
+    write_atomic(path, &file_bytes)
 }
 
 /// Non-JPEG path: write basic fields using little-exif (GPS not supported).
