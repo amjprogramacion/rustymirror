@@ -650,7 +650,7 @@ async function doDelete() {
 
 .btn-edit-exif {
   padding: 5px 12px;
-  border-radius: var(--border-radius-sm);
+  border-radius: var(--border-radius-md);
   font-size: var(--font-size-sm);
   font-weight: 600;
   border: 1px solid var(--color-accent);
