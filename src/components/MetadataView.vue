@@ -178,9 +178,9 @@ function toggleMultiSelect() {
   const enabling = !meta.multiSelect
   meta.multiSelect = enabling
   if (enabling) {
-    const panel = panel.activePanel
-    if (panel && !panel.batch && panel.entry?.path) {
-      meta.toggleSelected(panel.entry.path)
+    const active = panel.activePanel
+    if (active && !active.batch && active.entry?.path) {
+      meta.toggleSelected(active.entry.path)
     }
   }
 }
@@ -198,19 +198,17 @@ const selectedKey = computed(() => {
   return arr.sort().join('|')
 })
 
-// While the batch panel is open, keep it in sync with selection changes
+// Keep the panel in sync with selection changes
 watch(selectedKey, () => {
-  const panel = panel.activePanel
-  if (!panel || panel.saving) return
+  const active = panel.activePanel
+  if (!active || active.saving) return
 
   const count = meta.selectedCount
   if (count === 0) {
     panel.closePanel()
   } else if (count === 1) {
-    if (panel.batch) {
-      const entry = meta.filteredImages.find(e => meta.selected.has(e.path))
-      if (entry) panel.openPanel(entry)
-    }
+    const entry = meta.filteredImages.find(e => meta.selected.has(e.path))
+    if (entry) panel.openPanel(entry)
   } else {
     const entries = meta.filteredImages.filter(e => meta.selected.has(e.path))
     panel.openBatchPanel(entries)

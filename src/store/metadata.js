@@ -176,8 +176,10 @@ export const useMetadataStore = defineStore('metadata', {
     },
 
     toggleSelected(path) {
-      if (this.selected.has(path)) this.selected.delete(path)
-      else this.selected.add(path)
+      const next = new Set(this.selected)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      this.selected = next
     },
     clearSelection() {
       this.selected = new Set()

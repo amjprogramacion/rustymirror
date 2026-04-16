@@ -33,7 +33,7 @@
         <div class="mbp-left" v-else>
           <div class="mbp-batch-icon">✦</div>
           <div class="mbp-file-info">
-            <p class="mbp-filename">Editing {{ panel.entries.length }} images</p>
+            <p class="mbp-filename">Editing {{ panel.activePanel?.entries?.length }} images</p>
             <p class="mbp-filepath">Batch EXIF edit</p>
           </div>
         </div>
@@ -170,7 +170,7 @@
               <button class="mbp-btn mbp-btn-ghost" @click="isBatch ? resetBatch() : resetEdit()" :disabled="panel.saving">Reset</button>
               <button class="mbp-btn mbp-btn-primary" @click="isBatch ? saveBatch() : save()" :disabled="panel.saving">
                 <span v-if="panel.saving">Saving…</span>
-                <span v-else-if="isBatch">Save to {{ panel.entries.length }} images</span>
+                <span v-else-if="isBatch">Save to {{ panel.activePanel?.entries?.length }} images</span>
                 <span v-else>Save changes</span>
               </button>
             </div>
