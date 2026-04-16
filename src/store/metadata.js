@@ -365,5 +365,13 @@ export const useMetadataStore = defineStore('metadata', {
       this.geoCacheBytes = 0
       this.locationNames = {}
     },
+
+    async deleteSelected() {
+      const paths = [...this.selected]
+      const pathSet = new Set(paths)
+      await invoke('delete_files', { paths })
+      this.images = this.images.filter(e => !pathSet.has(e.path))
+      this.selected = new Set()
+    },
   },
 })

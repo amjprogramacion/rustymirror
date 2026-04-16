@@ -193,9 +193,9 @@ pub async fn delete_files(paths: Vec<String>, app: tauri::AppHandle) -> Result<(
             let p = path.trim();
             if p.is_empty() { continue; }
 
-            // Network paths (UNC) have no recycle bin — delete permanently.
+            // Network paths (UNC or mapped drive) have no recycle bin — delete permanently.
             // Local paths go to the recycle bin via the trash crate.
-            let is_network = p.starts_with("\\\\") || p.starts_with("//");
+            let is_network = is_network_path(p.to_string());
             if is_network {
                 let meta = std::fs::metadata(p)
                     .map_err(|e| AppError::Delete { path: p.to_string(), message: e.to_string() })?;
