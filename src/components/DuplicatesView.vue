@@ -41,6 +41,10 @@
         <span class="badge" v-if="store.selectedCount > 0">{{ store.selectedCount }}</span>
       </button>
 
+      <span class="image-count">
+        {{ totalImages }} image{{ totalImages !== 1 ? 's' : '' }}<template v-if="store.selectedCount > 0"> · {{ store.selectedCount }} selected</template>
+      </span>
+
       <!-- Search -->
       <SearchInput v-model="store.searchQuery" />
     </div>
@@ -190,6 +194,7 @@ import { errorMessage } from '../utils/errors'
 import FailedFilesWarning from './FailedFilesWarning.vue'
 
 const store        = useDuplicatesStore()
+const totalImages  = computed(() => store.filteredGroups.reduce((n, g) => n + g.entries.length, 0))
 const thumbs       = useThumbnailStore()
 const showConfirm  = ref(false)
 const deleteError  = ref(null)
@@ -348,6 +353,13 @@ async function doDelete() {
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-secondary);
   flex-shrink: 0;
+}
+
+.image-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-left: var(--space-1);
+  white-space: nowrap;
 }
 
 .btn {
