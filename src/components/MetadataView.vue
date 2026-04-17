@@ -361,10 +361,11 @@ watch(gridEl, (el) => {
 onBeforeUnmount(() => observer?.disconnect())
 
 // ── Card interaction ──────────────────────────────────────────────────────────
-function onCardClick(entry, idx) {
+function onCardClick(entry) {
   if (meta.multiSelect) {
     meta.toggleSelected(entry.path)
   } else {
+    if (panel.activePanel?.entry?.path === entry.path) return
     panel.openPanel(entry)
   }
 }
