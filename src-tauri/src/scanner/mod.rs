@@ -1,6 +1,6 @@
 mod bktree;
 mod grouping;
-mod record;
+pub(crate) mod record;
 mod walk;
 
 use std::collections::{HashMap, HashSet};

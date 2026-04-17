@@ -1,5 +1,6 @@
 mod cache;
 mod commands;
+mod exiftool;
 mod hasher;
 mod heic;
 mod metadata;

@@ -40,8 +40,7 @@ windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
 hex = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 base64 = "0.22"
-kamadak-exif = "0.5"
-little_exif = "0.5"
+
 open = "5"
 
 [profile.dev]

@@ -24,3 +24,7 @@ src-tauri/target
 node_modules
 dist
 .claude
+
+# Bundled sidecar binaries (large — download separately)
+src-tauri/resources/exiftool.exe
+src-tauri/resources/exiftool_files

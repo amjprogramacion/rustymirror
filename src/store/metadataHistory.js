@@ -5,6 +5,10 @@ import { logger } from '../utils/logger'
 
 const STORE_FILE = 'rustymirror.json'
 const HISTORY_KEY = 'metaScanHistory'
+// Bump this whenever the shape or data source of ImageEntry fields changes
+// (e.g. switching metadata backend, adding new fields). Cached entries with a
+// different version are treated as stale and a fresh scan is forced.
+const CACHE_VERSION = 3
 
 let _store = null
 
@@ -48,6 +52,7 @@ export const useMetadataHistoryStore = defineStore('metadataHistory', {
         imageCount,
         fingerprint: fingerprint ?? null,
         images: images ?? [],
+        _v: CACHE_VERSION,
       }
 
       const existingIdx = this.entries.findIndex(e => foldersKey(e.folders) === key)
@@ -64,12 +69,13 @@ export const useMetadataHistoryStore = defineStore('metadataHistory', {
       return entry.id
     },
 
-    // Returns cached images only if folders and fingerprint both match.
+    // Returns cached images only if folders, fingerprint, and schema version all match.
     getCached(folders, fingerprint) {
       const key = foldersKey(folders)
       const entry = this.entries.find(e => foldersKey(e.folders) === key)
       if (!entry || !entry.fingerprint || !entry.images?.length) return null
       if (entry.fingerprint !== fingerprint) return null
+      if (entry._v !== CACHE_VERSION) return null
       return entry.images
     },
 
