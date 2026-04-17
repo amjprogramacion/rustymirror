@@ -325,7 +325,7 @@ watch(selectedKey, () => {
 
   const count = meta.selectedCount
   if (count === 0) {
-    panel.closePanel()
+    if (active.batch) panel.closePanel()
   } else if (count === 1) {
     const entry = meta.filteredImages.find(e => meta.selected.has(e.path))
     if (entry && active?.entry?.path !== entry.path) panel.openPanel(entry)
@@ -366,6 +366,7 @@ function onCardClick(entry) {
     meta.toggleSelected(entry.path)
   } else {
     if (panel.activePanel?.entry?.path === entry.path) return
+    meta.clearSelection()
     panel.openPanel(entry)
   }
 }
