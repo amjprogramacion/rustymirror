@@ -53,7 +53,7 @@
       </div>
 
       <!-- ── Unified sections (single + batch) ── -->
-      <div v-show="!panel.activePanel?.loading && !panel.activePanel?.error && (meta || (isBatch && batchAgg))" class="mbp-sections-wrap">
+      <div v-if="!panel.activePanel?.loading && !panel.activePanel?.error && (meta || (isBatch && batchAgg))" class="mbp-sections-wrap">
         <div class="mbp-sections">
 
           <!-- File & Camera -->

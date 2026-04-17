@@ -11,22 +11,36 @@ export const usePanelStore = defineStore('panel', {
     panelHeight: 300,
   }),
   actions: {
-    async openPanel(entry) {
+    openPanel(entry) {
       this.activePanel = { entry, metadata: null, loading: true, saving: false, error: null, dirty: false }
+      Promise.resolve().then(() => this._fetchMetadata(entry.path))
+    },
+    async _fetchMetadata(path) {
       try {
-        const metadata = await invoke('read_metadata', { path: entry.path })
-        if (this.activePanel) this.activePanel = { ...this.activePanel, metadata, loading: false }
+        const metadata = await invoke('read_metadata', { path })
+        if (this.activePanel && !this.activePanel.batch && this.activePanel.entry?.path === path) {
+          this.activePanel = { ...this.activePanel, metadata, loading: false }
+        }
       } catch (e) {
-        if (this.activePanel) this.activePanel = { ...this.activePanel, loading: false, error: errorMessage(e) }
+        if (this.activePanel && !this.activePanel.batch && this.activePanel.entry?.path === path) {
+          this.activePanel = { ...this.activePanel, loading: false, error: errorMessage(e) }
+        }
       }
     },
-    async openBatchPanel(entries) {
+    openBatchPanel(entries) {
       this.activePanel = { batch: true, entries, allMetadata: null, loading: true, saving: false, error: null, dirty: false }
+      Promise.resolve().then(() => this._fetchBatchMetadata(entries))
+    },
+    async _fetchBatchMetadata(entries) {
       try {
         const allMetadata = await Promise.all(entries.map(e => invoke('read_metadata', { path: e.path })))
-        if (this.activePanel) this.activePanel = { ...this.activePanel, allMetadata, loading: false }
+        if (this.activePanel?.batch) {
+          this.activePanel = { ...this.activePanel, allMetadata, loading: false }
+        }
       } catch (e) {
-        if (this.activePanel) this.activePanel = { ...this.activePanel, loading: false, error: errorMessage(e) }
+        if (this.activePanel?.batch) {
+          this.activePanel = { ...this.activePanel, loading: false, error: errorMessage(e) }
+        }
       }
     },
     closePanel() {
