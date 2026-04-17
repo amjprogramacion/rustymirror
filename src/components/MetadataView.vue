@@ -328,7 +328,7 @@ watch(selectedKey, () => {
     panel.closePanel()
   } else if (count === 1) {
     const entry = meta.filteredImages.find(e => meta.selected.has(e.path))
-    if (entry) panel.openPanel(entry)
+    if (entry && active?.entry?.path !== entry.path) panel.openPanel(entry)
   } else {
     const entries = meta.filteredImages.filter(e => meta.selected.has(e.path))
     panel.openBatchPanel(entries)
