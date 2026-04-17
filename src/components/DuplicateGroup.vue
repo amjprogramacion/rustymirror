@@ -67,7 +67,7 @@
             <div class="btn-group">
               <button class="btn-open btn-explore" @click.stop="openFolder(entry.path)" title="Show in folder">Explore</button>
               <button class="btn-open" @click.stop="openFile(entry.path)" title="Open file">Open</button>
-              <button class="btn-open btn-info" @click.stop="panel.openPanel(entry)" title="View metadata">EXIF</button>
+              <button class="btn-open btn-info" :class="{ active: panel.activePanel?.entry?.path === entry.path }" @click.stop="panel.activePanel?.entry?.path !== entry.path && panel.openPanel(entry)" title="View metadata">EXIF</button>
             </div>
             <label v-if="!store.multiSelect" class="card-checkbox" @click.stop>
               <input
@@ -407,5 +407,6 @@ async function openFolder(path) {
 }
 .btn-open:hover       { background: var(--color-accent);  color: #fff; border-color: var(--color-accent);  }
 .btn-explore:hover    { background: var(--color-success); color: #fff; border-color: var(--color-success); }
-.btn-info:hover       { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+.btn-info:hover,
+.btn-info.active      { background: #7c3aed; color: #fff; border-color: #7c3aed; }
 </style>
