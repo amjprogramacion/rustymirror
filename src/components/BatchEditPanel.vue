@@ -42,18 +42,18 @@
       </div>
 
       <!-- Loading state -->
-      <div v-show="panel.loading" class="mbp-loading">
+      <div v-show="panel.activePanel?.loading" class="mbp-loading">
         <span class="mbp-spinner" />
         <span>Reading metadata…</span>
       </div>
 
       <!-- Error state -->
-      <div v-show="panel.error && !panel.loading" class="mbp-error">
-        {{ panel.error }}
+      <div v-show="panel.activePanel?.error && !panel.activePanel?.loading" class="mbp-error">
+        {{ panel.activePanel?.error }}
       </div>
 
       <!-- ── Unified sections (single + batch) ── -->
-      <div v-show="!panel.loading && !panel.error && (meta || (isBatch && batchAgg))" class="mbp-sections-wrap">
+      <div v-show="!panel.activePanel?.loading && !panel.activePanel?.error && (meta || (isBatch && batchAgg))" class="mbp-sections-wrap">
         <div class="mbp-sections">
 
           <!-- File & Camera -->
@@ -657,10 +657,12 @@ const hasExposureInfoBatch = computed(() => {
 
 /* ── Loading / error ── */
 .mbp-loading {
+  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
 }
