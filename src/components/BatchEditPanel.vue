@@ -182,9 +182,10 @@
       <!-- Save notification (centered) -->
       <Teleport to="body">
         <Transition name="mbp-notify">
-          <div v-if="notification" class="mbp-notify-overlay" @click="notification = null">
+          <div v-if="notification" class="mbp-notify-overlay" @click="notification.type !== 'saving' && (notification = null)">
             <div class="mbp-notify-card" :class="`mbp-notify--${notification.type}`" @click.stop>
-              <span class="mbp-notify-icon">{{ notification.type === 'success' ? '✓' : '✕' }}</span>
+              <span v-if="notification.type === 'saving'" class="mbp-notify-spinner" />
+              <span v-else class="mbp-notify-icon">{{ notification.type === 'success' ? '✓' : '✕' }}</span>
               <span class="mbp-notify-msg">{{ notification.message }}</span>
             </div>
           </div>
@@ -261,7 +262,9 @@ let   notifyTimer  = null
 function showNotification(type, message, duration = 2500) {
   clearTimeout(notifyTimer)
   notification.value = { type, message }
-  notifyTimer = setTimeout(() => { notification.value = null }, duration)
+  if (duration > 0) {
+    notifyTimer = setTimeout(() => { notification.value = null }, duration)
+  }
 }
 
 // ── Batch / single mode ───────────────────────────────────────────────────────
@@ -413,6 +416,7 @@ async function saveBatch() {
     lon = parsed.lon
   }
 
+  showNotification('saving', 'Saving changes…', 0)
   await store.saveBatchMetadata({
     dateTimeOriginal: batchEdit.value.dateTimeOriginal || null,
     imageDescription: batchEdit.value.imageDescription || null,
@@ -478,6 +482,7 @@ async function save() {
   const { ok, lat, lon } = validateGps()
   if (!ok) return
 
+  showNotification('saving', 'Saving changes…', 0)
   await store.saveMetadata({
     dateTimeOriginal: edit.value.dateTimeOriginal || null,
     imageDescription: edit.value.imageDescription || null,
@@ -950,6 +955,17 @@ const hasExposureInfoBatch = computed(() => {
 }
 .mbp-notify--success { border-color: var(--color-success); color: var(--color-success); }
 .mbp-notify--error   { border-color: var(--color-danger);  color: var(--color-danger);  }
+.mbp-notify--saving  { border-color: var(--border-color);  color: var(--text-secondary); }
+
+.mbp-notify-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
 
 .mbp-notify-enter-active,
 .mbp-notify-leave-active {
