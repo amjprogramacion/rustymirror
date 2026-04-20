@@ -1,22 +1,20 @@
 <template>
   <div class="sidebar-divider" />
 
-  <!-- Folder list -->
-  <FolderSection :folders="meta.folders" @add="pickMetaFolder" @remove="meta.removeFolder" />
+  <!-- Scan button -->
+  <button
+    class="btn-scan"
+    :class="(meta.scanning || meta.geocoding) ? 'btn-danger' : 'btn-success'"
+    :disabled="!meta.scanning && !meta.geocoding && meta.folders.length === 0"
+    @click="(meta.scanning || meta.geocoding) ? meta.stopScan() : meta.startScan()"
+  >
+    {{ meta.scanning ? 'Stop scan' : meta.geocoding ? 'Stop scan' : 'Scan' }}
+  </button>
 
   <div class="sidebar-divider" />
 
-  <!-- Scan button -->
-  <section class="sidebar-section">
-    <button
-      class="btn btn-full"
-      :class="(meta.scanning || meta.geocoding) ? 'btn-danger' : 'btn-success'"
-      :disabled="!meta.scanning && !meta.geocoding && meta.folders.length === 0"
-      @click="(meta.scanning || meta.geocoding) ? meta.stopScan() : meta.startScan()"
-    >
-      {{ meta.scanning ? 'Stop scan' : meta.geocoding ? 'Stop scan' : 'Scan' }}
-    </button>
-  </section>
+  <!-- Folder list -->
+  <FolderSection :folders="meta.folders" @add="pickMetaFolder" @remove="meta.removeFolder" />
 
   <template v-if="meta.scanDone">
     <div class="sidebar-divider" />
@@ -121,6 +119,8 @@
           :class="{
             disabled: meta.scanning,
             active: entry.id === meta.activeHistoryEntryId,
+            'history-entry--missing': metaHistory.folderStatus[entry.id] === 'missing',
+            'history-entry--partial': metaHistory.folderStatus[entry.id] === 'partial',
           }"
           @click="meta.loadFromHistory(entry)"
           :title="entry.folders.join('\n')"
@@ -138,6 +138,20 @@
               {{ entry.imageCount ?? 0 }} image{{ (entry.imageCount ?? 0) !== 1 ? 's' : '' }}
             </span>
           </div>
+          <span
+            v-if="metaHistory.folderStatus[entry.id] === 'missing' || metaHistory.folderStatus[entry.id] === 'partial'"
+            class="folder-alert"
+            :title="metaHistory.folderStatus[entry.id] === 'missing' ? 'Folder no longer exists' : 'Some folders no longer exist'"
+          >
+            <IconWarning />
+          </span>
+          <button
+            class="history-remove"
+            title="Remove from history"
+            @click.stop="metaHistory.removeEntry(entry.id)"
+          >
+            <IconClose />
+          </button>
         </div>
       </div>
     </section>
@@ -152,6 +166,8 @@ import { shortPath, formatLocalDate, formatDuration } from '../utils/formatters'
 import SelectChevron from './SelectChevron.vue'
 import ClearIcon from './ClearIcon.vue'
 import FolderSection from './FolderSection.vue'
+import IconWarning from './IconWarning.vue'
+import IconClose from './IconClose.vue'
 
 const meta        = useMetadataStore()
 const metaHistory = useMetadataHistoryStore()
@@ -192,6 +208,20 @@ async function pickMetaFolder() {
   display: flex;
   align-items: center;
 }
+
+/* ── Scan button ── */
+.btn-scan {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 9px var(--space-3);
+  border-radius: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: background var(--transition), opacity var(--transition);
+}
+.btn-scan:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── Buttons ── */
 .btn {
@@ -368,6 +398,7 @@ async function pickMetaFolder() {
 }
 
 .history-entry {
+  position: relative;
   padding: var(--space-2);
   border-radius: var(--border-radius-sm);
   background: var(--bg-card);
@@ -387,6 +418,10 @@ async function pickMetaFolder() {
   background: var(--bg-card);
 }
 .history-entry.disabled { opacity: 0.4; cursor: not-allowed; }
+.history-entry--missing { background: rgba(220, 53, 69, 0.08); border-color: rgba(220, 53, 69, 0.25); }
+.history-entry--partial { background: rgba(245, 197, 66, 0.08); border-color: rgba(245, 197, 66, 0.25); }
+.history-entry--missing:hover:not(.disabled):not(.active) { background: rgba(220, 53, 69, 0.15); border-color: rgba(220, 53, 69, 0.25); }
+.history-entry--partial:hover:not(.disabled):not(.active) { background: rgba(245, 197, 66, 0.15); border-color: rgba(245, 197, 66, 0.25); }
 
 .history-date     { font-size: 10px; color: var(--text-muted); }
 .history-duration { opacity: 0.7; }
@@ -418,4 +453,38 @@ async function pickMetaFolder() {
   font-weight: 600;
   color: var(--color-accent);
 }
+
+.history-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.history-remove svg { width: 10px; height: 10px; display: block; }
+.history-remove:hover { background: var(--color-danger); color: #fff; }
+
+.folder-alert {
+  position: absolute;
+  top: 4px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+.folder-alert svg { width: 10px; height: 10px; display: block; }
+.history-entry--missing .folder-alert { color: rgb(220, 53, 69); }
+.history-entry--partial .folder-alert { color: rgb(245, 197, 66); }
 </style>

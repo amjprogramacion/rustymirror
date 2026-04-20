@@ -1,7 +1,7 @@
 mod bktree;
 mod grouping;
 pub(crate) mod record;
-mod walk;
+pub mod walk;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

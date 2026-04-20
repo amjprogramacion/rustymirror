@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-pub(super) static IMAGE_EXTENSIONS: &[&str] = &[
+pub static IMAGE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "webp", "bmp", "gif", "tiff", "tif", "heic", "heif", "avif",
 ];
 /// Formats that cannot be decoded by the `image` crate and require ImageMagick conversion.

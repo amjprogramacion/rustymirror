@@ -27,6 +27,8 @@ export const useDuplicatesHistoryStore = defineStore('duplicatesHistory', {
   state: () => ({
     // Each entry: { id, folders, date, duplicates, imageCount, fingerprint, groups, threshold }
     entries: [],
+    // { [id]: 'ok' | 'partial' | 'missing' } — checked on load, not persisted
+    folderStatus: {},
   }),
 
   actions: {
@@ -88,11 +90,32 @@ export const useDuplicatesHistoryStore = defineStore('duplicatesHistory', {
       return entry.groups
     },
 
+    async removeEntry(id) {
+      this.entries = this.entries.filter(e => e.id !== id)
+      delete this.folderStatus[id]
+      await this._save()
+    },
+
     async clearHistory() {
       const count = this.entries.length
       this.entries = []
       await this._save()
       logger.info(`scan history cleared count=${count} key=${HISTORY_KEY}`)
+    },
+
+    async checkFolderStatus() {
+      const { exists } = await import('@tauri-apps/plugin-fs')
+      for (const entry of this.entries) {
+        const results = await Promise.all(entry.folders.map(f => exists(f).catch(() => false)))
+        const missing = results.filter(r => !r).length
+        if (missing === 0) {
+          this.folderStatus[entry.id] = 'ok'
+        } else if (entry.folders.length === 1) {
+          this.folderStatus[entry.id] = 'missing'
+        } else {
+          this.folderStatus[entry.id] = 'partial'
+        }
+      }
     },
 
     async _save() {

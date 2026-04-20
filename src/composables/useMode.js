@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
 
-const VALID_MODES = ['duplicates', 'metadata']
+const VALID_MODES = ['duplicates', 'metadata', 'organizer']
 const stored      = localStorage.getItem('rustymirror_active_mode')
 const activeMode  = ref(VALID_MODES.includes(stored) ? stored : 'duplicates')
 

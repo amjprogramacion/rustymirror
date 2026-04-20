@@ -1,6 +1,18 @@
 <template>
   <div class="sidebar-divider" />
 
+  <!-- Scan button -->
+  <button
+    class="btn-scan"
+    :class="store.scanning ? 'btn-danger' : 'btn-success'"
+    :disabled="!store.scanning && store.folders.length === 0"
+    @click="store.scanning ? store.stopScan() : store.startScan()"
+  >
+    {{ store.scanning ? 'Stop scan' : 'Scan' }}
+  </button>
+
+  <div class="sidebar-divider" />
+
   <!-- Folder list -->
   <FolderSection :folders="store.folders" @add="pickFolder" @remove="store.removeFolder" />
 
@@ -27,20 +39,6 @@
       <span v-else-if="store.similarityThreshold >= 85">Similar ({{ store.similarityThreshold }}%+)</span>
       <span v-else>Loosely similar ({{ store.similarityThreshold }}%+)</span>
     </p>
-  </section>
-
-  <div class="sidebar-divider" />
-
-  <!-- Scan button -->
-  <section class="sidebar-section">
-    <button
-      class="btn btn-full"
-      :class="store.scanning ? 'btn-danger' : 'btn-success'"
-      :disabled="!store.scanning && store.folders.length === 0"
-      @click="store.scanning ? store.stopScan() : store.startScan()"
-    >
-      {{ store.scanning ? 'Stop scan' : 'Scan' }}
-    </button>
   </section>
 
   <!-- Sort + Filter — only after scan -->
@@ -109,6 +107,8 @@
           :class="{
             disabled: store.scanning,
             active: isActiveEntry(entry),
+            'history-entry--missing': history.folderStatus[entry.id] === 'missing',
+            'history-entry--partial': history.folderStatus[entry.id] === 'partial',
           }"
           @click="loadFromHistory(entry)"
           :title="entry.folders.join('\n')"
@@ -139,6 +139,20 @@
               <span class="history-threshold">{{ entry.threshold ?? 90 }}%</span>
             </div>
           </div>
+          <span
+            v-if="history.folderStatus[entry.id] === 'missing' || history.folderStatus[entry.id] === 'partial'"
+            class="folder-alert"
+            :title="history.folderStatus[entry.id] === 'missing' ? 'Folder no longer exists' : 'Some folders no longer exist'"
+          >
+            <IconWarning />
+          </span>
+          <button
+            class="history-remove"
+            title="Remove from history"
+            @click.stop="history.removeEntry(entry.id)"
+          >
+            <IconClose />
+          </button>
         </div>
       </div>
     </section>
@@ -153,6 +167,8 @@ import { useDuplicatesHistoryStore } from '../store/duplicatesHistory'
 import { shortPath, formatLocalDate, formatDuration } from '../utils/formatters'
 import SelectChevron from './SelectChevron.vue'
 import FolderSection from './FolderSection.vue'
+import IconWarning from './IconWarning.vue'
+import IconClose from './IconClose.vue'
 
 const store   = useDuplicatesStore()
 const history = useDuplicatesHistoryStore()
@@ -245,6 +261,20 @@ async function pickFolder() {
   color: var(--text-muted);
   text-align: center;
 }
+
+/* ── Scan button ── */
+.btn-scan {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 9px var(--space-3);
+  border-radius: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: background var(--transition), opacity var(--transition);
+}
+.btn-scan:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── Buttons ── */
 .btn {
@@ -394,6 +424,7 @@ async function pickFolder() {
 }
 
 .history-entry {
+  position: relative;
   padding: var(--space-2);
   border-radius: var(--border-radius-sm);
   background: var(--bg-card);
@@ -413,6 +444,10 @@ async function pickFolder() {
   background: var(--bg-card);
 }
 .history-entry.disabled { opacity: 0.4; cursor: not-allowed; }
+.history-entry--missing { background: rgba(220, 53, 69, 0.08); border-color: rgba(220, 53, 69, 0.25); }
+.history-entry--partial { background: rgba(245, 197, 66, 0.08); border-color: rgba(245, 197, 66, 0.25); }
+.history-entry--missing:hover:not(.disabled):not(.active) { background: rgba(220, 53, 69, 0.15); border-color: rgba(220, 53, 69, 0.25); }
+.history-entry--partial:hover:not(.disabled):not(.active) { background: rgba(245, 197, 66, 0.15); border-color: rgba(245, 197, 66, 0.25); }
 
 .history-date {
   font-size: 10px;
@@ -481,4 +516,38 @@ async function pickFolder() {
 
 .history-fast-badge svg  { width: 7px;  height: 11px; transform: rotate(15deg); }
 .history-cross-badge svg { width: 11px; height: 11px; }
+
+.history-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.history-remove svg { width: 10px; height: 10px; display: block; }
+.history-remove:hover { background: var(--color-danger); color: #fff; }
+
+.folder-alert {
+  position: absolute;
+  top: 4px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+.folder-alert svg { width: 10px; height: 10px; display: block; }
+.history-entry--missing .folder-alert { color: rgb(220, 53, 69); }
+.history-entry--partial .folder-alert { color: rgb(245, 197, 66); }
 </style>

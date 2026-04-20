@@ -14,4 +14,7 @@ app.use(pinia)
 // Load persisted scan histories before mounting
 const history = useDuplicatesHistoryStore()
 const metadataHistory = useMetadataHistoryStore()
-Promise.all([history.load(), metadataHistory.load()]).finally(() => app.mount('#app'))
+Promise.all([history.load(), metadataHistory.load()]).then(() => {
+  history.checkFolderStatus()
+  metadataHistory.checkFolderStatus()
+}).finally(() => app.mount('#app'))

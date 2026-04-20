@@ -225,6 +225,25 @@
                 </section>
               </template>
 
+              <!-- ── Organizer tool ── -->
+              <template v-else-if="activeTab === 'organizer'">
+                <section class="settings-section">
+                  <p class="settings-label">Naming</p>
+                  <div class="settings-row">
+                    <span class="settings-row-label">Fallback year</span>
+                    <input
+                      type="number"
+                      class="settings-input"
+                      :value="org.config.yearIfNotDate"
+                      min="1900"
+                      max="2100"
+                      @change="org.updateConfig({ yearIfNotDate: +$event.target.value })"
+                    />
+                  </div>
+                  <p class="settings-hint">Year used when no date can be extracted from EXIF or filename.</p>
+                </section>
+              </template>
+
               <!-- ── Metadata tool ── -->
               <template v-else-if="activeTab === 'metadata'">
                 <section class="settings-section">
@@ -290,6 +309,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useDuplicatesHistoryStore } from '../store/duplicatesHistory'
 import { useDuplicatesStore } from '../store/duplicates'
 import { useMetadataStore } from '../store/metadata'
+import { useOrganizerStore } from '../store/organizer'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
 import { useSettings } from '../composables/useSettings'
@@ -302,12 +322,14 @@ const tabs = [
   { id: 'general',    label: 'General' },
   { id: 'duplicates', label: 'Duplicates tool' },
   { id: 'metadata',   label: 'Metadata tool' },
+  { id: 'organizer',  label: 'Organizer tool' },
 ]
 const activeTab = ref('general')
 
 const history = useDuplicatesHistoryStore()
 const dups    = useDuplicatesStore()
 const meta    = useMetadataStore()
+const org     = useOrganizerStore()
 
 function onRuleKindChange(kind) {
   const rule = kind === 'filenamePattern'

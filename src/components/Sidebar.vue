@@ -20,10 +20,11 @@
 
     <!-- Mode sub-panels — each owns its own stores, logic and styles -->
     <SidebarDuplicates v-if="activeMode === 'duplicates'" />
-    <SidebarMeta v-else />
+    <SidebarMeta v-else-if="activeMode === 'metadata'" />
+    <SidebarOrganizer v-else />
 
     <!-- Cache buttons — pinned to bottom -->
-    <div class="sidebar-spacer" v-if="!((activeMode === 'duplicates' && history.entries.length > 0) || (activeMode !== 'duplicates' && metaHistory.entries.length > 0))" />
+    <div class="sidebar-spacer" v-if="!((activeMode === 'duplicates' && history.entries.length > 0) || (activeMode === 'metadata' && metaHistory.entries.length > 0))" />
     <div class="sidebar-divider" />
     <section class="sidebar-section sidebar-bottom">
       <button
@@ -36,7 +37,7 @@
         Clear scan history
       </button>
       <button
-        v-if="activeMode !== 'duplicates'"
+        v-if="activeMode === 'metadata'"
         class="btn btn-cache btn-full btn-sm"
         :class="{ 'btn-cache--active': metaHistory.entries.length > 0 }"
         @click="metaHistory.clearHistory()"
@@ -66,7 +67,7 @@
         <span class="cache-size" v-if="cacheSize > 0">{{ formatSize(cacheSize) }}</span>
       </button>
       <button
-        v-if="activeMode !== 'duplicates'"
+        v-if="activeMode === 'metadata'"
         class="btn btn-cache btn-full btn-sm"
         :class="{ 'btn-cache--active': meta.geoCacheCount > 0 }"
         @click="meta.clearGeoCache()"
@@ -101,6 +102,7 @@ import { SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH } from '../constants'
 import SettingsModal from './SettingsModal.vue'
 import SidebarDuplicates from './SidebarDuplicates.vue'
 import SidebarMeta from './SidebarMeta.vue'
+import SidebarOrganizer from './SidebarOrganizer.vue'
 
 const { activeMode } = useMode()
 const store       = useDuplicatesStore()

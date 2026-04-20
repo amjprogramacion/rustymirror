@@ -4,10 +4,11 @@ mod exiftool;
 mod hasher;
 mod heic;
 mod metadata;
+mod organizer;
 mod scanner;
 mod types;
 
-use commands::{FileListCache, MetaScanState, ScanState};
+use commands::{FileListCache, MetaScanState, OrganizerState, ScanState};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 
@@ -33,6 +34,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(ScanState(Mutex::new(Arc::new(AtomicBool::new(false)))))
         .manage(MetaScanState(Mutex::new(Arc::new(AtomicBool::new(false)))))
+        .manage(OrganizerState(Mutex::new(Arc::new(AtomicBool::new(false)))))
         .manage(FileListCache(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             commands::scan_directories,
@@ -55,6 +57,12 @@ pub fn run() {
             commands::write_metadata,
             commands::scan_for_metadata,
             commands::stop_meta_scan,
+            commands::preview_organize,
+            commands::preview_rewrite_date,
+            commands::execute_organize,
+            commands::execute_metadata_rewrite,
+            commands::stop_organize,
+            commands::count_media_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

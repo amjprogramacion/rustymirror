@@ -35,9 +35,20 @@ const IconMetadata = defineComponent({
   ]),
 })
 
+const IconOrganizer = defineComponent({
+  render: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, [
+    h('path', { d: 'M3 6h18' }),
+    h('path', { d: 'M3 12h18' }),
+    h('path', { d: 'M3 18h18' }),
+    h('path', { d: 'M8 3l4 3-4 3' }),
+    h('path', { d: 'M16 15l4 3-4 3' }),
+  ]),
+})
+
 const modes = [
   { id: 'duplicates', label: 'Duplicate finder', icon: IconDuplicates },
   { id: 'metadata',   label: 'Metadata editor',  icon: IconMetadata   },
+  { id: 'organizer',  label: 'File organizer',   icon: IconOrganizer  },
 ]
 </script>
 

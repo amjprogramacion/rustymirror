@@ -4,7 +4,8 @@
     <Sidebar />
     <main class="content-area">
       <DuplicatesView v-if="activeMode === 'duplicates'" />
-      <MetadataView v-else />
+      <MetadataView v-else-if="activeMode === 'metadata'" />
+      <OrganizerView v-else />
     </main>
   </div>
   <Lightbox />
@@ -17,6 +18,7 @@ import ModeRail from './components/ModeRail.vue'
 import Sidebar from './components/Sidebar.vue'
 import DuplicatesView from './components/DuplicatesView.vue'
 import MetadataView from './components/MetadataView.vue'
+import OrganizerView from './components/OrganizerView.vue'
 import Lightbox from './components/Lightbox.vue'
 import UpdateToast from './components/UpdateToast.vue'
 import { useUpdater } from './composables/useUpdater'
