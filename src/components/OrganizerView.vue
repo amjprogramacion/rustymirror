@@ -118,6 +118,7 @@
               <th v-if="showNewPath" class="col-new-path">New path</th>
               <th :class="['col-date', { 'col-shrink': hasDatePreview }]">Date taken</th>
               <th v-if="hasDatePreview" class="col-new-date">New date taken</th>
+              <th class="col-actions" />
             </tr>
           </thead>
           <tbody>
@@ -142,6 +143,13 @@
               </td>
               <td v-if="hasDatePreview" class="file-new-date">
                 {{ formatDate(previewDateByPath.get(normPath(f.path))?.date) }}
+              </td>
+              <td class="file-actions">
+                <div class="row-btn-group">
+                  <button class="row-btn row-btn-explore" @click.stop="openFolder(f.path)" title="Show in folder">Explore</button>
+                  <button class="row-btn" @click.stop="openFile(f.path)" title="Open file">Open</button>
+                  <button class="row-btn row-btn-exif" :class="{ active: panel.activePanel?.entry?.path === f.path }" @click.stop="panel.activePanel?.entry?.path !== f.path && panel.openPanel(f)" title="View metadata">EXIF</button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -206,14 +214,22 @@
       </div>
     </Teleport>
   </div>
+  <ImageDetailPanel />
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { useOrganizerStore } from '../store/organizer'
+import { usePanelStore } from '../store/panel'
 import ScanProgress from './ScanProgress.vue'
+import ImageDetailPanel from './ImageDetailPanel.vue'
 
 const org = useOrganizerStore()
+const panel = usePanelStore()
+
+function openFile(path) { invoke('open_file', { path }) }
+function openFolder(path) { invoke('open_folder', { path }) }
 
 const R = 36
 const C = 2 * Math.PI * R
@@ -619,6 +635,33 @@ function formatDate(d) {
 .date-source-badge--filename { background: #2a1a3a; color: #b07adf; }
 .date-source-badge--create   { background: #3a2a1a; color: #d4853a; }
 .date-source-badge--modify   { background: #1e2a3a; color: #7aabcf; }
+
+/* ── Row action buttons ── */
+.col-actions { width: 1px; }
+.file-actions { padding: 3px 8px; }
+.row-btn-group {
+  display: flex;
+  gap: 3px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+.row-btn {
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  letter-spacing: 0.2px;
+}
+.row-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.row-btn-explore { color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 40%, var(--border-color)); }
+.row-btn-explore:hover { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+.row-btn-exif { color: var(--text-muted); }
+.row-btn-exif.active { background: color-mix(in srgb, var(--color-accent) 18%, transparent); color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 50%, var(--border-color)); }
 
 
 /* ── Failed list ── */
