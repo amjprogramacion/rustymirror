@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
 import { errorMessage } from '../utils/errors'
+import { useMetadataStore } from './metadata'
 
 export const usePanelStore = defineStore('panel', {
   state: () => ({
@@ -21,6 +22,8 @@ export const usePanelStore = defineStore('panel', {
         if (this.activePanel && !this.activePanel.batch && this.activePanel.entry?.path === path) {
           this.activePanel = { ...this.activePanel, metadata, loading: false }
         }
+        const device = [metadata.make, metadata.model].filter(Boolean).join(' ')
+        if (device) useMetadataStore().saveDiscoveredDevice(device)
       } catch (e) {
         if (this.activePanel && !this.activePanel.batch && this.activePanel.entry?.path === path) {
           this.activePanel = { ...this.activePanel, loading: false, error: errorMessage(e) }
@@ -36,6 +39,11 @@ export const usePanelStore = defineStore('panel', {
         const allMetadata = await Promise.all(entries.map(e => invoke('read_metadata', { path: e.path })))
         if (this.activePanel?.batch) {
           this.activePanel = { ...this.activePanel, allMetadata, loading: false }
+        }
+        const metaStore = useMetadataStore()
+        for (const metadata of allMetadata) {
+          const device = [metadata.make, metadata.model].filter(Boolean).join(' ')
+          if (device) metaStore.saveDiscoveredDevice(device)
         }
       } catch (e) {
         if (this.activePanel?.batch) {

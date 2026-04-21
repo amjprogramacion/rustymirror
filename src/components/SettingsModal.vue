@@ -303,6 +303,52 @@
                     >+ Add location</button>
                   </section>
                 </template>
+
+                <template v-else-if="dataTab === 'devices'">
+                  <section class="settings-section">
+                    <div class="location-list">
+                      <div
+                        v-for="dev in allDevices"
+                        :key="dev.name"
+                        class="location-item"
+                      >
+                        <span class="location-name">{{ dev.name }}</span>
+                        <button
+                          v-if="dev.custom"
+                          class="location-remove"
+                          title="Remove"
+                          @click="meta.removeCustomDevice(dev.name)"
+                        >✕</button>
+                      </div>
+                      <p v-if="!allDevices.length" class="settings-hint location-empty">
+                        No devices yet. Run a metadata scan to discover devices from image EXIF data.
+                      </p>
+                    </div>
+
+                    <div v-if="addingDevice" class="location-add-form">
+                      <input
+                        class="settings-input location-add-input"
+                        type="text"
+                        placeholder="Device name…"
+                        v-model="newDeviceName"
+                        @keydown.enter="confirmAddDevice"
+                        @keydown.escape="cancelAddDevice"
+                        autofocus
+                      />
+                      <button
+                        class="btn-setting btn-setting--active"
+                        :disabled="!newDeviceName.trim()"
+                        @click="confirmAddDevice"
+                      >Add</button>
+                      <button class="btn-setting" @click="cancelAddDevice">Cancel</button>
+                    </div>
+                    <button
+                      v-else
+                      class="btn-setting btn-setting--active btn-add-location"
+                      @click="addingDevice = true"
+                    >+ Add device</button>
+                  </section>
+                </template>
               </template>
 
               <!-- ── Metadata tool ── -->
@@ -388,7 +434,10 @@ const tabs = [
 ]
 const activeTab = ref('general')
 
-const dataTabs = [{ id: 'locations', label: 'Locations' }]
+const dataTabs = [
+  { id: 'locations', label: 'Locations' },
+  { id: 'devices',   label: 'Devices' },
+]
 const dataTab = ref('locations')
 
 const addingLocation = ref(false)
@@ -418,6 +467,35 @@ function confirmAddLocation() {
 function cancelAddLocation() {
   newLocationName.value = ''
   addingLocation.value = false
+}
+
+const addingDevice = ref(false)
+const newDeviceName = ref('')
+
+const allDevices = computed(() => {
+  const customSet = new Set(meta.customDevices)
+  const seen = new Set()
+  const result = []
+  for (const name of [...meta.discoveredDevices, ...meta.customDevices]) {
+    if (!seen.has(name)) {
+      seen.add(name)
+      result.push({ name, custom: customSet.has(name) })
+    }
+  }
+  return result.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+})
+
+function confirmAddDevice() {
+  if (newDeviceName.value.trim()) {
+    meta.addCustomDevice(newDeviceName.value)
+  }
+  newDeviceName.value = ''
+  addingDevice.value = false
+}
+
+function cancelAddDevice() {
+  newDeviceName.value = ''
+  addingDevice.value = false
 }
 
 const history = useDuplicatesHistoryStore()
@@ -459,6 +537,8 @@ onMounted(() => {
   loadCacheSizes()
   meta.loadCustomLocations()
   meta.loadDiscoveredLocations()
+  meta.loadCustomDevices()
+  meta.loadDiscoveredDevices()
 })
 </script>
 

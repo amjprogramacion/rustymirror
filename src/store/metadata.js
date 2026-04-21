@@ -9,6 +9,8 @@ const STORE_FILE = 'rustymirror.json'
 const GEO_CACHE_KEY = 'geoCache'
 const CUSTOM_LOCATIONS_KEY = 'customLocations'
 const DISCOVERED_LOCATIONS_KEY = 'discoveredLocations'
+const CUSTOM_DEVICES_KEY = 'customDevices'
+const DISCOVERED_DEVICES_KEY = 'discoveredDevices'
 
 let _geocodeAbortController = null
 let _store = null
@@ -46,6 +48,8 @@ export const useMetadataStore = defineStore('metadata', {
     geoCacheBytes: 0,
     customLocations: [],
     discoveredLocations: [],
+    customDevices: [],
+    discoveredDevices: [],
     scanDone: false,
     activeHistoryEntryId: null,
     images: [],
@@ -170,6 +174,7 @@ export const useMetadataStore = defineStore('metadata', {
       if (idx === -1) return
       const entry = this.images[idx]
       const device = [metadata.make, metadata.model].filter(Boolean).join(' ') || undefined
+      if (device) this.saveDiscoveredDevice(device)
       this.images[idx] = {
         ...entry,
         dateTaken:    metadata.dateTimeOriginal ?? entry.dateTaken,
@@ -227,6 +232,9 @@ export const useMetadataStore = defineStore('metadata', {
         const durationMs = cached ? null : (Date.now() - scanStart)
 
         this.images = images
+        for (const img of images) {
+          if (img.device) this.saveDiscoveredDevice(img.device)
+        }
 
         try {
           const checks = await Promise.all(this.folders.map(f => invoke('is_network_path', { path: f })))
@@ -410,6 +418,47 @@ export const useMetadataStore = defineStore('metadata', {
       try {
         const store = await getStore()
         await store.set(CUSTOM_LOCATIONS_KEY, this.customLocations)
+      } catch {}
+    },
+
+    async loadCustomDevices() {
+      try {
+        const store = await getStore()
+        this.customDevices = (await store.get(CUSTOM_DEVICES_KEY)) ?? []
+      } catch { this.customDevices = [] }
+    },
+
+    async loadDiscoveredDevices() {
+      try {
+        const store = await getStore()
+        this.discoveredDevices = (await store.get(DISCOVERED_DEVICES_KEY)) ?? []
+      } catch { this.discoveredDevices = [] }
+    },
+
+    async saveDiscoveredDevice(name) {
+      if (!name || this.discoveredDevices.includes(name)) return
+      this.discoveredDevices = [...this.discoveredDevices, name]
+      try {
+        const store = await getStore()
+        await store.set(DISCOVERED_DEVICES_KEY, this.discoveredDevices)
+      } catch {}
+    },
+
+    async addCustomDevice(name) {
+      const trimmed = name.trim()
+      if (!trimmed || this.customDevices.includes(trimmed)) return
+      this.customDevices = [...this.customDevices, trimmed]
+      try {
+        const store = await getStore()
+        await store.set(CUSTOM_DEVICES_KEY, this.customDevices)
+      } catch {}
+    },
+
+    async removeCustomDevice(name) {
+      this.customDevices = this.customDevices.filter(d => d !== name)
+      try {
+        const store = await getStore()
+        await store.set(CUSTOM_DEVICES_KEY, this.customDevices)
       } catch {}
     },
 
