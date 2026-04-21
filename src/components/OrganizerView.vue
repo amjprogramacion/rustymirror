@@ -14,66 +14,22 @@
         {{ org.error }}
       </div>
 
-      <!-- Scan results card -->
-      <div v-if="org.scanResult" class="scan-result-card">
-        <div class="donut-wrap">
-          <svg viewBox="0 0 100 100" class="donut-svg">
-            <!-- Track -->
-            <circle class="donut-track" cx="50" cy="50" :r="R" />
-            <!-- Images arc -->
-            <circle
-              v-if="donut.images > 0"
-              class="donut-images"
-              cx="50" cy="50" :r="R"
-              :stroke-dasharray="`${donut.images} ${donut.C}`"
-              stroke-dashoffset="0"
-              transform="rotate(-90 50 50)"
-            />
-            <!-- Videos arc -->
-            <circle
-              v-if="donut.videos > 0"
-              class="donut-videos"
-              cx="50" cy="50" :r="R"
-              :stroke-dasharray="`${donut.videos} ${donut.C}`"
-              :stroke-dashoffset="`${-donut.images}`"
-              transform="rotate(-90 50 50)"
-            />
-            <!-- Center label -->
-            <text x="50" y="46" class="donut-count">{{ org.scanResult.total }}</text>
-            <text x="50" y="58" class="donut-label">files</text>
-          </svg>
+      <!-- Info bar -->
+      <div v-if="org.scanResult" class="info-bar">
+        <span class="info-total">{{ org.scanResult.total }} files</span>
+        <span class="info-sep" />
+        <span class="info-dot info-dot--images" />
+        <span class="info-label">Images</span>
+        <span class="info-count">{{ org.scanResult.images }}</span>
+        <div class="ext-list">
+          <span v-for="(count, ext) in org.scanResult.imageExts" :key="ext" class="ext-pill ext-pill--images">.{{ ext }} <em>{{ count }}</em></span>
         </div>
-        <div class="donut-legend">
-          <div class="legend-group">
-            <div class="legend-row">
-              <span class="legend-dot legend-dot--images" />
-              <span class="legend-name">Images</span>
-              <span class="legend-value">{{ org.scanResult.images }}</span>
-              <span class="legend-pct">{{ donut.imagesPct }}%</span>
-            </div>
-            <div class="ext-list">
-              <span
-                v-for="(count, ext) in org.scanResult.imageExts"
-                :key="ext"
-                class="ext-pill ext-pill--images"
-              >.{{ ext }} <em>{{ count }}</em></span>
-            </div>
-          </div>
-          <div class="legend-group">
-            <div class="legend-row">
-              <span class="legend-dot legend-dot--videos" />
-              <span class="legend-name">Videos</span>
-              <span class="legend-value">{{ org.scanResult.videos }}</span>
-              <span class="legend-pct">{{ donut.videosPct }}%</span>
-            </div>
-            <div class="ext-list">
-              <span
-                v-for="(count, ext) in org.scanResult.videoExts"
-                :key="ext"
-                class="ext-pill ext-pill--videos"
-              >.{{ ext }} <em>{{ count }}</em></span>
-            </div>
-          </div>
+        <span class="info-sep" />
+        <span class="info-dot info-dot--videos" />
+        <span class="info-label">Videos</span>
+        <span class="info-count">{{ org.scanResult.videos }}</span>
+        <div class="ext-list">
+          <span v-for="(count, ext) in org.scanResult.videoExts" :key="ext" class="ext-pill ext-pill--videos">.{{ ext }} <em>{{ count }}</em></span>
         </div>
       </div>
 
@@ -231,22 +187,6 @@ const panel = usePanelStore()
 function openFile(path) { invoke('open_file', { path }) }
 function openFolder(path) { invoke('open_folder', { path }) }
 
-const R = 36
-const C = 2 * Math.PI * R
-
-const donut = computed(() => {
-  const { total, images, videos } = org.scanResult ?? { total: 0, images: 0, videos: 0 }
-  const imgArc = total > 0 ? (images / total) * C : 0
-  const vidArc = total > 0 ? (videos / total) * C : 0
-  return {
-    R, C,
-    images: imgArc,
-    videos: vidArc,
-    imagesPct: total > 0 ? Math.round(images / total * 100) : 0,
-    videosPct: total > 0 ? Math.round(videos / total * 100) : 0,
-  }
-})
-
 const confirmAction = ref(null) // 'rewriteDate' | 'rename' | null
 
 function askConfirm(action) { confirmAction.value = action }
@@ -371,106 +311,58 @@ function formatDate(d) {
   font-size: var(--font-size-sm);
 }
 
-/* ── Scan result card ── */
-.scan-result-card {
+/* ── Info bar ── */
+.info-bar {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 20px 24px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  height: 44px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-3)) 0;
 }
-
-/* Donut */
-.donut-wrap { flex-shrink: 0; width: 140px; height: 140px; }
-.donut-svg  { width: 100%; height: 100%; }
-
-.donut-track {
-  fill: none;
-  stroke: var(--border-color);
-  stroke-width: 14;
+.info-total {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
 }
-.donut-images {
-  fill: none;
-  stroke: var(--color-accent);
-  stroke-width: 14;
-  stroke-linecap: butt;
-  transition: stroke-dasharray 0.4s ease;
+.info-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border-color);
+  flex-shrink: 0;
 }
-.donut-videos {
-  fill: none;
-  stroke: var(--color-success);
-  stroke-width: 14;
-  stroke-linecap: butt;
-  transition: stroke-dasharray 0.4s ease;
-}
-.donut-count {
-  fill: var(--text-primary);
-  font-size: 22px;
-  font-weight: 700;
-  text-anchor: middle;
-  dominant-baseline: middle;
-}
-.donut-label {
-  fill: var(--text-muted);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  text-anchor: middle;
-  dominant-baseline: middle;
-}
-
-/* Legend */
-.donut-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-.legend-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.legend-row {
-  display: grid;
-  grid-template-columns: 10px 1fr auto auto;
-  align-items: center;
-  gap: 10px;
-}
-.legend-dot {
-  width: 10px;
-  height: 10px;
+.info-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.legend-dot--images { background: var(--color-accent); }
-.legend-dot--videos { background: var(--color-success); }
-
-.legend-name {
-  font-size: 13px;
+.info-dot--images { background: var(--color-accent); }
+.info-dot--videos { background: var(--color-success); }
+.info-label {
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
+  white-space: nowrap;
 }
-.legend-value {
-  font-size: 16px;
+.info-count {
+  font-size: var(--font-size-sm);
   font-weight: 700;
   color: var(--text-primary);
-  text-align: right;
-}
-.legend-pct {
-  font-size: 11px;
-  color: var(--text-muted);
-  min-width: 36px;
-  text-align: right;
+  white-space: nowrap;
+  margin-right: 2px;
 }
 
 /* Extension pills */
 .ext-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
-  padding-left: 20px;
 }
 .ext-pill {
   display: inline-flex;
@@ -481,6 +373,7 @@ function formatDate(d) {
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 .ext-pill em {
   font-style: normal;
