@@ -244,6 +244,67 @@
                 </section>
               </template>
 
+              <!-- ── Data ── -->
+              <template v-else-if="activeTab === 'data'">
+                <div class="inner-tab-bar">
+                  <button
+                    v-for="tab in dataTabs"
+                    :key="tab.id"
+                    class="inner-tab"
+                    :class="{ 'inner-tab--active': dataTab === tab.id }"
+                    @click="dataTab = tab.id"
+                  >
+                    {{ tab.label }}
+                  </button>
+                </div>
+
+                <template v-if="dataTab === 'locations'">
+                  <section class="settings-section">
+                    <div class="location-list">
+                      <div
+                        v-for="loc in allLocations"
+                        :key="loc.name"
+                        class="location-item"
+                      >
+                        <span class="location-name">{{ loc.name }}</span>
+                        <button
+                          v-if="loc.custom"
+                          class="location-remove"
+                          title="Remove"
+                          @click="meta.removeCustomLocation(loc.name)"
+                        >✕</button>
+                      </div>
+                      <p v-if="!allLocations.length" class="settings-hint location-empty">
+                        No locations yet. Run a metadata scan to discover locations from image GPS data.
+                      </p>
+                    </div>
+
+                    <div v-if="addingLocation" class="location-add-form">
+                      <input
+                        class="settings-input location-add-input"
+                        type="text"
+                        placeholder="Location name…"
+                        v-model="newLocationName"
+                        @keydown.enter="confirmAddLocation"
+                        @keydown.escape="cancelAddLocation"
+                        autofocus
+                      />
+                      <button
+                        class="btn-setting btn-setting--active"
+                        :disabled="!newLocationName.trim()"
+                        @click="confirmAddLocation"
+                      >Add</button>
+                      <button class="btn-setting" @click="cancelAddLocation">Cancel</button>
+                    </div>
+                    <button
+                      v-else
+                      class="btn-setting btn-setting--active btn-add-location"
+                      @click="addingLocation = true"
+                    >+ Add location</button>
+                  </section>
+                </template>
+              </template>
+
               <!-- ── Metadata tool ── -->
               <template v-else-if="activeTab === 'metadata'">
                 <section class="settings-section">
@@ -323,8 +384,41 @@ const tabs = [
   { id: 'duplicates', label: 'Duplicates tool' },
   { id: 'metadata',   label: 'Metadata tool' },
   { id: 'organizer',  label: 'Organizer tool' },
+  { id: 'data',       label: 'Data' },
 ]
 const activeTab = ref('general')
+
+const dataTabs = [{ id: 'locations', label: 'Locations' }]
+const dataTab = ref('locations')
+
+const addingLocation = ref(false)
+const newLocationName = ref('')
+
+const allLocations = computed(() => {
+  const customSet = new Set(meta.customLocations)
+  const seen = new Set()
+  const result = []
+  for (const name of [...meta.discoveredLocations, ...meta.customLocations]) {
+    if (!seen.has(name)) {
+      seen.add(name)
+      result.push({ name, custom: customSet.has(name) })
+    }
+  }
+  return result.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+})
+
+function confirmAddLocation() {
+  if (newLocationName.value.trim()) {
+    meta.addCustomLocation(newLocationName.value)
+  }
+  newLocationName.value = ''
+  addingLocation.value = false
+}
+
+function cancelAddLocation() {
+  newLocationName.value = ''
+  addingLocation.value = false
+}
 
 const history = useDuplicatesHistoryStore()
 const dups    = useDuplicatesStore()
@@ -361,7 +455,11 @@ const formattedNotes = computed(() => {
     .join('')
 })
 
-onMounted(loadCacheSizes)
+onMounted(() => {
+  loadCacheSizes()
+  meta.loadCustomLocations()
+  meta.loadDiscoveredLocations()
+})
 </script>
 
 <style scoped>
@@ -721,6 +819,95 @@ onMounted(loadCacheSizes)
   display: block;
   color: var(--text-muted);
   padding-left: 4px;
+}
+
+/* ── Inner tabs (horizontal) ── */
+.inner-tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 var(--space-4);
+}
+
+.inner-tab {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+  margin-bottom: -1px;
+}
+.inner-tab:hover { color: var(--text-secondary); }
+.inner-tab--active {
+  color: var(--text-primary);
+  border-bottom-color: var(--color-accent);
+  font-weight: 500;
+}
+
+/* ── Locations list ── */
+.location-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.location-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 5px var(--space-2);
+  border-radius: var(--border-radius-sm);
+}
+.location-item:hover { background: var(--bg-card); }
+
+.location-name {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+}
+.location-item:hover .location-remove { opacity: 1; }
+.location-remove:hover { color: var(--color-danger); }
+
+.location-empty { margin-top: 0; }
+
+/* ── Add location form ── */
+.location-add-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.location-add-input {
+  flex: 1;
+  width: auto;
+}
+
+.btn-add-location {
+  align-self: flex-start;
 }
 
 /* ── Transition ── */

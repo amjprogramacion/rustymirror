@@ -1,5 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import { GEOCODE_DEBOUNCE_MS } from '../constants'
+import { useMetadataStore } from '../store/metadata'
 
 export function useGpsEditor(meta, onDirty) {
   const gpsLatitudeRaw   = ref('')
@@ -111,6 +112,7 @@ export function useGpsEditor(meta, onDirty) {
   }
 
   // ── Reverse geocoding ──────────────────────────────────────────────────────
+  const metaStore = useMetadataStore()
   let geocodeTimer = null
   watch(
     () => [previewLat.value, previewLon.value],
@@ -127,7 +129,9 @@ export function useGpsEditor(meta, onDirty) {
           const data = await res.json()
           const addr = data.address ?? {}
           const city = addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.county ?? null
-          locationName.value = [city, addr.country].filter(Boolean).join(', ') || null
+          const name = [city, addr.country].filter(Boolean).join(', ') || null
+          locationName.value = name
+          if (name) metaStore.saveDiscoveredLocation(name)
         } catch {
           locationName.value = null
         } finally {

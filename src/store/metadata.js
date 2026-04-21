@@ -7,6 +7,8 @@ import { useMetadataHistoryStore } from './metadataHistory'
 
 const STORE_FILE = 'rustymirror.json'
 const GEO_CACHE_KEY = 'geoCache'
+const CUSTOM_LOCATIONS_KEY = 'customLocations'
+const DISCOVERED_LOCATIONS_KEY = 'discoveredLocations'
 
 let _geocodeAbortController = null
 let _store = null
@@ -42,6 +44,8 @@ export const useMetadataStore = defineStore('metadata', {
     scanning: false,
     geoCacheCount: 0,
     geoCacheBytes: 0,
+    customLocations: [],
+    discoveredLocations: [],
     scanDone: false,
     activeHistoryEntryId: null,
     images: [],
@@ -300,6 +304,7 @@ export const useMetadataStore = defineStore('metadata', {
       for (const [key, group] of Object.entries(groups)) {
         if (key in geoCache) {
           for (const p of group.paths) this.locationNames[p] = geoCache[key]
+          if (geoCache[key]) this.saveDiscoveredLocation(geoCache[key])
         } else {
           pending.push({ key, ...group })
         }
@@ -323,6 +328,7 @@ export const useMetadataStore = defineStore('metadata', {
             const city = addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.county ?? null
             const name = [city, addr.country].filter(Boolean).join(', ') || ''
             for (const p of paths) this.locationNames[p] = name
+            if (name) this.saveDiscoveredLocation(name)
             geoCache[key] = name
             const stats = geoCacheStats(geoCache)
             this.geoCacheCount = stats.count
@@ -364,6 +370,47 @@ export const useMetadataStore = defineStore('metadata', {
       this.geoCacheCount = 0
       this.geoCacheBytes = 0
       this.locationNames = {}
+    },
+
+    async loadCustomLocations() {
+      try {
+        const store = await getStore()
+        this.customLocations = (await store.get(CUSTOM_LOCATIONS_KEY)) ?? []
+      } catch { this.customLocations = [] }
+    },
+
+    async loadDiscoveredLocations() {
+      try {
+        const store = await getStore()
+        this.discoveredLocations = (await store.get(DISCOVERED_LOCATIONS_KEY)) ?? []
+      } catch { this.discoveredLocations = [] }
+    },
+
+    async saveDiscoveredLocation(name) {
+      if (!name || this.discoveredLocations.includes(name)) return
+      this.discoveredLocations = [...this.discoveredLocations, name]
+      try {
+        const store = await getStore()
+        await store.set(DISCOVERED_LOCATIONS_KEY, this.discoveredLocations)
+      } catch {}
+    },
+
+    async addCustomLocation(name) {
+      const trimmed = name.trim()
+      if (!trimmed || this.customLocations.includes(trimmed)) return
+      this.customLocations = [...this.customLocations, trimmed]
+      try {
+        const store = await getStore()
+        await store.set(CUSTOM_LOCATIONS_KEY, this.customLocations)
+      } catch {}
+    },
+
+    async removeCustomLocation(name) {
+      this.customLocations = this.customLocations.filter(l => l !== name)
+      try {
+        const store = await getStore()
+        await store.set(CUSTOM_LOCATIONS_KEY, this.customLocations)
+      } catch {}
     },
 
     async deleteSelected() {
