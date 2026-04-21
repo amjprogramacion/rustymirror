@@ -13,6 +13,8 @@ export const useOrganizerStore = defineStore('organizer', () => {
     overrideYear: false,
     yearIfNotDate: 2015,
     outputDirectory: '',
+    renameTemplate: '{type}_{date}_{time}_{4hex_uid}',
+    folderTemplate: 'REORDENADAS/{year}/{device}/{month_dir}',
   })
 
   const scanning            = ref(false)
@@ -22,6 +24,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
   const sortDir       = ref('asc')
   const previewing         = ref(false)
   const previewingDate     = ref(false)
+  const previewOnlyRename  = ref(null)  // onlyRename value at preview time, null = no preview
   const executing          = ref(false)
   const executingOp        = ref(null)  // 'rename' | 'rewrite' | null
   const progress           = ref({ processed: 0, total: 0 })
@@ -72,6 +75,8 @@ export const useOrganizerStore = defineStore('organizer', () => {
       overrideYear:    config.value.overrideYear,
       yearIfNotDate:   config.value.yearIfNotDate,
       outputDirectory: config.value.outputDirectory,
+      renameTemplate:  config.value.renameTemplate,
+      folderTemplate:  config.value.folderTemplate,
     }
   }
 
@@ -129,18 +134,21 @@ export const useOrganizerStore = defineStore('organizer', () => {
 
   async function runPreview() {
     if (!folders.value.length) return
-    previewing.value     = true
-    progress.value       = { processed: 0, total: 0 }
-    error.value          = null
-    previewActions.value = []
-    lastSummary.value    = null
+    previewing.value      = true
+    previewOnlyRename.value = null
+    progress.value        = { processed: 0, total: 0 }
+    error.value           = null
+    previewActions.value  = []
+    lastSummary.value     = null
 
+    const onlyRenameAtStart = config.value.onlyRename
     await _subscribeProgress()
     try {
       previewActions.value = await invoke('preview_organize', {
         paths:  folders.value,
         config: _buildConfig(),
       })
+      previewOnlyRename.value = onlyRenameAtStart
     } catch (e) {
       error.value = e?.message ?? String(e)
     } finally {
@@ -163,7 +171,8 @@ export const useOrganizerStore = defineStore('organizer', () => {
         paths:  folders.value,
         config: _buildConfig(),
       })
-      previewActions.value = []
+      previewActions.value  = []
+      previewOnlyRename.value = null
     } catch (e) {
       error.value = e?.message ?? String(e)
     } finally {
@@ -206,7 +215,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
     folders, config,
     scanning, scanResult, sortBy, sortDir, activeHistoryEntryId,
     previewing, previewingDate, executing, executingOp, progress,
-    previewActions, previewDateActions, lastSummary, error,
+    previewActions, previewDateActions, previewOnlyRename, lastSummary, error,
     addFolder, removeFolder, updateConfig,
     runScan, runPreviewRewrite, runPreview, runExecute, runMetadataRewrite, stop, loadFromHistory,
   }

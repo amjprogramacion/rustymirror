@@ -74,19 +74,73 @@
       </label>
     </div>
 
-    <!-- Output directory — shown when !onlyRename -->
-    <div v-if="!org.config.onlyRename" class="config-row config-dir">
-      <span class="config-label">Output folder</span>
-      <div class="dir-picker">
-        <span
-          class="dir-value"
-          :class="{ placeholder: !org.config.outputDirectory }"
-          :title="org.config.outputDirectory"
-        >
-          {{ org.config.outputDirectory ? shortPath(org.config.outputDirectory) : 'Not set' }}
-        </span>
-        <button class="btn-pick-dir" @click="pickOutputDir" title="Browse">…</button>
+    <!-- Output directory + folder template — shown when !onlyRename -->
+    <template v-if="!org.config.onlyRename">
+      <div class="config-row config-dir">
+        <span class="config-label">Output folder</span>
+        <div class="dir-picker">
+          <span
+            class="dir-value"
+            :class="{ placeholder: !org.config.outputDirectory }"
+            :title="org.config.outputDirectory"
+          >
+            {{ org.config.outputDirectory ? shortPath(org.config.outputDirectory) : 'Not set' }}
+          </span>
+          <button class="btn-pick-dir" @click="pickOutputDir" title="Browse">…</button>
+        </div>
       </div>
+
+      <!-- Folder template -->
+      <div class="config-block">
+        <span class="config-label">Folder template</span>
+        <input
+          ref="folderTemplateInputEl"
+          class="template-input"
+          type="text"
+          :value="org.config.folderTemplate"
+          @input="org.updateConfig({ folderTemplate: $event.target.value })"
+          placeholder="REORDENADAS/{year}/{device}/{month_dir}"
+          spellcheck="false"
+          autocomplete="off"
+        />
+        <div class="template-tags">
+          <button
+            v-for="tag in FOLDER_TAGS"
+            :key="tag.token"
+            class="tag-chip"
+            :title="tag.label"
+            @mousedown.prevent
+            @click="insertFolderTag(tag.token)"
+          >{{ tag.token }}</button>
+        </div>
+        <span class="template-preview">{{ folderTemplatePreview }}</span>
+      </div>
+    </template>
+
+    <!-- Renaming template -->
+    <div class="config-block">
+      <span class="config-label">Renaming template</span>
+      <input
+        ref="templateInputEl"
+        class="template-input"
+        type="text"
+        :value="org.config.renameTemplate"
+        @input="org.updateConfig({ renameTemplate: $event.target.value })"
+        placeholder="{type}_{date}_{time}_{4hex_uid}"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      <div class="template-tags">
+        <button
+          v-for="tag in TEMPLATE_TAGS"
+          :key="tag.token"
+          class="tag-chip"
+          :title="tag.label"
+          @mousedown.prevent
+          @click="insertTag(tag.token)"
+        >{{ tag.token }}</button>
+      </div>
+      <span class="template-preview">{{ templatePreview }}</span>
     </div>
 
   </section>
@@ -148,6 +202,7 @@
 </template>
 
 <script setup>
+import { ref, computed, nextTick } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useOrganizerStore } from '../store/organizer'
 import { useOrganizerHistoryStore } from '../store/organizerHistory'
@@ -170,7 +225,100 @@ async function pickOutputDir() {
   if (path) org.updateConfig({ outputDirectory: path })
 }
 
+// ── Folder template ───────────────────────────────────────────────────────────
 
+const folderTemplateInputEl = ref(null)
+
+const FOLDER_TAGS = [
+  { token: '{year}',       label: 'YYYY' },
+  { token: '{month}',      label: 'MM' },
+  { token: '{month_name}', label: 'Month name (ENERO, FEBRERO…)' },
+  { token: '{month_dir}',  label: 'MM - MONTHNAME combined' },
+  { token: '{device}',     label: 'Device / camera name' },
+  { token: '{day}',        label: 'DD' },
+]
+
+function insertFolderTag(token) {
+  const input = folderTemplateInputEl.value
+  if (!input) return
+  const start = input.selectionStart ?? input.value.length
+  const end   = input.selectionEnd   ?? input.value.length
+  const current = org.config.folderTemplate ?? ''
+  org.updateConfig({ folderTemplate: current.slice(0, start) + token + current.slice(end) })
+  nextTick(() => {
+    input.focus()
+    const pos = start + token.length
+    input.setSelectionRange(pos, pos)
+  })
+}
+
+const MONTHS_PREVIEW = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
+
+const folderTemplatePreview = computed(() => {
+  const tpl = org.config.folderTemplate || 'REORDENADAS/{year}/{device}/{month_dir}'
+  return tpl
+    .replace('{year}',       '2023')
+    .replace('{month}',      '12')
+    .replace('{month_name}', MONTHS_PREVIEW[11])
+    .replace('{month_dir}',  '12 - ' + MONTHS_PREVIEW[11])
+    .replace('{device}',     'Pixel 7')
+    .replace('{day}',        '01')
+})
+
+// ── Renaming template ──────────────────────────────────────────────────────────
+
+const templateInputEl = ref(null)
+
+const TEMPLATE_TAGS = [
+  { token: '{type}',        label: 'IMG or VID' },
+  { token: '{date}',        label: 'YYYYMMDD' },
+  { token: '{time}',        label: 'HHMMSS' },
+  { token: '{year}',        label: 'YYYY' },
+  { token: '{month}',       label: 'MM' },
+  { token: '{day}',         label: 'DD' },
+  { token: '{hour}',        label: 'HH' },
+  { token: '{min}',         label: 'mm' },
+  { token: '{sec}',         label: 'ss' },
+  { token: '{4hex_uid}',    label: 'Sequential hex ID — change N for desired length' },
+  { token: '{4crypto_uid}', label: 'N random alphanumeric chars — change N for desired length' },
+]
+
+function insertTag(token) {
+  const input = templateInputEl.value
+  if (!input) return
+  const start = input.selectionStart ?? input.value.length
+  const end   = input.selectionEnd   ?? input.value.length
+  const current = org.config.renameTemplate ?? ''
+  org.updateConfig({ renameTemplate: current.slice(0, start) + token + current.slice(end) })
+  nextTick(() => {
+    input.focus()
+    const pos = start + token.length
+    input.setSelectionRange(pos, pos)
+  })
+}
+
+const templatePreview = computed(() => {
+  const tpl = org.config.renameTemplate || '{type}_{date}_{time}_{4hex_uid}'
+  const withFixed = tpl
+    .replace('{type}',   'IMG')
+    .replace('{date}',   '20231201')
+    .replace('{time}',   '143022')
+    .replace('{year}',   '2023')
+    .replace('{month}',  '12')
+    .replace('{day}',    '01')
+    .replace('{hour}',   '14')
+    .replace('{min}',    '30')
+    .replace('{sec}',    '22')
+  const withHex = withFixed.replace(/\{(\d+)hex_uid\}/g, (_, n) => {
+    const len = Math.min(Math.max(parseInt(n, 10) || 4, 1), 32)
+    return '0A1B3C2D'.slice(0, len).padEnd(len, '0')
+  })
+  const withCrypto = withHex.replace(/\{(\d+)crypto_uid\}/g, (_, n) => {
+    const len = Math.min(Math.max(parseInt(n, 10) || 4, 1), 64)
+    return 'AB3XKM9Z'.slice(0, len).padEnd(len, 'X')
+  })
+  return withCrypto + '.jpg'
+})
 </script>
 
 <style scoped>
@@ -408,6 +556,57 @@ async function pickOutputDir() {
 .select-field .sort-select {
   width: 100%;
   padding-right: 28px;
+}
+
+/* ── Template block ── */
+.config-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.template-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition);
+}
+.template-input:focus { border-color: var(--color-accent); }
+.template-input::placeholder { color: var(--text-muted); }
+.template-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.tag-chip {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+  line-height: 1.4;
+}
+.tag-chip:hover {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: var(--color-accent);
+}
+.template-preview {
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── History ── */

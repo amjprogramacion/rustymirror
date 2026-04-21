@@ -3615,6 +3615,7 @@ dependencies = [
  "image",
  "image_hasher",
  "open",
+ "rand 0.8.5",
  "rayon",
  "rusqlite",
  "serde",

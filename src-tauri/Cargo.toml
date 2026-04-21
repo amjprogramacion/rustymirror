@@ -34,6 +34,7 @@ trash = "3.3"
 chrono = { version = "0.4", features = ["serde"] }
 anyhow = "1.0"
 unicode-normalization = "0.1"
+rand = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }

@@ -85,10 +85,10 @@
         <button class="btn btn-success" :disabled="isBusy || !org.folders.length || !hasDatePreview" @click="askConfirm('rewriteDate')">
           Run rewrite date
         </button>
-        <button class="btn btn-secondary" :disabled="isBusy || !org.folders.length || needsOutputDir" @click="org.runPreview()">
+        <button class="btn btn-secondary" :disabled="isBusy || !org.folders.length || needsOutputDir" :title="needsOutputDir ? 'Set an output folder before previewing rename & move' : undefined" @click="org.runPreview()">
           {{ org.config.onlyRename ? 'Preview rename' : 'Preview rename &amp; move' }}
         </button>
-        <button class="btn btn-success" :disabled="isBusy || !org.folders.length || needsOutputDir || !hasRenamePreview" @click="askConfirm('rename')">
+        <button class="btn btn-success" :disabled="isBusy || !org.folders.length || needsOutputDir || !hasRenamePreview || previewStale" @click="askConfirm('rename')">
           {{ org.config.onlyRename ? 'Run rename' : 'Run rename &amp; move' }}
         </button>
       </div>
@@ -115,7 +115,7 @@
               <th class="col-name">Name</th>
               <th v-if="hasRenamePreview" class="col-new-name">New name</th>
               <th class="col-path">Path</th>
-              <th v-if="hasRenamePreview && !org.config.onlyRename" class="col-new-path">New path</th>
+              <th v-if="showNewPath" class="col-new-path">New path</th>
               <th :class="['col-date', { 'col-shrink': hasDatePreview }]">Date taken</th>
               <th v-if="hasDatePreview" class="col-new-date">New date taken</th>
             </tr>
@@ -128,7 +128,7 @@
                 {{ previewByPath.get(normPath(f.path))?.newFilename ?? '—' }}
               </td>
               <td class="file-path" :title="f.path">{{ f.path }}</td>
-              <td v-if="hasRenamePreview && !org.config.onlyRename" class="file-new-path" :title="previewByPath.get(normPath(f.path))?.newPath">
+              <td v-if="showNewPath" class="file-new-path" :title="previewByPath.get(normPath(f.path))?.newPath">
                 {{ previewByPath.get(normPath(f.path))?.newPath ?? '—' }}
               </td>
               <td class="file-date">
@@ -246,6 +246,8 @@ function normPath(p) { return p.replace(/\\/g, '/') }
 
 const hasRenamePreview = computed(() => org.previewActions.length > 0)
 const hasDatePreview   = computed(() => org.previewDateActions.length > 0)
+const previewStale     = computed(() => hasRenamePreview.value && org.previewOnlyRename === true && !org.config.onlyRename)
+const showNewPath      = computed(() => hasRenamePreview.value && org.previewOnlyRename === false && !org.config.onlyRename)
 
 const previewByPath = computed(() => {
   const map = new Map()

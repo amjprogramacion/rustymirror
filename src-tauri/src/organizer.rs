@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
 use chrono::{Datelike, Timelike};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 // ─── Extensions ───────────────────────────────────────────────────────────────
@@ -48,6 +49,18 @@ pub struct OrganizerConfig {
     pub override_year: bool,
     pub year_if_not_date: i32,
     pub output_directory: String,
+    #[serde(default = "default_rename_template")]
+    pub rename_template: String,
+    #[serde(default = "default_folder_template")]
+    pub folder_template: String,
+}
+
+fn default_rename_template() -> String {
+    String::from("{type}_{date}_{time}_{4hex_uid}")
+}
+
+fn default_folder_template() -> String {
+    String::from("REORDENADAS/{year}/{device}/{month_dir}")
 }
 
 impl Default for OrganizerConfig {
@@ -58,6 +71,8 @@ impl Default for OrganizerConfig {
             override_year: false,
             year_if_not_date: 2015,
             output_directory: String::new(),
+            rename_template: default_rename_template(),
+            folder_template: default_folder_template(),
         }
     }
 }
@@ -422,36 +437,151 @@ pub fn extract_device(filename: &str, exif_obj: &serde_json::Value) -> String {
 
 static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 
-fn generate_unique_id() -> String {
-    let n = ID_COUNTER.fetch_add(1, Ordering::Relaxed) & 0xFFFF;
-    format!("{:04X}", n)
+fn generate_hex_uid(len: usize) -> String {
+    let n = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("{:0>width$X}", n, width = len)
 }
 
 fn normalise_ext(ext: &str) -> &str {
     if ext.eq_ignore_ascii_case("jpeg") { "jpg" } else { ext }
 }
 
-fn build_new_filename(kind: &FileKind, date: &str, ext: &str, uid: &str) -> Option<String> {
+const CRYPTO_UID_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+fn generate_crypto_uid(len: usize) -> String {
+    let mut rng = rand::thread_rng();
+    (0..len)
+        .map(|_| CRYPTO_UID_CHARS[rng.gen_range(0..CRYPTO_UID_CHARS.len())] as char)
+        .collect()
+}
+
+fn apply_hex_uid_tokens(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            let start = i;
+            i += 1;
+            let digit_start = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() { i += 1; }
+            let digit_end = i;
+            if s[i..].starts_with("hex_uid}") {
+                let n = if digit_end > digit_start {
+                    s[digit_start..digit_end].parse().unwrap_or(4).max(1).min(32)
+                } else {
+                    4
+                };
+                result.push_str(&generate_hex_uid(n));
+                i += "hex_uid}".len();
+                continue;
+            }
+            result.push_str(&s[start..i]);
+            continue;
+        }
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+    result
+}
+
+fn apply_crypto_uid_tokens(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // Look for pattern {Ncrypto_uid} where N is one or more digits
+        if bytes[i] == b'{' {
+            let start = i;
+            i += 1;
+            let digit_start = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() { i += 1; }
+            let digit_end = i;
+            if digit_end > digit_start && s[i..].starts_with("crypto_uid}") {
+                let n: usize = s[digit_start..digit_end].parse().unwrap_or(4).max(1).min(64);
+                result.push_str(&generate_crypto_uid(n));
+                i += "crypto_uid}".len();
+                continue;
+            }
+            // Not a match — emit the characters as-is
+            result.push_str(&s[start..i]);
+            continue;
+        }
+        result.push(bytes[i] as char);
+        i += 1;
+    }
+    result
+}
+
+fn build_new_filename(kind: &FileKind, date: &str, ext: &str, config: &OrganizerConfig) -> Option<String> {
     if date.len() < 19 { return None; }
-    let date_part = format!("{}{}{}", &date[..4], &date[5..7], &date[8..10]);
-    let time_part = format!("{}{}{}", &date[11..13], &date[14..16], &date[17..19]);
-    let prefix = match kind { FileKind::Image => "IMG", FileKind::Video => "VID" };
-    Some(format!("{}_{}_{}_{}.{}", prefix, date_part, time_part, uid, normalise_ext(ext)))
+    let year  = &date[..4];
+    let month = &date[5..7];
+    let day   = &date[8..10];
+    let hour  = &date[11..13];
+    let min   = &date[14..16];
+    let sec   = &date[17..19];
+    let date_part = format!("{}{}{}", year, month, day);
+    let time_part = format!("{}{}{}", hour, min, sec);
+    let type_str  = match kind { FileKind::Image => "IMG", FileKind::Video => "VID" };
+
+    let tpl = if config.rename_template.is_empty() {
+        "{type}_{date}_{time}_{4hex_uid}"
+    } else {
+        &config.rename_template
+    };
+
+    let stem = tpl
+        .replace("{type}",   type_str)
+        .replace("{date}",   &date_part)
+        .replace("{time}",   &time_part)
+        .replace("{year}",   year)
+        .replace("{month}",  month)
+        .replace("{day}",    day)
+        .replace("{hour}",   hour)
+        .replace("{min}",    min)
+        .replace("{sec}",    sec);
+
+    let stem = apply_hex_uid_tokens(&stem);
+    let stem = apply_crypto_uid_tokens(&stem);
+
+    Some(format!("{}.{}", stem, normalise_ext(ext)))
 }
 
 fn build_target_dir(config: &OrganizerConfig, date: &str, device: &str) -> Option<PathBuf> {
-    if config.output_directory.is_empty() || date.len() < 7 { return None; }
-    let year = &date[..4];
+    if config.output_directory.is_empty() || date.len() < 10 { return None; }
+    let year  = &date[..4];
+    let day   = &date[8..10];
     let month_num: usize = date[5..7].parse().ok()?;
     if month_num < 1 || month_num > 12 { return None; }
-    let month_dir = format!("{:02} - {}", month_num, MONTHS_ES[month_num - 1]);
-    Some(
-        PathBuf::from(&config.output_directory)
-            .join("REORDENADAS")
-            .join(year)
-            .join(device)
-            .join(month_dir),
-    )
+    let month_name = MONTHS_ES[month_num - 1];
+    let month_str  = format!("{:02}", month_num);
+    let month_dir  = format!("{} - {}", month_str, month_name);
+
+    let device_clean: String = device.chars()
+        .map(|c| if "\\:*?\"<>|".contains(c) { '_' } else { c })
+        .collect();
+
+    let tpl = if config.folder_template.is_empty() {
+        "REORDENADAS/{year}/{device}/{month_dir}"
+    } else {
+        &config.folder_template
+    };
+
+    let resolved = tpl
+        .replace("{year}",       year)
+        .replace("{month}",      &month_str)
+        .replace("{month_name}", month_name)
+        .replace("{month_dir}",  &month_dir)
+        .replace("{device}",     &device_clean)
+        .replace("{day}",        day);
+
+    let mut path = PathBuf::from(&config.output_directory);
+    for segment in resolved.split('/') {
+        let s = segment.trim();
+        if !s.is_empty() { path = path.join(s); }
+    }
+    Some(path)
 }
 
 fn move_file(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -475,8 +605,7 @@ fn try_rename_file(
 ) -> std::io::Result<()> {
     let current_dir = path.parent().unwrap_or(Path::new(""));
     for _ in 0..16 {
-        let uid = generate_unique_id();
-        let filename = build_new_filename(kind, date, ext, &uid)
+        let filename = build_new_filename(kind, date, ext, config)
             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "invalid date string"))?;
         let dest = if config.only_rename {
             current_dir.join(&filename)
@@ -505,10 +634,12 @@ pub fn preview(
     stop: Arc<AtomicBool>,
     on_progress: impl Fn(OrganizerProgress),
 ) -> Vec<OrganizerFileAction> {
+    ID_COUNTER.store(0, Ordering::Relaxed);
     let files = collect_all_files(directories);
     let total = files.len();
     let mut actions = Vec::with_capacity(total);
     let mut incr: HashMap<String, u32> = HashMap::new();
+    let mut reserved: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     let exif_map = exiftool
         .map(|et| build_exif_map(et, &files, &stop))
@@ -525,17 +656,25 @@ pub fn preview(
         let (date, date_source) = extract_date(filename, exif_obj, config, &mut incr);
         let device = extract_device(filename, exif_obj);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-        let uid = generate_unique_id();
 
-        let Some(new_filename) = build_new_filename(kind, &date, &ext, &uid) else { continue };
-        let new_path = if config.only_rename {
-            path.parent().unwrap_or(Path::new("")).join(&new_filename)
-                .to_string_lossy().to_string()
-        } else {
-            build_target_dir(config, &date, &device)
-                .map(|d| d.join(&new_filename).to_string_lossy().to_string())
-                .unwrap_or_else(|| new_filename.clone())
-        };
+        let found = (0..16).find_map(|_| {
+            let new_filename = build_new_filename(kind, &date, &ext, config)?;
+            let new_path = if config.only_rename {
+                path.parent().unwrap_or(Path::new("")).join(&new_filename)
+                    .to_string_lossy().to_string()
+            } else {
+                build_target_dir(config, &date, &device)
+                    .map(|d| d.join(&new_filename).to_string_lossy().to_string())
+                    .unwrap_or_else(|| new_filename.clone())
+            };
+            if Path::new(&new_path).exists() || reserved.contains(&new_path) {
+                return None;
+            }
+            Some((new_filename, new_path))
+        });
+
+        let Some((new_filename, new_path)) = found else { continue };
+        reserved.insert(new_path.clone());
 
         actions.push(OrganizerFileAction {
             original_path: path_str,
@@ -558,6 +697,7 @@ pub fn execute(
     stop: Arc<AtomicBool>,
     on_progress: impl Fn(OrganizerProgress),
 ) -> OrganizerSummary {
+    ID_COUNTER.store(0, Ordering::Relaxed);
     let files = collect_all_files(directories);
     let total = files.len();
     let mut succeeded = 0usize;
