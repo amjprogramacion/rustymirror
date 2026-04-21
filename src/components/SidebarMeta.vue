@@ -129,9 +129,12 @@
             {{ formatLocalDate(entry.date) }}<span v-if="formatDuration(entry.durationMs)" class="history-duration">&nbsp;({{ formatDuration(entry.durationMs) }})</span>
           </div>
           <div class="history-folders">
-            <span v-for="f in entry.folders" :key="f" class="history-folder" :title="f">
-              {{ shortPath(f) }}
-            </span>
+            <span
+              v-for="f in entry.folders" :key="f"
+              class="history-folder"
+              :class="{ 'history-folder--missing': metaHistory.missingFolders[entry.id]?.includes(f) }"
+              :title="f"
+            >{{ shortPath(f) }}</span>
           </div>
           <div class="history-footer">
             <span class="history-stats">
@@ -440,6 +443,8 @@ async function pickMetaFolder() {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.history-entry--partial .history-folder--missing { color: rgb(245, 197, 66); }
+.history-entry--missing .history-folder--missing { color: rgb(220, 53, 69); }
 
 .history-footer {
   display: flex;

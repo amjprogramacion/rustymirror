@@ -27,6 +27,8 @@ export const useMetadataHistoryStore = defineStore('metadataHistory', {
     entries: [],
     // { [id]: 'ok' | 'partial' | 'missing' } — checked on load, not persisted
     folderStatus: {},
+    // { [id]: string[] } — paths that no longer exist, not persisted
+    missingFolders: {},
   }),
 
   actions: {
@@ -99,6 +101,7 @@ export const useMetadataHistoryStore = defineStore('metadataHistory', {
       for (const entry of this.entries) {
         const results = await invoke('check_paths_exist', { paths: entry.folders }).catch(() => entry.folders.map(() => false))
         const missing = results.filter(r => !r).length
+        this.missingFolders[entry.id] = entry.folders.filter((_, i) => !results[i])
         if (missing === 0) {
           this.folderStatus[entry.id] = 'ok'
         } else if (entry.folders.length === 1) {
