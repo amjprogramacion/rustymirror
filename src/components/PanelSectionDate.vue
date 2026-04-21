@@ -1,11 +1,8 @@
 <template>
-  <div>
-    <button v-if="collapsible" class="mp-section-title" @click="emit('toggle')">
-      Date taken <ChevronIcon :open="!collapsed" />
-    </button>
-    <div v-else class="mp-section-title">Date taken</div>
+  <CollapsibleSection :collapsible="collapsible" :collapsed="collapsed" @toggle="emit('toggle')">
+    <template #title>Date taken</template>
 
-    <div class="ps-edit-rows" v-show="!collapsible || !collapsed">
+    <div class="ps-edit-rows">
       <label class="ps-edit-row">
         <input
           class="ps-input"
@@ -18,12 +15,13 @@
       </label>
       <p v-if="showHint" class="ps-hint">Various values — leave empty to keep each file's date</p>
     </div>
-  </div>
+  </CollapsibleSection>
 </template>
 
 <script setup>
-import ChevronIcon from './ChevronIcon.vue'
+import CollapsibleSection from './CollapsibleSection.vue'
 import { isoToDatetimeLocal, datetimeLocalToIso } from '../utils/formatters'
+import '../styles/panel-sections.css'
 
 defineProps({
   value:       String,
@@ -34,46 +32,3 @@ defineProps({
 })
 const emit = defineEmits(['toggle', 'change'])
 </script>
-
-<style scoped>
-/* .mp-section-title is styled via :deep() in ImageDetailPanel */
-
-.ps-edit-rows {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-bottom: var(--space-2);
-}
-
-.ps-edit-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.ps-input {
-  width: 100%;
-  padding: 5px 8px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-primary);
-  font-size: var(--font-size-xs);
-  outline: none;
-  transition: border-color var(--transition);
-  box-sizing: border-box;
-}
-.ps-input:focus { border-color: var(--color-accent); }
-.ps-input::placeholder { color: var(--text-muted); }
-
-.ps-input[type="datetime-local"]::-webkit-calendar-picker-indicator {
-  filter: invert(0.6);
-  cursor: pointer;
-}
-
-.ps-hint {
-  font-size: 10px;
-  color: var(--text-muted);
-  font-style: italic;
-}
-</style>

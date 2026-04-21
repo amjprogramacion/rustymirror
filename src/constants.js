@@ -14,3 +14,9 @@ export const HISTORY_MAX_ENTRIES = 5
 
 // ── Geocoding ─────────────────────────────────────────────────────────────────
 export const GEOCODE_DEBOUNCE_MS = 600
+
+// ── Panel sections ────────────────────────────────────────────────────────────
+// Sentinel used by batch-edit aggregations to flag fields whose values differ
+// across the selected files. Panel sections render "Various values" when they
+// receive this sentinel.
+export const MIXED_VALUE = '__mixed__'

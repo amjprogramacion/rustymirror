@@ -1,11 +1,8 @@
 <template>
-  <div>
-    <button v-if="collapsible" class="mp-section-title" @click="emit('toggle')">
-      Details <ChevronIcon :open="!collapsed" />
-    </button>
-    <div v-else class="mp-section-title">Details</div>
+  <CollapsibleSection :collapsible="collapsible" :collapsed="collapsed" @toggle="emit('toggle')">
+    <template #title>Details</template>
 
-    <div class="ps-edit-rows" v-show="!collapsible || !collapsed">
+    <div class="ps-edit-rows">
       <label class="ps-edit-row">
         <span class="ps-label">Description</span>
         <input
@@ -41,11 +38,12 @@
     <p class="ps-save-notice" v-if="showNotice">
       Changes are written directly to the file's EXIF data.
     </p>
-  </div>
+  </CollapsibleSection>
 </template>
 
 <script setup>
-import ChevronIcon from './ChevronIcon.vue'
+import CollapsibleSection from './CollapsibleSection.vue'
+import '../styles/panel-sections.css'
 
 defineProps({
   description:    String,
@@ -60,47 +58,3 @@ defineProps({
 })
 const emit = defineEmits(['toggle', 'update:description', 'update:artist', 'update:copyright', 'change'])
 </script>
-
-<style scoped>
-/* .mp-section-title is styled via :deep() in ImageDetailPanel */
-
-.ps-edit-rows {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-bottom: var(--space-2);
-}
-
-.ps-edit-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.ps-label {
-  color: var(--text-muted);
-  font-size: 10px;
-}
-
-.ps-input {
-  width: 100%;
-  padding: 5px 8px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-primary);
-  font-size: var(--font-size-xs);
-  outline: none;
-  transition: border-color var(--transition);
-  box-sizing: border-box;
-}
-.ps-input:focus { border-color: var(--color-accent); }
-.ps-input::placeholder { color: var(--text-muted); }
-
-.ps-save-notice {
-  font-size: 10px;
-  color: var(--text-muted);
-  opacity: 0.7;
-  margin-top: var(--space-2);
-}
-</style>

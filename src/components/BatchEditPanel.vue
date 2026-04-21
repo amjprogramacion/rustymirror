@@ -211,13 +211,13 @@ import PanelSectionFileCamera from './PanelSectionFileCamera.vue'
 import PanelSectionExposure   from './PanelSectionExposure.vue'
 import PanelSectionDate       from './PanelSectionDate.vue'
 import PanelSectionDetails    from './PanelSectionDetails.vue'
+import { MIXED_VALUE as MIXED } from '../constants'
 
 const store     = useDuplicatesStore()
 const panel     = usePanelStore()
 const thumbs    = useThumbnailStore()
 const metaStore = useMetadataStore()
 const HEIC      = new Set(['heic', 'heif'])
-const MIXED     = '__mixed__'
 
 // ── Panel height resize ───────────────────────────────────────────────────────
 const MIN_HEIGHT = 200

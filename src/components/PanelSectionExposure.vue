@@ -1,27 +1,24 @@
 <template>
-  <div>
-    <button v-if="collapsible" class="mp-section-title" @click="emit('toggle')">
-      Exposure <ChevronIcon :open="!collapsed" />
-    </button>
-    <div v-else class="mp-section-title">Exposure</div>
+  <CollapsibleSection :collapsible="collapsible" :collapsed="collapsed" @toggle="emit('toggle')">
+    <template #title>Exposure</template>
 
-    <div class="ps-rows" v-show="!collapsible || !collapsed">
+    <div class="ps-rows">
       <template v-for="row in exposureRows" :key="row.label">
         <div class="ps-row" v-if="row.visible">
           <span class="ps-label">{{ row.label }}</span>
-          <span class="ps-value" v-if="!isBatch || row.value !== MIXED">{{ row.value }}</span>
+          <span class="ps-value" v-if="!isBatch || row.value !== MIXED_VALUE">{{ row.value }}</span>
           <span class="ps-value ps-value--muted" v-else>Various values</span>
         </div>
       </template>
     </div>
-  </div>
+  </CollapsibleSection>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import ChevronIcon from './ChevronIcon.vue'
-
-const MIXED = '__mixed__'
+import CollapsibleSection from './CollapsibleSection.vue'
+import { MIXED_VALUE } from '../constants'
+import '../styles/panel-sections.css'
 
 const props = defineProps({
   meta:        Object,
@@ -53,38 +50,3 @@ const exposureRows = computed(() => {
   ]
 })
 </script>
-
-<style scoped>
-/* .mp-section-title is styled via :deep() in ImageDetailPanel */
-
-.ps-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-bottom: var(--space-2);
-}
-
-.ps-row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  font-size: var(--font-size-xs);
-}
-
-.ps-label {
-  color: var(--text-muted);
-  flex-shrink: 0;
-  width: 80px;
-}
-
-.ps-value {
-  color: var(--text-secondary);
-  word-break: break-word;
-  font-size: var(--font-size-xs);
-}
-
-.ps-value--muted {
-  color: var(--text-muted);
-  font-style: italic;
-}
-</style>
