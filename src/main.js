@@ -3,6 +3,7 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import { useDuplicatesHistoryStore } from './store/duplicatesHistory'
 import { useMetadataHistoryStore } from './store/metadataHistory'
+import { useOrganizerHistoryStore } from './store/organizerHistory'
 
 import './styles/tokens.css'
 import './styles/base.css'
@@ -14,7 +15,9 @@ app.use(pinia)
 // Load persisted scan histories before mounting
 const history = useDuplicatesHistoryStore()
 const metadataHistory = useMetadataHistoryStore()
-Promise.all([history.load(), metadataHistory.load()]).then(() => {
+const organizerHistory = useOrganizerHistoryStore()
+Promise.all([history.load(), metadataHistory.load(), organizerHistory.load()]).then(() => {
   history.checkFolderStatus()
   metadataHistory.checkFolderStatus()
+  organizerHistory.checkFolderStatus()
 }).finally(() => app.mount('#app'))

@@ -91,15 +91,71 @@
 
   </section>
 
+  <!-- Recent scans -->
+  <template v-if="orgHistory.entries.length > 0">
+    <div class="sidebar-divider" />
+    <section class="sidebar-section history-section">
+      <p class="section-label">Recent scans</p>
+      <div class="history-entries-scroll">
+        <div
+          v-for="entry in orgHistory.entries"
+          :key="entry.id"
+          class="history-entry"
+          :class="{
+            disabled: org.scanning,
+            active: entry.id === org.activeHistoryEntryId,
+            'history-entry--missing': orgHistory.folderStatus[entry.id] === 'missing',
+            'history-entry--partial': orgHistory.folderStatus[entry.id] === 'partial',
+          }"
+          @click="org.loadFromHistory(entry)"
+          :title="entry.folders.join('\n')"
+        >
+          <div class="history-date">
+            {{ formatLocalDate(entry.date) }}<span v-if="formatDuration(entry.durationMs)" class="history-duration">&nbsp;({{ formatDuration(entry.durationMs) }})</span>
+          </div>
+          <div class="history-folders">
+            <span v-for="f in entry.folders" :key="f" class="history-folder" :title="f">
+              {{ shortPath(f) }}
+            </span>
+          </div>
+          <div class="history-footer">
+            <span class="history-stats">
+              {{ entry.images ?? 0 }} img · {{ entry.videos ?? 0 }} vid
+            </span>
+          </div>
+          <span
+            v-if="orgHistory.folderStatus[entry.id] === 'missing' || orgHistory.folderStatus[entry.id] === 'partial'"
+            class="folder-alert"
+            :title="orgHistory.folderStatus[entry.id] === 'missing' ? 'Folder no longer exists' : 'Some folders no longer exist'"
+          >
+            <IconWarning />
+          </span>
+          <button
+            class="history-remove"
+            title="Remove from history"
+            @click.stop="orgHistory.removeEntry(entry.id)"
+          >
+            <IconClose />
+          </button>
+        </div>
+      </div>
+    </section>
+  </template>
+
 </template>
 
 <script setup>
 import { open } from '@tauri-apps/plugin-dialog'
 import { useOrganizerStore } from '../store/organizer'
+import { useOrganizerHistoryStore } from '../store/organizerHistory'
+import { shortPath, formatLocalDate, formatDuration } from '../utils/formatters'
 import FolderSection from './FolderSection.vue'
 import SelectChevron from './SelectChevron.vue'
+import IconWarning from './IconWarning.vue'
+import IconClose from './IconClose.vue'
 
 const org = useOrganizerStore()
+const orgHistory = useOrganizerHistoryStore()
 
 async function pickFolder() {
   const path = await open({ directory: true, multiple: false })
@@ -111,11 +167,7 @@ async function pickOutputDir() {
   if (path) org.updateConfig({ outputDirectory: path })
 }
 
-function shortPath(p) {
-  const parts = p.replace(/\\/g, '/').split('/')
-  if (parts.length <= 2) return p
-  return '…/' + parts.slice(-2).join('/')
-}
+
 </script>
 
 <style scoped>
@@ -354,4 +406,111 @@ function shortPath(p) {
   width: 100%;
   padding-right: 28px;
 }
+
+/* ── History ── */
+.history-section {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.history-entries-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.history-entry {
+  position: relative;
+  padding: var(--space-2);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.history-entry:hover:not(.disabled):not(.active) {
+  background: var(--bg-card-hover);
+  border-color: var(--color-accent);
+}
+.history-entry.active {
+  border-color: var(--color-accent);
+  background: var(--bg-card);
+}
+.history-entry.disabled { opacity: 0.4; cursor: not-allowed; }
+.history-entry--missing { background: rgba(220, 53, 69, 0.08); border-color: rgba(220, 53, 69, 0.25); }
+.history-entry--partial { background: rgba(245, 197, 66, 0.08); border-color: rgba(245, 197, 66, 0.25); }
+.history-entry--missing:hover:not(.disabled):not(.active) { background: rgba(220, 53, 69, 0.15); border-color: rgba(220, 53, 69, 0.25); }
+.history-entry--partial:hover:not(.disabled):not(.active) { background: rgba(245, 197, 66, 0.15); border-color: rgba(245, 197, 66, 0.25); }
+
+.history-date { font-size: 10px; color: var(--text-muted); }
+.history-duration { opacity: 0.7; }
+
+.history-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.history-folder {
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1px;
+}
+.history-stats {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.history-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+.history-remove svg { width: 10px; height: 10px; display: block; }
+.history-remove:hover { background: var(--color-danger); color: #fff; }
+
+.folder-alert {
+  position: absolute;
+  top: 4px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+.folder-alert svg { width: 10px; height: 10px; display: block; }
+.history-entry--missing .folder-alert { color: rgb(220, 53, 69); }
+.history-entry--partial .folder-alert { color: rgb(245, 197, 66); }
 </style>

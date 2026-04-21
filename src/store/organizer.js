@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { useOrganizerHistoryStore } from './organizerHistory'
 
 export const useOrganizerStore = defineStore('organizer', () => {
   const folders = ref([])
@@ -14,8 +15,9 @@ export const useOrganizerStore = defineStore('organizer', () => {
     outputDirectory: '',
   })
 
-  const scanning      = ref(false)
-  const scanResult    = ref(null)  // { total, images, videos } | null
+  const scanning            = ref(false)
+  const scanResult          = ref(null)  // { total, images, videos } | null
+  const activeHistoryEntryId = ref(null)
   const sortBy        = ref('filename')  // 'filename' | 'type'
   const sortDir       = ref('asc')
   const previewing         = ref(false)
@@ -77,16 +79,30 @@ export const useOrganizerStore = defineStore('organizer', () => {
 
   async function runScan() {
     if (!folders.value.length) return
-    scanning.value  = true
-    error.value     = null
+    scanning.value   = true
+    error.value      = null
     scanResult.value = null
+    const t0 = Date.now()
     try {
-      scanResult.value = await invoke('count_media_files', { paths: folders.value, config: _buildConfig() })
+      const result = await invoke('count_media_files', { paths: folders.value, config: _buildConfig() })
+      scanResult.value = result
+      const orgHistory = useOrganizerHistoryStore()
+      const entryId = await orgHistory.addEntry(
+        folders.value, result.total, result.images, result.videos, Date.now() - t0
+      )
+      activeHistoryEntryId.value = entryId
     } catch (e) {
       error.value = e?.message ?? String(e)
     } finally {
       scanning.value = false
     }
+  }
+
+  async function loadFromHistory(entry) {
+    if (scanning.value) return
+    folders.value = [...entry.folders]
+    if (entry.id === activeHistoryEntryId.value) return
+    await runScan()
   }
 
   async function runPreviewRewrite() {
@@ -188,10 +204,10 @@ export const useOrganizerStore = defineStore('organizer', () => {
 
   return {
     folders, config,
-    scanning, scanResult, sortBy, sortDir,
+    scanning, scanResult, sortBy, sortDir, activeHistoryEntryId,
     previewing, previewingDate, executing, executingOp, progress,
     previewActions, previewDateActions, lastSummary, error,
     addFolder, removeFolder, updateConfig,
-    runScan, runPreviewRewrite, runPreview, runExecute, runMetadataRewrite, stop,
+    runScan, runPreviewRewrite, runPreview, runExecute, runMetadataRewrite, stop, loadFromHistory,
   }
 })
