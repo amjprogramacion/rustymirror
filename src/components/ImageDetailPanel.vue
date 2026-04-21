@@ -572,31 +572,13 @@ const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime ||
   border-bottom: 1px solid var(--border-color);
 }
 
+
 .mp-section--edit {
   border-bottom: none;
 }
 
 
-.mp-section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  height: 36px;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin: 0;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-  line-height: 1;
-}
-.mp-section-title:hover { color: var(--text-secondary); }
+/* .mp-section-title is defined globally in base.css */
 
 
 /* Content padding inside each section */

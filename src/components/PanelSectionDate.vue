@@ -1,9 +1,9 @@
 <template>
   <div>
-    <button v-if="collapsible" class="ps-section-title" @click="emit('toggle')">
+    <button v-if="collapsible" class="mp-section-title" @click="emit('toggle')">
       Date taken <ChevronIcon :open="!collapsed" />
     </button>
-    <div v-else class="ps-section-title">Date taken</div>
+    <div v-else class="mp-section-title">Date taken</div>
 
     <div class="ps-edit-rows" v-show="!collapsible || !collapsed">
       <label class="ps-edit-row">
@@ -36,29 +36,7 @@ const emit = defineEmits(['toggle', 'change'])
 </script>
 
 <style scoped>
-.ps-section-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  white-space: nowrap;
-  background: none;
-  border: none;
-  padding: 0;
-  text-align: left;
-  line-height: 1;
-  flex-shrink: 0;
-}
-button.ps-section-title {
-  width: 100%;
-  height: 36px;
-  cursor: pointer;
-}
-button.ps-section-title:hover { color: var(--text-secondary); }
+/* .mp-section-title is styled via :deep() in ImageDetailPanel */
 
 .ps-edit-rows {
   display: flex;

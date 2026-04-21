@@ -539,22 +539,20 @@ function formatDate(d) {
   white-space: nowrap;
 }
 .row-btn {
-  padding: 2px 7px;
+  padding: 2px 6px;
   font-size: 10px;
-  font-weight: 600;
-  border-radius: var(--border-radius-sm);
-  background: var(--bg-card);
+  font-weight: 500;
+  background: var(--bg-secondary);
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
   cursor: pointer;
-  transition: background var(--transition), color var(--transition);
-  letter-spacing: 0.2px;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
 }
-.row-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
-.row-btn-explore { color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 40%, var(--border-color)); }
-.row-btn-explore:hover { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
-.row-btn-exif { color: var(--text-muted); }
-.row-btn-exif.active { background: color-mix(in srgb, var(--color-accent) 18%, transparent); color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 50%, var(--border-color)); }
+.row-btn:hover        { background: var(--color-accent);  color: #fff; border-color: var(--color-accent); }
+.row-btn-explore:hover { background: var(--color-success); color: #fff; border-color: var(--color-success); }
+.row-btn-exif:hover,
+.row-btn-exif.active  { background: #7c3aed; color: #fff; border-color: #7c3aed; }
 
 
 /* ── Failed list ── */
