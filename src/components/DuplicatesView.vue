@@ -12,7 +12,8 @@
 
   <!-- Empty state -->
   <div class="empty-state" v-else-if="!store.scanDone">
-    <p>Add folders and press <strong>Scan</strong> to find duplicate images.</p>
+    <p class="empty-title">No folders selected</p>
+    <p class="empty-sub">Add folders in the sidebar and press <strong>Scan</strong> to find duplicates.</p>
   </div>
 
   <!-- Results -->
@@ -337,11 +338,14 @@ async function doDelete() {
 .empty-state {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: var(--space-2);
   color: var(--text-muted);
-  font-size: var(--font-size-md);
 }
+.empty-title { font-size: var(--font-size-lg); font-weight: 500; }
+.empty-sub   { font-size: var(--font-size-sm); }
 
 /* ── Action bar ── */
 .action-bar {

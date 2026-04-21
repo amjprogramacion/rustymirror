@@ -4,7 +4,7 @@
     <!-- Empty state -->
     <div v-if="!org.folders.length" class="empty-state">
       <p class="empty-title">No folders selected</p>
-      <p class="empty-sub">Add folders in the sidebar to get started.</p>
+      <p class="empty-sub">Add folders in the sidebar and press <strong>Scan</strong> to load files.</p>
     </div>
 
     <template v-else>
