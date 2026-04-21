@@ -20,7 +20,8 @@
           draggable="false"
         />
         <div v-else class="mp-thumb-placeholder">
-          <span class="mp-thumb-ext">{{ fileExt(entry.path).toUpperCase() }}</span>
+          <div v-if="thumbLoading" class="mp-thumb-spinner" />
+          <span v-else class="mp-thumb-ext">{{ fileExt(entry.path).toUpperCase() }}</span>
         </div>
         <span v-if="entry.isOriginal" class="mp-original-badge">Original</span>
       </div>
@@ -347,7 +348,21 @@ async function save() {
   }
 }
 
+// Enqueue thumbnail generation for HEIC files opened directly via panel
+watch(() => entry.value?.path, (path) => {
+  if (!path) return
+  if (HEIC.has(fileExt(path)) && !thumbs.thumbCache[path]) {
+    thumbs.enqueueThumbnail(path)
+  }
+}, { immediate: true })
+
 // ── Thumbnail source ──────────────────────────────────────────────────────────
+const thumbLoading = computed(() => {
+  const p = entry.value?.path
+  if (!p || !HEIC.has(fileExt(p))) return false
+  return !(p in thumbs.thumbCache)
+})
+
 const thumbSrc = computed(() => {
   const p = entry.value?.path
   if (!p) return null
@@ -490,6 +505,19 @@ const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime ||
   padding: 4px 10px;
   border-radius: var(--border-radius-sm);
   border: 1px solid var(--border-color);
+}
+
+.mp-thumb-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: mp-spin 0.7s linear infinite;
+}
+
+@keyframes mp-spin {
+  to { transform: rotate(360deg); }
 }
 
 .mp-original-badge {
