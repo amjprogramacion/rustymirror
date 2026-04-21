@@ -104,9 +104,9 @@ export const useDuplicatesHistoryStore = defineStore('duplicatesHistory', {
     },
 
     async checkFolderStatus() {
-      const { exists } = await import('@tauri-apps/plugin-fs')
+      const { invoke } = await import('@tauri-apps/api/core')
       for (const entry of this.entries) {
-        const results = await Promise.all(entry.folders.map(f => exists(f).catch(() => false)))
+        const results = await invoke('check_paths_exist', { paths: entry.folders }).catch(() => entry.folders.map(() => false))
         const missing = results.filter(r => !r).length
         if (missing === 0) {
           this.folderStatus[entry.id] = 'ok'

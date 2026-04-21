@@ -24,7 +24,7 @@
     <SidebarOrganizer v-else />
 
     <!-- Cache buttons — pinned to bottom -->
-    <div class="sidebar-spacer" v-if="!((activeMode === 'duplicates' && history.entries.length > 0) || (activeMode === 'metadata' && metaHistory.entries.length > 0))" />
+    <div class="sidebar-spacer" v-if="!((activeMode === 'duplicates' && history.entries.length > 0) || (activeMode === 'metadata' && metaHistory.entries.length > 0) || (activeMode === 'organizer' && orgHistory.entries.length > 0))" />
     <div class="sidebar-divider" />
     <section class="sidebar-section sidebar-bottom">
       <button
@@ -46,6 +46,16 @@
         Clear scan history
       </button>
       <button
+        v-if="activeMode === 'organizer'"
+        class="btn btn-cache btn-full btn-sm"
+        :class="{ 'btn-cache--active': orgHistory.entries.length > 0 }"
+        @click="orgHistory.clearHistory()"
+        :disabled="orgHistory.entries.length === 0"
+      >
+        Clear scan history
+      </button>
+      <button
+        v-if="activeMode !== 'organizer'"
         class="btn btn-cache btn-full btn-sm"
         :class="{ 'btn-cache--active': thumbCacheSize > 0 }"
         @click="clearThumbCache"
@@ -95,6 +105,7 @@ import { useMetadataStore } from '../store/metadata'
 import { useThumbnailStore } from '../store/thumbnails'
 import { useDuplicatesHistoryStore } from '../store/duplicatesHistory'
 import { useMetadataHistoryStore } from '../store/metadataHistory'
+import { useOrganizerHistoryStore } from '../store/organizerHistory'
 import { formatSize } from '../utils/formatters'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
@@ -110,6 +121,7 @@ const meta        = useMetadataStore()
 const thumbStore  = useThumbnailStore()
 const history     = useDuplicatesHistoryStore()
 const metaHistory = useMetadataHistoryStore()
+const orgHistory  = useOrganizerHistoryStore()
 
 const { status: updateStatus } = useUpdater()
 const baseVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0'

@@ -63,6 +63,7 @@ pub fn run() {
             commands::execute_metadata_rewrite,
             commands::stop_organize,
             commands::count_media_files,
+            commands::check_paths_exist,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

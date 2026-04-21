@@ -1205,3 +1205,10 @@ pub async fn count_media_files(paths: Vec<String>, config: crate::organizer::Org
     })
     .await?
 }
+
+/// Checks whether each path in `paths` exists on disk.
+/// Returns one bool per path. Runs in Rust so it bypasses frontend fs scope restrictions.
+#[tauri::command]
+pub fn check_paths_exist(paths: Vec<String>) -> Vec<bool> {
+    paths.iter().map(|p| std::path::Path::new(p).exists()).collect()
+}
