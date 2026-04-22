@@ -241,4 +241,14 @@ impl Cache {
             |row| row.get::<_, Vec<u8>>(0),
         ).ok()
     }
+
+    /// Flushes the WAL (Write-Ahead Log) to the main database file.
+    /// Ensures all pending writes are persisted before app shutdown or critical operations.
+    /// Returns Ok if successful, or an error if the checkpoint fails.
+    pub fn flush(&self) -> Result<()> {
+        let conn = self.conn.lock().map_err(|_| anyhow::anyhow!("mutex poisoned"))?;
+        conn.pragma_update(None, "wal_checkpoint", "RESTART")?;
+        tracing::debug!("cache WAL checkpoint completed");
+        Ok(())
+    }
 }

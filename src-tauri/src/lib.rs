@@ -49,6 +49,7 @@ pub fn run() {
             commands::directory_fingerprint,
             commands::get_cache_size,
             commands::clear_cache,
+            commands::flush_cache,
             commands::get_thumb_cache_size,
             commands::clear_thumb_cache,
             commands::is_network_path,

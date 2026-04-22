@@ -55,3 +55,15 @@ pub fn clear_thumb_cache(app: tauri::AppHandle) -> Result<(), AppError> {
 pub fn is_debug_build() -> bool {
     cfg!(debug_assertions)
 }
+
+/// Flushes the cache WAL (Write-Ahead Log) to disk.
+/// Ensures all pending cache writes are persisted to the database file.
+/// Useful before app shutdown to guarantee data durability.
+#[tauri::command]
+pub fn flush_cache(app: tauri::AppHandle) -> Result<(), AppError> {
+    cache_data_dir(&app).ok()
+        .and_then(|d| crate::cache::Cache::open(&d).ok())
+        .ok_or_else(|| AppError::Io { message: "Cache not available".to_string() })?
+        .flush()
+        .map_err(|e| AppError::Io { message: e.to_string() })
+}
