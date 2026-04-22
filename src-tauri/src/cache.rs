@@ -171,20 +171,6 @@ impl Cache {
         result
     }
 
-    #[allow(dead_code)]
-    pub fn set(&self, path: &str, mtime: &str, e: &CachedFile) {
-        if let Ok(conn) = self.conn.lock() {
-            let _ = conn.execute(
-                "INSERT OR REPLACE INTO file_cache
-                 (path, size_bytes, mtime, blake3, phash, fast_phash, header_hash, width, height, modified, blur_score)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
-                params![path, e.size_bytes as i64, mtime,
-                        &e.blake3, &e.phash, &e.fast_phash, &e.header_hash,
-                        e.width as i64, e.height as i64, &e.modified, e.blur_score],
-            );
-        }
-    }
-
     /// Batch-insert entries in a single transaction.
     pub fn put_batch(&self, entries: &[(String, String, CachedFile)]) -> Result<()> {
         if entries.is_empty() { return Ok(()); }

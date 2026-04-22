@@ -128,14 +128,6 @@ pub fn perceptual_hash_from_bytes(bytes: &[u8], use_thumbnail: bool) -> Result<I
     Ok(hasher.hash_image(&small))
 }
 
-/// Computes pHash by reading the file fresh.
-#[allow(dead_code)]
-pub fn perceptual_hash(path: &Path, use_thumbnail: bool) -> Result<ImageHash, image::ImageError> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| image::ImageError::IoError(e))?;
-    perceptual_hash_from_bytes(&bytes, use_thumbnail)
-}
-
 /// Sharpness score via Laplacian variance.
 ///
 /// Decodes to luma and downsamples to at most 256 px on the longest side
