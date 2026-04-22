@@ -196,31 +196,6 @@ fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim
     if status.success() { Ok(()) } else { anyhow::bail!("converter exit {}", status) }
 }
 
-/// Batch-converts HEIC files in parallel. Returns (original, temp, w, h).
-/// `max_dim`: if Some(n), outputs are resized to at most n×n pixels (scanner
-/// use case — pHash quality is identical but temp files are ~50× smaller).
-pub fn batch_convert_heic(
-    heic_paths: &[PathBuf],
-    resource_dir: Option<&Path>,
-    max_dim: Option<u32>,
-    progress_cb: impl Fn(usize, usize) + Send + Sync,
-) -> Vec<(PathBuf, PathBuf, u32, u32)> {
-    use rayon::prelude::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    // Resolve magick once before parallel work
-    let _ = magick_path(resource_dir);
-
-    let total   = heic_paths.len();
-    let counter = AtomicUsize::new(0);
-
-    heic_paths.par_iter().filter_map(|src| {
-        let result = heic_to_temp_jpeg(src, resource_dir, max_dim);
-        let done = counter.fetch_add(1, Ordering::Relaxed) + 1;
-        progress_cb(done, total);
-        result.map(|(dst, w, h)| (src.clone(), dst, w, h))
-    }).collect()
-}
 
 pub fn cleanup_temp(path: &Path) {
     let _ = std::fs::remove_file(path);

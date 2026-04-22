@@ -1,7 +1,7 @@
 <template>
   <div class="scan-overlay">
     <div class="scan-card">
-      <div class="spinner" />
+      <div class="spinner" v-if="fingerprinting || isScanning || isAnalyzing" />
 
       <!-- Fingerprinting: folder analysis before scan -->
       <template v-if="fingerprinting">
@@ -47,7 +47,7 @@
 
       <!-- Indeterminate fallback: simple title + optional subtitle -->
       <template v-else>
-        <p class="scan-title">{{ scanLabel || title || 'Scanning…' }}</p>
+        <p class="scan-title">{{ scanLabel || analyzeProgress.phase || title || 'Scanning…' }}</p>
         <p v-if="subtitle" class="scan-subtitle">{{ subtitle }}</p>
         <div class="bar-track"><div class="bar-indeterminate" /></div>
       </template>

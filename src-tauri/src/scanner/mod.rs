@@ -12,7 +12,7 @@ use anyhow::Result;
 use rayon::prelude::*;
 
 use crate::cache::CachedFile;
-use crate::heic::{batch_convert_heic, cleanup_temp};
+use crate::heic::{cleanup_temp, heic_to_temp_jpeg};
 use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, FailedFileKind, ImageEntry, RetentionRule, SimilarityKind};
 
 use self::bktree::BkTree;
@@ -315,54 +315,52 @@ where
     // in the same batch conversion to avoid spawning magick identify per file later.
     let heic_need_dims_only: Vec<usize> = all_heic_indices.iter().cloned()
         .filter(|&i| grouped[i] && records[i].entry.width == 0).collect();
-    let heic_convert_paths: Vec<PathBuf> = heic_need_convert.iter().chain(heic_need_dims_only.iter())
-        .map(|&i| PathBuf::from(&records[i].entry.path)).collect();
     let heic_count = heic_need_convert.len();
-    let heic_total_convert = heic_convert_paths.len();
 
     tracing::debug!("phase 3: {} HEIC ({} need pHash, {} from cache, {} grouped need dims)",
         ungrouped_heic_indices.len(), heic_count,
         ungrouped_heic_indices.len() - heic_count,
         heic_need_dims_only.len());
 
-    analyze_cb(AnalyzeProgress { analyzed: 0, total: heic_total_convert.max(1),
-        phase: format!("Converting {} HEIC files…", heic_total_convert) });
+    analyze_cb(AnalyzeProgress { analyzed: 0, total: 0,
+        phase: "Preparing images for conversion…".into() });
 
-    let conversions: HashMap<PathBuf, (PathBuf, u32, u32)> = if heic_total_convert > 0 {
-        // max_dim=512: temp JPEGs are ~50× smaller than full-res, cutting I/O dramatically.
-        // pHash quality is identical — it only needs a small image.
-        batch_convert_heic(&heic_convert_paths, resource_dir.as_deref(), Some(512), |done, total| {
-            analyze_cb(AnalyzeProgress { analyzed: done, total: total.max(1),
-                phase: format!("Converting HEIC/AVIF files ({}/{})…", done, total) });
-        }).into_iter().map(|(orig, tmp, w, h)| (orig, (tmp, w, h))).collect()
-    } else { HashMap::new() };
-
-    tracing::debug!("phase 3a: {}/{} HEIC converted in {:.1}s",
-        conversions.len(), heic_total_convert, t3.elapsed().as_secs_f32());
-
-    let t3b = std::time::Instant::now();
-
-    let stop_ph = stop.clone();
-    let phase3b_total = heic_need_convert.len();
-    let phase3b_counter = std::sync::atomic::AtomicUsize::new(0);
-    analyze_cb(AnalyzeProgress { analyzed: 0, total: phase3b_total.max(1),
-        phase: format!("Hashing {} HEIC/AVIF images…", phase3b_total) });
-
+    // ── Phase 3a+3b: convert → hash → cache → cleanup per file ───────────────
+    // Each file is written to cache immediately after hashing so that stopping
+    // mid-scan doesn't require re-conversion on the next run.
+    let phase3_counter = std::sync::atomic::AtomicUsize::new(0);
     let mut heic_extra: HashMap<usize, HeicExtra> = heic_need_convert
         .par_iter()
         .filter_map(|&i| {
-            if stop_ph.load(AOrdering::Relaxed) { return None; }
-            let orig = PathBuf::from(&records[i].entry.path);
-            let (tmp, w, h) = conversions.get(&orig)?;
-            let tmp_bytes = std::fs::read(tmp).ok()?;
-            // Reuse already-read bytes — avoids a second disk read of the temp JPEG.
+            if stop.load(AOrdering::Relaxed) { return None; }
+            let path = PathBuf::from(&records[i].entry.path);
+            let (tmp, w, h) = heic_to_temp_jpeg(&path, resource_dir.as_deref(), Some(512))?;
+            let done = phase3_counter.fetch_add(1, AOrdering::Relaxed) + 1;
+            analyze_cb(AnalyzeProgress { analyzed: done, total: heic_count.max(1),
+                phase: "Converting images…".into() });
+            let tmp_bytes = std::fs::read(&tmp).ok();
+            cleanup_temp(&tmp);
+            let tmp_bytes = tmp_bytes?;
             let ph = crate::hasher::perceptual_hash_from_bytes(&tmp_bytes, fast_mode).ok()?;
             let modified = parse_exif_date(&tmp_bytes)
                 .unwrap_or_else(|| records[i].entry.modified.clone());
-            let done = phase3b_counter.fetch_add(1, AOrdering::Relaxed) + 1;
-            analyze_cb(AnalyzeProgress { analyzed: done, total: phase3b_total.max(1),
-                phase: "Hashing HEIC images…".into() });
-            Some((i, HeicExtra { ph, width: *w, height: *h, modified }))
+            if let Some(ref c) = cache {
+                let r = &records[i];
+                let (phash, fast_phash) = CachedFile::phash_pair_for_mode(
+                    fast_mode, Some(phash_to_hex(&ph)), None);
+                let _ = c.put_batch(&[(cache_key(&r.entry.path), r.mtime_key.clone(), CachedFile {
+                    blake3:      r.ex_hash.clone(),
+                    size_bytes:  r.entry.size_bytes,
+                    phash,
+                    fast_phash,
+                    header_hash: r.header_hash.clone(),
+                    width:       w,
+                    height:      h,
+                    modified:    modified.clone(),
+                    blur_score:  None,
+                })]);
+            }
+            Some((i, HeicExtra { ph, width: w, height: h, modified }))
         })
         .collect();
 
@@ -378,61 +376,43 @@ where
         }
     }
 
-    for (tmp, _, _) in conversions.values() { cleanup_temp(tmp); }
-    tracing::debug!("phase 3b: {} HEIC pHashes in {:.1}s", heic_extra.len(), t3b.elapsed().as_secs_f32());
+    tracing::debug!("phase 3: {} HEIC converted+hashed in {:.1}s", heic_extra.len(), t3.elapsed().as_secs_f32());
 
-    if let Some(ref c) = cache {
-        let heic_updates: Vec<(String, String, CachedFile)> = heic_extra.iter()
-            .map(|(&i, extra)| {
-                let r = &records[i];
-                (cache_key(&r.entry.path), r.mtime_key.clone(), CachedFile {
-                    blake3:      r.ex_hash.clone(),
-                    size_bytes:  r.entry.size_bytes,
-                    phash:       Some(phash_to_hex(&extra.ph)),
-                    fast_phash:  None,
-                    header_hash: r.header_hash.clone(),
-                    width:       extra.width,
-                    height:      extra.height,
-                    modified:    extra.modified.clone(),
-                    blur_score:  None,
-                })
-            })
-            // Also cache dimensions for grouped HEICs we just converted, so future
-            // scans find them in cache (w > 0) and skip the conversion entirely.
-            .chain(heic_need_dims_only.iter().filter_map(|&i| {
-                let orig = PathBuf::from(&records[i].entry.path);
-                let (_, w, h) = conversions.get(&orig)?;
-                if *w == 0 { return None; }
+    // Convert dims-only HEICs (exact duplicates with no cached dimensions).
+    // Cache dimensions immediately per file.
+    let dims_only_map: HashMap<usize, (u32, u32)> = heic_need_dims_only
+        .par_iter()
+        .filter_map(|&i| {
+            let path = PathBuf::from(&records[i].entry.path);
+            let (tmp, w, h) = heic_to_temp_jpeg(&path, resource_dir.as_deref(), Some(512))?;
+            cleanup_temp(&tmp);
+            if w == 0 { return None; }
+            if let Some(ref c) = cache {
                 let r = &records[i];
                 let key = cache_key(&r.entry.path);
                 let existing = bulk_cache.get(&key);
-                Some((key, r.mtime_key.clone(), CachedFile {
+                let _ = c.put_batch(&[(key, r.mtime_key.clone(), CachedFile {
                     blake3:      r.ex_hash.clone(),
                     size_bytes:  r.entry.size_bytes,
                     phash:       existing.and_then(|e| e.data.phash.clone()),
                     fast_phash:  existing.and_then(|e| e.data.fast_phash.clone()),
                     header_hash: r.header_hash.clone(),
-                    width:       *w,
-                    height:      *h,
+                    width:       w,
+                    height:      h,
                     modified:    r.entry.modified.clone(),
                     blur_score:  None,
-                }))
-            }))
-            .collect();
-        let _ = c.put_batch(&heic_updates);
-    }
+                })]);
+            }
+            Some((i, (w, h)))
+        })
+        .collect();
 
     let grouped_heic_indices: Vec<usize> = all_heic_indices.iter().cloned()
         .filter(|&i| grouped[i]).collect();
-    // Build dimensions map for grouped HEICs from conversion results — no subprocess.
-    // Falls back to cached dimensions (width > 0 from a prior scan) if not converted.
     let grouped_heic_dims: HashMap<usize, (u32, u32)> = grouped_heic_indices
         .iter()
         .filter_map(|&i| {
-            let orig = PathBuf::from(&records[i].entry.path);
-            if let Some((_, w, h)) = conversions.get(&orig) {
-                if *w > 0 { return Some((i, (*w, *h))); }
-            }
+            if let Some(&(w, h)) = dims_only_map.get(&i) { return Some((i, (w, h))); }
             if records[i].entry.width > 0 {
                 return Some((i, (records[i].entry.width, records[i].entry.height)));
             }
