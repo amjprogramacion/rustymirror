@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-use super::{AppError, to_pathbuf_vec, select_date_by_priority};
+use super::{AppError, to_pathbuf_vec, process_exif_chunk};
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,46 +69,15 @@ pub async fn count_media_files(paths: Vec<String>, config: crate::organizer::Org
 
         // Read DateTimeOriginal + CreateDate for all files via ExifTool batch calls.
         let exiftool = resource_dir.as_deref().and_then(crate::exiftool::find_exiftool);
-        let mut date_map: HashMap<String, (String, String)> = HashMap::new(); // path → (date, source)
+        let mut date_map: HashMap<String, (String, String)> = HashMap::new();
 
-        let mut sorted_paths: Vec<&PathBuf> = files.iter().collect();
-        sorted_paths.sort();
+        if let Some(et) = exiftool {
+            let mut sorted_paths: Vec<&PathBuf> = files.iter().collect();
+            sorted_paths.sort();
 
-        if let Some(ref et) = exiftool {
             for chunk in sorted_paths.chunks(CHUNK) {
-                let owned: Vec<PathBuf> = chunk.iter().map(|p| (*p).clone()).collect();
-                if let Ok(results) = crate::exiftool::batch_read_tags(et, &owned, &["-EXIF:DateTimeOriginal", "-QuickTime:CreateDate", "-File:FileModifyDate"]) {
-                    for obj in results {
-                        let src_path = obj.get("SourceFile")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.replace('\\', "/"));
-                        let filename = src_path.as_deref()
-                            .and_then(|p| p.rsplit('/').next())
-                            .unwrap_or("");
-                        let from_filename = crate::organizer::filename_date(filename);
-                        let from_exif = obj.get("DateTimeOriginal")
-                            .or_else(|| obj.get("CreateDate"))
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_owned());
-                        let from_exif_source = if obj.get("DateTimeOriginal").and_then(|v| v.as_str()).is_some() {
-                            "exif"
-                        } else {
-                            "create"
-                        };
-                        let from_modify = obj.get("FileModifyDate").and_then(|v| v.as_str()).map(|s| s.to_owned());
-
-                        let entry = select_date_by_priority(
-                            config.date_priority.clone(),
-                            from_filename,
-                            from_exif,
-                            from_exif_source,
-                            from_modify,
-                        );
-                        if let (Some(src), Some(entry)) = (src_path, entry) {
-                            date_map.insert(src, entry);
-                        }
-                    }
-                }
+                let chunk_dates = process_exif_chunk(&et, chunk, config.date_priority.clone());
+                date_map.extend(chunk_dates);
             }
         }
 

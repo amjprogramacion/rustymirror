@@ -65,3 +65,64 @@ pub fn select_date_by_priority(
         }
     }
 }
+
+/// Processes a chunk of file paths via ExifTool, extracting date metadata.
+/// Returns a map of normalized path → (date, source).
+pub fn process_exif_chunk(
+    et: &PathBuf,
+    chunk: &[&PathBuf],
+    priority: crate::organizer::DatePriority,
+) -> std::collections::HashMap<String, (String, String)> {
+    use std::collections::HashMap;
+
+    let mut date_map: HashMap<String, (String, String)> = HashMap::new();
+
+    // Convert references to owned PathBuf for the batch operation
+    let owned: Vec<PathBuf> = chunk.iter().map(|p| (*p).clone()).collect();
+
+    // Query EXIF dates and file modification time
+    let results = match crate::exiftool::batch_read_tags(
+        et,
+        &owned,
+        &["-EXIF:DateTimeOriginal", "-QuickTime:CreateDate", "-File:FileModifyDate"],
+    ) {
+        Ok(r) => r,
+        Err(_) => return date_map, // Return empty map on error, don't fail the whole operation
+    };
+
+    for obj in results {
+        let src_path = obj.get("SourceFile")
+            .and_then(|v| v.as_str())
+            .map(|s| s.replace('\\', "/"));
+
+        let filename = src_path.as_deref()
+            .and_then(|p| p.rsplit('/').next())
+            .unwrap_or("");
+
+        let from_filename = crate::organizer::filename_date(filename);
+        let from_exif = obj.get("DateTimeOriginal")
+            .or_else(|| obj.get("CreateDate"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_owned());
+        let from_exif_source = if obj.get("DateTimeOriginal").and_then(|v| v.as_str()).is_some() {
+            "exif"
+        } else {
+            "create"
+        };
+        let from_modify = obj.get("FileModifyDate")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_owned());
+
+        if let (Some(src), Some(entry)) = (src_path, select_date_by_priority(
+            priority.clone(),
+            from_filename,
+            from_exif,
+            from_exif_source,
+            from_modify,
+        )) {
+            date_map.insert(src, entry);
+        }
+    }
+
+    date_map
+}

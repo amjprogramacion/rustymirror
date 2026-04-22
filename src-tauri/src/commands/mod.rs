@@ -7,7 +7,7 @@ mod file;
 mod cache;
 mod util;
 
-pub use util::{to_pathbuf_vec, to_base64_data_uri, extract_tag_string, extract_tag_f64, extract_tag_u64, select_date_by_priority};
+pub use util::{to_pathbuf_vec, to_base64_data_uri, extract_tag_string, extract_tag_f64, extract_tag_u64, process_exif_chunk};
 
 // Re-export all commands
 pub use scan::*;
