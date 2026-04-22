@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-use super::AppError;
+use super::{AppError, to_pathbuf_vec};
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,7 +35,7 @@ pub async fn count_media_files(paths: Vec<String>, config: crate::organizer::Org
     let resource_dir = app.path().resource_dir().ok();
 
     tokio::task::spawn_blocking(move || {
-        let directories: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+        let directories = to_pathbuf_vec(&paths);
 
         let files: HashSet<PathBuf> = directories.iter().flat_map(|dir| {
             walkdir::WalkDir::new(dir).follow_links(false).into_iter()

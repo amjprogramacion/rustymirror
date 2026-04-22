@@ -1,5 +1,5 @@
 use tauri::Manager;
-use super::{AppError, cache_data_dir};
+use super::{AppError, cache_data_dir, to_base64_data_uri};
 
 #[tauri::command]
 pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String, AppError> {
@@ -9,7 +9,6 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
     tokio::task::spawn_blocking(move || -> Result<String, AppError> {
         use image::imageops::FilterType;
         use std::io::{Cursor, Seek, SeekFrom};
-        use base64::Engine;
 
         let thumb_err = |msg: String| AppError::Thumbnail { message: msg };
 
@@ -30,8 +29,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
                 if cp.exists() {
                     if let Ok(cached) = std::fs::read(cp) {
                         tracing::debug!("thumb HIT (heic): {}", path);
-                        return Ok(format!("data:image/jpeg;base64,{}",
-                            base64::engine::general_purpose::STANDARD.encode(&cached)));
+                        return Ok(to_base64_data_uri(&cached, "image/jpeg"));
                     }
                 }
             }
@@ -66,8 +64,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
                 tracing::debug!("thumb SAVE (heic): {}", path);
             }
 
-            return Ok(format!("data:image/jpeg;base64,{}",
-                base64::engine::general_purpose::STANDARD.encode(&thumb_bytes)));
+            return Ok(to_base64_data_uri(&thumb_bytes, "image/jpeg"));
         }
 
         // Non-HEIC: handles local PNGs (WebView2 struggles with some variants)
@@ -84,8 +81,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
             if cp.exists() {
                 if let Ok(cached) = std::fs::read(cp) {
                     tracing::debug!("thumb HIT (jpg/net): {}", path);
-                    return Ok(format!("data:image/jpeg;base64,{}",
-                        base64::engine::general_purpose::STANDARD.encode(&cached)));
+                    return Ok(to_base64_data_uri(&cached, "image/jpeg"));
                 }
             }
         }
@@ -112,9 +108,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
                     "tiff"|"tif" => "image/tiff",
                     _            => "image/jpeg",
                 };
-                return Ok(format!("data:{};base64,{}",
-                    mime,
-                    base64::engine::general_purpose::STANDARD.encode(&bytes)));
+                return Ok(to_base64_data_uri(&bytes, mime));
             }
         };
         let img   = apply_exif_orientation(&bytes, img);
@@ -135,8 +129,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
             tracing::debug!("thumb SAVE (jpg/net): {}", path);
         }
 
-        Ok(format!("data:image/jpeg;base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(thumb_bytes)))
+        Ok(to_base64_data_uri(&thumb_bytes, "image/jpeg"))
     })
     .await?
 }
@@ -147,7 +140,6 @@ pub async fn get_full_image(path: String, app: tauri::AppHandle) -> Result<Strin
 
     tokio::task::spawn_blocking(move || -> Result<String, AppError> {
         use std::io::{Cursor, Seek, SeekFrom};
-        use base64::Engine;
 
         let thumb_err = |msg: String| AppError::Thumbnail { message: msg };
 
@@ -177,8 +169,7 @@ pub async fn get_full_image(path: String, app: tauri::AppHandle) -> Result<Strin
         img.write_to(&mut buf, image::ImageFormat::Jpeg).map_err(|e| thumb_err(e.to_string()))?;
         buf.seek(SeekFrom::Start(0)).map_err(|e| thumb_err(e.to_string()))?;
 
-        Ok(format!("data:image/jpeg;base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(buf.into_inner())))
+        Ok(to_base64_data_uri(&buf.into_inner(), "image/jpeg"))
     })
     .await?
 }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Manager, State};
 
-use super::{AppError, MetaScanResult, MetaScanState, evict_cache_for};
+use super::{AppError, MetaScanResult, MetaScanState, evict_cache_for, to_pathbuf_vec};
 use crate::types::FailedFile;
 
 /// Scans directories and returns all images with basic file metadata.
@@ -21,8 +21,7 @@ pub async fn scan_for_metadata(
     let resource_dir = app.path().resource_dir().ok();
 
     tokio::task::spawn_blocking(move || {
-        let directories: Vec<std::path::PathBuf> =
-            paths.iter().map(std::path::PathBuf::from).collect();
+        let directories = to_pathbuf_vec(&paths);
         let all_images = crate::scanner::collect_images(&directories);
 
         let exiftool = resource_dir

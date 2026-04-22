@@ -5,6 +5,9 @@ mod organizer;
 mod media;
 mod file;
 mod cache;
+mod util;
+
+pub use util::{to_pathbuf_vec, to_base64_data_uri};
 
 // Re-export all commands
 pub use scan::*;

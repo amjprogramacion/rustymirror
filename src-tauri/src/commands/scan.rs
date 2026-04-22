@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::scanner::{apply_retention_rule, find_duplicates};
 use crate::types::{AnalyzeProgress, RetentionRule, ScanProgress};
-use super::{AppError, ScanResult, ScanState, MetaScanState, FileListCache, cache_data_dir};
+use super::{AppError, ScanResult, ScanState, MetaScanState, FileListCache, cache_data_dir, to_pathbuf_vec};
 
 #[tauri::command]
 pub async fn scan_directories(
@@ -20,7 +20,7 @@ pub async fn scan_directories(
     let stop = Arc::new(AtomicBool::new(false));
     *scan_state.0.lock().unwrap() = stop.clone();
 
-    let directories: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+    let directories = to_pathbuf_vec(&paths);
     let app_clone  = app.clone();
     let app_clone2 = app.clone();
     let resource_dir = app.path().resource_dir().ok();
@@ -120,7 +120,7 @@ pub fn directory_fingerprint(
 ) -> Result<String, AppError> {
     use std::collections::BTreeMap;
 
-    let directories: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+    let directories = to_pathbuf_vec(&paths);
     let image_paths = crate::scanner::collect_images(&directories);
 
     // BTreeMap keeps keys sorted — deterministic regardless of OS walk order
