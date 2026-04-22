@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Manager, State};
 
-use super::{AppError, MetaScanResult, MetaScanState, evict_cache_for, to_pathbuf_vec};
+use super::{AppError, MetaScanResult, MetaScanState, evict_cache_for, to_pathbuf_vec, extract_tag_string, extract_tag_f64, extract_tag_u64};
 use crate::types::FailedFile;
 
 /// Scans directories and returns all images with basic file metadata.
@@ -103,32 +103,11 @@ pub async fn scan_for_metadata(
                 let lookup_key = path_str.replace('\\', "/");
                 let obj = meta_map.get(&lookup_key);
 
-                let tag_str = |key: &str| -> Option<String> {
-                    obj?.get(key).and_then(|v| match v {
-                        serde_json::Value::String(s) => {
-                            let s = s.trim();
-                            if s.is_empty() { None } else { Some(s.to_owned()) }
-                        }
-                        serde_json::Value::Number(n) => Some(n.to_string()),
-                        _ => None,
-                    })
-                };
-                let tag_f64 = |key: &str| -> Option<f64> {
-                    let v = obj?.get(key)?;
-                    v.as_f64()
-                        .or_else(|| v.as_str().and_then(|s| s.split_whitespace().next()?.parse().ok()))
-                };
-                let tag_u64 = |key: &str| -> Option<u64> {
-                    let v = obj?.get(key)?;
-                    v.as_u64()
-                        .or_else(|| v.as_str().and_then(|s| s.split_whitespace().next()?.parse().ok()))
-                };
-
-                let mut width = tag_u64("ImageWidth")
-                    .or_else(|| tag_u64("ExifImageWidth"))
+                let mut width = extract_tag_u64(obj, "ImageWidth")
+                    .or_else(|| extract_tag_u64(obj, "ExifImageWidth"))
                     .unwrap_or(0) as u32;
-                let mut height = tag_u64("ImageHeight")
-                    .or_else(|| tag_u64("ExifImageHeight"))
+                let mut height = extract_tag_u64(obj, "ImageHeight")
+                    .or_else(|| extract_tag_u64(obj, "ExifImageHeight"))
                     .unwrap_or(0) as u32;
 
                 let is_heic_format = p.extension()
@@ -145,11 +124,11 @@ pub async fn scan_for_metadata(
                     if w > 0 { width = w; height = h; }
                     date
                 } else {
-                    tag_str("DateTimeOriginal").map(crate::metadata::exif_date_to_iso)
+                    extract_tag_string(obj, "DateTimeOriginal").map(crate::metadata::exif_date_to_iso)
                 };
 
-                let make = tag_str("Make");
-                let model = tag_str("Model");
+                let make = extract_tag_string(obj, "Make");
+                let model = extract_tag_string(obj, "Model");
                 let device = match (make, model) {
                     (Some(mk), Some(md)) => Some(format!("{mk} {md}")),
                     (Some(mk), None) => Some(mk),
@@ -165,8 +144,8 @@ pub async fn scan_for_metadata(
                     modified,
                     is_original: false,
                     date_taken,
-                    gps_latitude: tag_f64("GPSLatitude"),
-                    gps_longitude: tag_f64("GPSLongitude"),
+                    gps_latitude: extract_tag_f64(obj, "GPSLatitude"),
+                    gps_longitude: extract_tag_f64(obj, "GPSLongitude"),
                     blur_score: None,
                     device,
                 });
