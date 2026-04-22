@@ -180,6 +180,7 @@ import { useOrganizerStore } from '../store/organizer'
 import { usePanelStore } from '../store/panel'
 import ScanProgress from './ScanProgress.vue'
 import ImageDetailPanel from './ImageDetailPanel.vue'
+import { fileExt } from '../utils/formatters'
 
 const org = useOrganizerStore()
 const panel = usePanelStore()
@@ -220,8 +221,7 @@ const previewDateByPath = computed(() => {
 const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mpg', 'mpeg', 'mkv'])
 
 function fileType(name) {
-  const ext = name.split('.').pop()?.toLowerCase() ?? ''
-  return VIDEO_EXTS.has(ext) ? 'video' : 'image'
+  return VIDEO_EXTS.has(fileExt(name)) ? 'video' : 'image'
 }
 
 const sortedFiles = computed(() => {

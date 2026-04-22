@@ -1,6 +1,6 @@
 <template>
   <template v-if="entries.length > 0">
-    <div class="sidebar-divider" />
+    <SidebarDivider />
     <section class="sidebar-section history-section">
       <p class="section-label">Recent scans</p>
       <div class="history-entries-scroll">
@@ -55,6 +55,7 @@
 import { shortPath, formatLocalDate, formatDuration } from '../utils/formatters'
 import IconWarning from './IconWarning.vue'
 import IconClose from './IconClose.vue'
+import SidebarDivider from './SidebarDivider.vue'
 
 defineProps({
   entries:        { type: Array,  required: true },

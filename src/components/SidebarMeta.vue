@@ -1,5 +1,5 @@
 <template>
-  <div class="sidebar-divider" />
+  <SidebarDivider />
 
   <SidebarScanButton
     :scanning="meta.scanning || meta.geocoding"
@@ -8,13 +8,13 @@
     @stop="meta.stopScan()"
   />
 
-  <div class="sidebar-divider" />
+  <SidebarDivider />
 
   <!-- Folder list -->
   <FolderSection :folders="meta.folders" @add="pickMetaFolder" @remove="meta.removeFolder" />
 
   <template v-if="meta.scanDone">
-    <div class="sidebar-divider" />
+    <SidebarDivider />
 
     <!-- Sorting -->
     <section class="sidebar-section">
@@ -41,7 +41,7 @@
       </div>
     </section>
 
-    <div class="sidebar-divider" />
+    <SidebarDivider />
 
     <!-- Filtering -->
     <section class="sidebar-section">
@@ -130,6 +130,7 @@ import ClearIcon from './ClearIcon.vue'
 import FolderSection from './FolderSection.vue'
 import SidebarScanButton from './SidebarScanButton.vue'
 import SidebarHistory from './SidebarHistory.vue'
+import SidebarDivider from './SidebarDivider.vue'
 import '../styles/sidebar-shared.css'
 
 const meta        = useMetadataStore()

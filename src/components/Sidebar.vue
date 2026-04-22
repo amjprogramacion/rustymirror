@@ -25,7 +25,7 @@
 
     <!-- Cache buttons — pinned to bottom -->
     <div class="sidebar-spacer" v-if="!((activeMode === 'duplicates' && history.entries.length > 0) || (activeMode === 'metadata' && metaHistory.entries.length > 0) || (activeMode === 'organizer' && orgHistory.entries.length > 0))" />
-    <div class="sidebar-divider" />
+    <SidebarDivider />
     <section class="sidebar-section sidebar-bottom">
       <button
         v-if="activeMode === 'duplicates'"
@@ -114,6 +114,7 @@ import SettingsModal from './SettingsModal.vue'
 import SidebarDuplicates from './SidebarDuplicates.vue'
 import SidebarMeta from './SidebarMeta.vue'
 import SidebarOrganizer from './SidebarOrganizer.vue'
+import SidebarDivider from './SidebarDivider.vue'
 
 const { activeMode } = useMode()
 const store       = useDuplicatesStore()
@@ -286,13 +287,6 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   border: 1.5px solid var(--sidebar-bg);
   pointer-events: none;
-}
-
-/* ── Divider (cache section) ── */
-.sidebar-divider {
-  height: 1px;
-  background: var(--sidebar-border);
-  margin: 0;
 }
 
 /* ── Cache section ── */

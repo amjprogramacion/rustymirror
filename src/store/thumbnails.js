@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { useSettings } from '../composables/useSettings'
+import { fileExt } from '../utils/formatters'
 
 const MAX_QUEUE = 10_000
 
@@ -58,7 +59,7 @@ export const useThumbnailStore = defineStore('thumbnails', {
             this.heicThumbGenerated++
           })
           .catch(() => {
-            const ext = path.split('.').pop()?.toLowerCase() ?? ''
+            const ext = fileExt(path)
             const rustOnly = ext === 'heic' || ext === 'heif' || ext === 'png'
             if (!rustOnly && !this.isNetworkPath(path)) {
               this.directSrcCache[path] = convertFileSrc(path)

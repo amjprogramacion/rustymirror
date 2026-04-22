@@ -1,5 +1,5 @@
 <template>
-  <div class="sidebar-divider" />
+  <SidebarDivider />
 
   <SidebarScanButton
     :scanning="store.scanning"
@@ -8,12 +8,12 @@
     @stop="store.stopScan()"
   />
 
-  <div class="sidebar-divider" />
+  <SidebarDivider />
 
   <!-- Folder list -->
   <FolderSection :folders="store.folders" @add="pickFolder" @remove="store.removeFolder" />
 
-  <div class="sidebar-divider" />
+  <SidebarDivider />
 
   <!-- Similarity threshold -->
   <section class="sidebar-section">
@@ -40,7 +40,7 @@
 
   <!-- Sort + Filter — only after scan -->
   <template v-if="store.scanDone">
-    <div class="sidebar-divider" />
+    <SidebarDivider />
     <section class="sidebar-section">
       <p class="section-label">Sort</p>
       <div class="sort-selects">
@@ -61,7 +61,7 @@
         </div>
       </div>
     </section>
-    <div class="sidebar-divider" />
+    <SidebarDivider />
     <section class="sidebar-section">
       <p class="section-label">Filter</p>
       <div class="filter-labeled-row">
@@ -131,6 +131,7 @@ import SelectChevron from './SelectChevron.vue'
 import FolderSection from './FolderSection.vue'
 import SidebarScanButton from './SidebarScanButton.vue'
 import SidebarHistory from './SidebarHistory.vue'
+import SidebarDivider from './SidebarDivider.vue'
 import '../styles/sidebar-shared.css'
 
 const store   = useDuplicatesStore()

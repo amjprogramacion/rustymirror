@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { load } from '@tauri-apps/plugin-store'
 import { useSettings } from '../composables/useSettings'
 import { errorMessage } from '../utils/errors'
+import { fileName } from '../utils/formatters'
 import { useMetadataHistoryStore } from './metadataHistory'
 
 const STORE_FILE = 'rustymirror.json'
@@ -98,8 +99,7 @@ export const useMetadataStore = defineStore('metadata', {
       let list = state.images.filter(e => {
         // Search query
         if (q) {
-          const name = e.path.split(/[/\\]/).pop() ?? ''
-          if (!name.toLowerCase().includes(q)) return false
+          if (!fileName(e.path).toLowerCase().includes(q)) return false
         }
         // Date range (compare first 10 chars — "YYYY-MM-DD")
         const dateStr = (e.dateTaken ?? e.modified ?? '').slice(0, 10)

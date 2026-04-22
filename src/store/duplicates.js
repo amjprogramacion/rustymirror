@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { logger } from '../utils/logger'
 import { errorMessage } from '../utils/errors'
+import { fileName, fileExt } from '../utils/formatters'
 import { useDuplicatesHistoryStore } from './duplicatesHistory'
 import { useMetadataStore } from './metadata'
 import { useSettings } from '../composables/useSettings'
@@ -69,7 +70,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
       if (!state.extFilter) return this._groupsByKind
       const ext = state.extFilter.toLowerCase()
       return this._groupsByKind.filter(g =>
-        g.entries.some(e => (e.path.split('.').pop()?.toLowerCase() ?? '') === ext)
+        g.entries.some(e => fileExt(e.path) === ext)
       )
     },
 
@@ -78,10 +79,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
       const q = state.searchQuery.trim().toLowerCase()
       if (!q) return this._groupsByExt
       return this._groupsByExt.filter(g =>
-        g.entries.some(e => {
-          const name = e.path.split(/[/\\]/).pop() ?? ''
-          return name.toLowerCase().includes(q)
-        })
+        g.entries.some(e => fileName(e.path).toLowerCase().includes(q))
       )
     },
 
@@ -113,8 +111,8 @@ export const useDuplicatesStore = defineStore('duplicates', {
         const dir = state.dupSortDir === 'desc' ? -1 : 1
         arr.sort((a, b) => {
           if (state.dupSortBy === 'title') {
-            const aName = (a.entries[0]?.path.split(/[/\\]/).pop() ?? '').toLowerCase()
-            const bName = (b.entries[0]?.path.split(/[/\\]/).pop() ?? '').toLowerCase()
+            const aName = fileName(a.entries[0]?.path).toLowerCase()
+            const bName = fileName(b.entries[0]?.path).toLowerCase()
             return aName < bName ? -dir : aName > bName ? dir : 0
           }
           // date: dateTaken, fall back to modified
@@ -137,9 +135,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
           ...[...g.entries.filter(e => !e.isOriginal)]
             .sort((a, b) => {
               if (g.kind === 'exact') {
-                const nameA = a.path.split(/[/\\]/).pop() ?? ''
-                const nameB = b.path.split(/[/\\]/).pop() ?? ''
-                return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' })
+                return fileName(a.path).localeCompare(fileName(b.path), undefined, { sensitivity: 'base' })
               }
               return a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0
             })
@@ -171,7 +167,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
       const exts = new Set()
       for (const g of state.groups) {
         for (const e of g.entries) {
-          const ext = e.path.split('.').pop()?.toLowerCase()
+          const ext = fileExt(e.path)
           if (ext) exts.add(ext)
         }
       }

@@ -1,5 +1,5 @@
 <template>
-  <div class="sidebar-divider" />
+  <SidebarDivider />
 
   <SidebarScanButton
     :scanning="org.scanning"
@@ -8,14 +8,14 @@
     @stop="org.stop()"
   />
 
-  <div class="sidebar-divider" />
+  <SidebarDivider />
 
   <!-- Folder list -->
   <FolderSection :folders="org.folders" @add="pickFolder" @remove="org.removeFolder" />
 
   <!-- Sort — only after scan -->
   <template v-if="org.scanResult">
-    <div class="sidebar-divider" />
+    <SidebarDivider />
     <section class="sidebar-section">
       <p class="section-label">Sort</p>
       <div class="sort-selects">
@@ -38,7 +38,7 @@
     </section>
   </template>
 
-  <div class="sidebar-divider" />
+  <SidebarDivider />
 
   <!-- Config -->
   <section class="sidebar-section">
@@ -170,6 +170,7 @@ import FolderSection from './FolderSection.vue'
 import SelectChevron from './SelectChevron.vue'
 import SidebarScanButton from './SidebarScanButton.vue'
 import SidebarHistory from './SidebarHistory.vue'
+import SidebarDivider from './SidebarDivider.vue'
 import '../styles/sidebar-shared.css'
 
 const org = useOrganizerStore()

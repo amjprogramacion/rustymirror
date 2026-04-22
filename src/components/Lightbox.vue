@@ -58,7 +58,7 @@
           :title="fileName(entry.path)"
         >
           <img
-            v-if="!HEIC.has(entry.path.split('.').pop()?.toLowerCase())"
+            v-if="!HEIC.has(fileExt(entry.path))"
             :src="convertFileSrc(entry.path)"
             class="lb-thumb-img"
             draggable="false"
@@ -95,7 +95,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { useDuplicatesStore } from '../store/duplicates'
 import { useThumbnailStore } from '../store/thumbnails'
-import { fileName, formatSize, formatDate } from '../utils/formatters'
+import { fileName, fileExt, formatSize, formatDate } from '../utils/formatters'
 
 const store  = useDuplicatesStore()
 const thumbs = useThumbnailStore()
@@ -128,16 +128,14 @@ watch(current, () => { badgeStyle.value = null })
 const directSrc = computed(() => {
   const p = current.value?.path
   if (!p) return null
-  const ext = p.split('.').pop()?.toLowerCase()
-  if (HEIC.has(ext)) return heicFullCache.value[p] ?? null
+  if (HEIC.has(fileExt(p))) return heicFullCache.value[p] ?? null
   return convertFileSrc(p)
 })
 
 // Load full HEIC image when navigating to a HEIC entry
 watch(current, async (entry) => {
   if (!entry?.path) return
-  const ext = entry.path.split('.').pop()?.toLowerCase()
-  if (!HEIC.has(ext)) return
+  if (!HEIC.has(fileExt(entry.path))) return
   if (heicFullCache.value[entry.path]) return
   try {
     const src = await invoke('get_full_image', { path: entry.path })
