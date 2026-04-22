@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-use super::{AppError, to_pathbuf_vec};
+use super::{AppError, to_pathbuf_vec, select_date_by_priority};
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,20 +97,13 @@ pub async fn count_media_files(paths: Vec<String>, config: crate::organizer::Org
                         };
                         let from_modify = obj.get("FileModifyDate").and_then(|v| v.as_str()).map(|s| s.to_owned());
 
-                        let entry = match config.date_priority {
-                            crate::organizer::DatePriority::Filename => {
-                                if let Some(d) = from_filename { Some((d, "filename".to_owned())) }
-                                else if let Some(d) = from_exif { Some((d, from_exif_source.to_owned())) }
-                                else if let Some(d) = from_modify { Some((d, "modify".to_owned())) }
-                                else { None }
-                            }
-                            crate::organizer::DatePriority::Exif => {
-                                if let Some(d) = from_exif { Some((d, from_exif_source.to_owned())) }
-                                else if let Some(d) = from_modify { Some((d, "modify".to_owned())) }
-                                else if let Some(d) = from_filename { Some((d, "filename".to_owned())) }
-                                else { None }
-                            }
-                        };
+                        let entry = select_date_by_priority(
+                            config.date_priority.clone(),
+                            from_filename,
+                            from_exif,
+                            from_exif_source,
+                            from_modify,
+                        );
                         if let (Some(src), Some(entry)) = (src_path, entry) {
                             date_map.insert(src, entry);
                         }

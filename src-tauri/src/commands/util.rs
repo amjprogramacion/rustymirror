@@ -40,3 +40,28 @@ pub fn extract_tag_u64(obj: Option<&serde_json::Value>, key: &str) -> Option<u64
     v.as_u64()
         .or_else(|| v.as_str().and_then(|s| s.split_whitespace().next()?.parse().ok()))
 }
+
+/// Selects the best available date based on priority rule.
+/// Returns (date, source) tuple where source identifies the date origin.
+pub fn select_date_by_priority(
+    priority: crate::organizer::DatePriority,
+    from_filename: Option<String>,
+    from_exif: Option<String>,
+    from_exif_source: &str,
+    from_modify: Option<String>,
+) -> Option<(String, String)> {
+    match priority {
+        crate::organizer::DatePriority::Filename => {
+            if let Some(d) = from_filename { Some((d, "filename".to_owned())) }
+            else if let Some(d) = from_exif { Some((d, from_exif_source.to_owned())) }
+            else if let Some(d) = from_modify { Some((d, "modify".to_owned())) }
+            else { None }
+        }
+        crate::organizer::DatePriority::Exif => {
+            if let Some(d) = from_exif { Some((d, from_exif_source.to_owned())) }
+            else if let Some(d) = from_modify { Some((d, "modify".to_owned())) }
+            else if let Some(d) = from_filename { Some((d, "filename".to_owned())) }
+            else { None }
+        }
+    }
+}
