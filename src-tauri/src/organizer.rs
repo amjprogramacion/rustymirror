@@ -133,11 +133,39 @@ pub struct RewriteDateAction {
 // ─── File collection ──────────────────────────────────────────────────────────
 
 pub fn collect_all_files(directories: &[PathBuf]) -> Vec<(PathBuf, FileKind)> {
+    collect_all_files_internal(directories, true)
+}
+
+fn collect_all_files_internal(directories: &[PathBuf], sort: bool) -> Vec<(PathBuf, FileKind)> {
     let mut files = Vec::new();
     for dir in directories {
         walk_dir(dir, &mut files);
     }
-    files.sort_by(|a, b| a.0.cmp(&b.0));
+    if sort {
+        files.sort_by(|a, b| a.0.cmp(&b.0));
+    }
+    files
+}
+
+/// Collects files from paths, preserving input order.
+/// For each path: if it's a file, add it directly; if it's a directory, enumerate its contents.
+/// Used by organizer to respect frontend-provided sort order.
+fn collect_files_in_order(paths: &[PathBuf]) -> Vec<(PathBuf, FileKind)> {
+    let mut files = Vec::new();
+    for path in paths {
+        if path.is_file() {
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                let el = ext.to_lowercase();
+                if IMAGE_EXTS.contains(&el.as_str()) {
+                    files.push((path.clone(), FileKind::Image));
+                } else if VIDEO_EXTS.contains(&el.as_str()) {
+                    files.push((path.clone(), FileKind::Video));
+                }
+            }
+        } else if path.is_dir() {
+            walk_dir(path, &mut files);
+        }
+    }
     files
 }
 
@@ -627,23 +655,18 @@ fn try_rename_file(
 
 // ─── Public operations ────────────────────────────────────────────────────────
 
-pub fn preview(
-    directories: &[PathBuf],
+fn process_files_with_order(
+    files: &[(PathBuf, FileKind)],
     config: &OrganizerConfig,
-    exiftool: Option<&Path>,
-    stop: Arc<AtomicBool>,
-    on_progress: impl Fn(OrganizerProgress),
+    exif_map: &HashMap<String, serde_json::Value>,
+    stop: &Arc<AtomicBool>,
+    on_progress: &impl Fn(OrganizerProgress),
 ) -> Vec<OrganizerFileAction> {
     ID_COUNTER.store(0, Ordering::Relaxed);
-    let files = collect_all_files(directories);
     let total = files.len();
     let mut actions = Vec::with_capacity(total);
     let mut incr: HashMap<String, u32> = HashMap::new();
     let mut reserved: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-    let exif_map = exiftool
-        .map(|et| build_exif_map(et, &files, &stop))
-        .unwrap_or_default();
 
     let empty = serde_json::Value::Object(Default::default());
 
@@ -688,6 +711,39 @@ pub fn preview(
         on_progress(OrganizerProgress { processed: i + 1, total });
     }
     actions
+}
+
+#[allow(dead_code)]
+pub fn preview(
+    directories: &[PathBuf],
+    config: &OrganizerConfig,
+    exiftool: Option<&Path>,
+    stop: Arc<AtomicBool>,
+    on_progress: impl Fn(OrganizerProgress),
+) -> Vec<OrganizerFileAction> {
+    let files = collect_all_files(directories);
+    let exif_map = exiftool
+        .map(|et| build_exif_map(et, &files, &stop))
+        .unwrap_or_default();
+    process_files_with_order(&files, config, &exif_map, &stop, &on_progress)
+}
+
+/// Preview with files in their provided order (respects UI sorting).
+/// Treats input paths as either files (used directly) or directories (enumerated).
+/// Preserves the exact order provided from the frontend.
+pub fn preview_files_ordered(
+    paths: &[PathBuf],
+    config: &OrganizerConfig,
+    exiftool: Option<&Path>,
+    stop: Arc<AtomicBool>,
+    on_progress: impl Fn(OrganizerProgress),
+) -> Vec<OrganizerFileAction> {
+    let files = collect_files_in_order(paths);
+    let exif_map = exiftool
+        .map(|et| build_exif_map(et, &files, &stop))
+        .unwrap_or_default();
+
+    process_files_with_order(&files, config, &exif_map, &stop, &on_progress)
 }
 
 pub fn execute(
@@ -780,14 +836,16 @@ pub fn rewrite_metadata(
     OrganizerSummary { total, succeeded, failed: failed_paths.len(), failed_paths }
 }
 
-pub fn preview_rewrite_metadata(
-    directories: &[PathBuf],
+/// Preview metadata rewrite with files in their provided order (respects UI sorting).
+/// Does NOT re-sort alphabetically — preserves the order from the frontend.
+pub fn preview_rewrite_metadata_ordered(
+    paths: &[PathBuf],
     config: &OrganizerConfig,
     exiftool: Option<&Path>,
     stop: Arc<AtomicBool>,
     on_progress: impl Fn(OrganizerProgress),
 ) -> Vec<RewriteDateAction> {
-    let files = collect_all_files(directories);
+    let files = collect_files_in_order(paths);
     let total = files.len();
     let mut actions = Vec::with_capacity(total);
     let mut incr: HashMap<String, u32> = HashMap::new();

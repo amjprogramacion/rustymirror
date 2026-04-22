@@ -103,3 +103,4 @@ pub async fn count_media_files(paths: Vec<String>, config: crate::organizer::Org
     })
     .await?
 }
+

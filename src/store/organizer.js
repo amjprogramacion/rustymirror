@@ -18,9 +18,9 @@ export const useOrganizerStore = defineStore('organizer', () => {
   })
 
   const scanning            = ref(false)
-  const scanResult          = ref(null)  // { total, images, videos } | null
+  const scanResult          = ref(null)  // { total, images, videos, files } | null
   const activeHistoryEntryId = ref(null)
-  const sortBy        = ref('filename')  // 'filename' | 'type'
+  const sortBy        = ref('filename')  // 'filename' | 'date' | 'type'
   const sortDir       = ref('asc')
   const previewing         = ref(false)
   const previewingDate     = ref(false)
@@ -80,6 +80,36 @@ export const useOrganizerStore = defineStore('organizer', () => {
     }
   }
 
+  const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mpg', 'mpeg', 'mkv'])
+
+  function _fileType(name) {
+    return VIDEO_EXTS.has(name.split('.').pop()?.toLowerCase() ?? '') ? 'video' : 'image'
+  }
+
+  // Returns file paths sorted exactly as currently displayed in the UI table.
+  // Mirrors the sortedFiles computed in OrganizerView so the backend processes
+  // files in the same order the user sees them.
+  function _getSortedFilesList() {
+    const files = scanResult.value?.files ?? []
+    const dir = sortDir.value === 'asc' ? 1 : -1
+
+    const sorted = [...files].sort((a, b) => {
+      if (sortBy.value === 'type') {
+        const typeA = _fileType(a.name)
+        const typeB = _fileType(b.name)
+        if (typeA !== typeB) return typeA.localeCompare(typeB) * dir
+      }
+      if (sortBy.value === 'date') {
+        const da = a.dateTaken ?? ''
+        const db = b.dateTaken ?? ''
+        if (da !== db) return da.localeCompare(db) * dir
+      }
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase()) * dir
+    })
+
+    return sorted.map(f => f.path)
+  }
+
   // ── Actions ──────────────────────────────────────────────────────────────────
 
   async function runScan() {
@@ -111,7 +141,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
   }
 
   async function runPreviewRewrite() {
-    if (!folders.value.length) return
+    if (!scanResult.value?.files?.length) return
     previewingDate.value     = true
     progress.value           = { processed: 0, total: 0 }
     error.value              = null
@@ -121,7 +151,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
     await _subscribeProgress()
     try {
       previewDateActions.value = await invoke('preview_rewrite_date', {
-        paths:  folders.value,
+        paths:  _getSortedFilesList(),
         config: _buildConfig(),
       })
     } catch (e) {
@@ -133,7 +163,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
   }
 
   async function runPreview() {
-    if (!folders.value.length) return
+    if (!scanResult.value?.files?.length) return
     previewing.value      = true
     previewOnlyRename.value = null
     progress.value        = { processed: 0, total: 0 }
@@ -145,7 +175,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
     await _subscribeProgress()
     try {
       previewActions.value = await invoke('preview_organize', {
-        paths:  folders.value,
+        paths:  _getSortedFilesList(),
         config: _buildConfig(),
       })
       previewOnlyRename.value = onlyRenameAtStart
@@ -158,7 +188,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
   }
 
   async function runExecute() {
-    if (!folders.value.length) return
+    if (!scanResult.value?.files?.length) return
     executing.value   = true
     executingOp.value = 'rename'
     progress.value    = { processed: 0, total: 0 }
@@ -168,7 +198,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
     await _subscribeProgress()
     try {
       lastSummary.value    = await invoke('execute_organize', {
-        paths:  folders.value,
+        paths:  _getSortedFilesList(),
         config: _buildConfig(),
       })
       previewActions.value  = []
@@ -184,7 +214,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
   }
 
   async function runMetadataRewrite() {
-    if (!folders.value.length) return
+    if (!scanResult.value?.files?.length) return
     executing.value   = true
     executingOp.value = 'rewrite'
     progress.value    = { processed: 0, total: 0 }
@@ -194,7 +224,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
     await _subscribeProgress()
     try {
       lastSummary.value = await invoke('execute_metadata_rewrite', {
-        paths:  folders.value,
+        paths:  _getSortedFilesList(),
         config: _buildConfig(),
       })
     } catch (e) {

@@ -4,6 +4,7 @@ use tauri::{AppHandle, Emitter, State};
 use super::{AppError, OrganizerState, run_organizer_job};
 
 /// Returns a preview of what the organizer would do to each file (no changes made).
+/// Files are processed in the order provided (respects UI sorting), not re-sorted.
 #[tauri::command]
 pub async fn preview_organize(
     paths: Vec<String>,
@@ -13,7 +14,7 @@ pub async fn preview_organize(
 ) -> Result<Vec<crate::organizer::OrganizerFileAction>, AppError> {
     run_organizer_job(paths, app, state, move |dirs, res_dir, stop, app_c| {
         let exiftool = res_dir.as_deref().and_then(crate::exiftool::find_exiftool);
-        crate::organizer::preview(
+        crate::organizer::preview_files_ordered(
             &dirs,
             &config,
             exiftool.as_deref(),
@@ -25,6 +26,7 @@ pub async fn preview_organize(
 }
 
 /// Returns a preview of what dates would be written by execute_metadata_rewrite.
+/// Files are processed in the order provided (respects UI sorting), not re-sorted.
 #[tauri::command]
 pub async fn preview_rewrite_date(
     paths: Vec<String>,
@@ -34,7 +36,7 @@ pub async fn preview_rewrite_date(
 ) -> Result<Vec<crate::organizer::RewriteDateAction>, AppError> {
     run_organizer_job(paths, app, state, move |dirs, res_dir, stop, app_c| {
         let exiftool = res_dir.as_deref().and_then(crate::exiftool::find_exiftool);
-        crate::organizer::preview_rewrite_metadata(
+        crate::organizer::preview_rewrite_metadata_ordered(
             &dirs,
             &config,
             exiftool.as_deref(),

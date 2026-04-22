@@ -158,3 +158,4 @@ pub struct AnalyzeProgress {
     /// Human-readable label for the current phase
     pub phase: String,
 }
+
