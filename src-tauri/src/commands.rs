@@ -17,6 +17,40 @@ fn cache_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, tauri::Error> {
     }
 }
 
+/// Evicts the given paths from the SQLite cache. Silently ignores errors so callers
+/// don't need to handle the "cache unavailable" case separately.
+fn evict_cache_for(app: &tauri::AppHandle, paths: &[String]) {
+    if let Ok(data_dir) = cache_data_dir(app) {
+        if let Ok(cache) = crate::cache::Cache::open(&data_dir) {
+            cache.evict_deleted(paths);
+        }
+    }
+}
+
+/// Runs an organizer job on a blocking thread with the standard boilerplate:
+/// stop flag installation, resource_dir lookup, path conversion, and AppHandle cloning.
+/// The closure receives everything it needs to invoke the actual organizer function
+/// and emit progress events.
+async fn run_organizer_job<T, F>(
+    paths: Vec<String>,
+    app: AppHandle,
+    state: State<'_, OrganizerState>,
+    job: F,
+) -> Result<T, AppError>
+where
+    T: Send + 'static,
+    F: FnOnce(Vec<PathBuf>, Option<PathBuf>, Arc<AtomicBool>, AppHandle) -> T + Send + 'static,
+{
+    let stop = Arc::new(AtomicBool::new(false));
+    *state.0.lock().unwrap() = stop.clone();
+    let resource_dir = app.path().resource_dir().ok();
+    let directories: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+    let app_c = app.clone();
+    tokio::task::spawn_blocking(move || job(directories, resource_dir, stop, app_c))
+        .await
+        .map_err(Into::into)
+}
+
 use crate::scanner::{apply_retention_rule, find_duplicates};
 use crate::types::{AnalyzeProgress, DuplicateGroup, FailedFile, FailedFileKind, RetentionRule, ScanProgress};
 
@@ -219,12 +253,8 @@ pub async fn delete_files(paths: Vec<String>, app: tauri::AppHandle) -> Result<(
         }
         tracing::debug!("deleted {} files", total);
 
-        if let Ok(data_dir) = cache_data_dir(&app) {
-            if let Ok(cache) = crate::cache::Cache::open(&data_dir) {
-                cache.evict_deleted(&paths);
-                tracing::debug!(count = paths.len(), "cache entries evicted");
-            }
-        }
+        evict_cache_for(&app, &paths);
+        tracing::debug!(count = paths.len(), "cache entries evicted");
 
         return Ok(());
     }
@@ -236,11 +266,7 @@ pub async fn delete_files(paths: Vec<String>, app: tauri::AppHandle) -> Result<(
                 .map_err(|e| AppError::Delete { path: path.clone(), message: e.to_string() })?;
             let _ = app.emit("delete_progress", serde_json::json!({ "done": i + 1, "total": total }));
         }
-        if let Ok(data_dir) = cache_data_dir(&app) {
-            if let Ok(cache) = crate::cache::Cache::open(&data_dir) {
-                cache.evict_deleted(&paths);
-            }
-        }
+        evict_cache_for(&app, &paths);
         Ok(())
     }
 }
@@ -937,11 +963,7 @@ pub async fn write_metadata(
     .await??;
 
     // Invalidate the SQLite cache entry so the next scan picks up the new date
-    if let Ok(data_dir) = cache_data_dir(&app) {
-        if let Ok(cache) = crate::cache::Cache::open(&data_dir) {
-            cache.evict_deleted(&[path]);
-        }
-    }
+    evict_cache_for(&app, &[path]);
 
     Ok(())
 }
@@ -956,23 +978,17 @@ pub async fn preview_organize(
     app: AppHandle,
     state: State<'_, OrganizerState>,
 ) -> Result<Vec<crate::organizer::OrganizerFileAction>, AppError> {
-    let stop = Arc::new(AtomicBool::new(false));
-    *state.0.lock().unwrap() = stop.clone();
-    let resource_dir = app.path().resource_dir().ok();
-    let directories: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-    let app_c = app.clone();
-
-    tokio::task::spawn_blocking(move || {
-        let exiftool = resource_dir.as_deref().and_then(crate::exiftool::find_exiftool);
-        Ok(crate::organizer::preview(
-            &directories,
+    run_organizer_job(paths, app, state, move |dirs, res_dir, stop, app_c| {
+        let exiftool = res_dir.as_deref().and_then(crate::exiftool::find_exiftool);
+        crate::organizer::preview(
+            &dirs,
             &config,
             exiftool.as_deref(),
             stop,
             |p| { let _ = app_c.emit("organize_progress", &p); },
-        ))
+        )
     })
-    .await?
+    .await
 }
 
 /// Returns a preview of what dates would be written by execute_metadata_rewrite.
@@ -983,23 +999,17 @@ pub async fn preview_rewrite_date(
     app: AppHandle,
     state: State<'_, OrganizerState>,
 ) -> Result<Vec<crate::organizer::RewriteDateAction>, AppError> {
-    let stop = Arc::new(AtomicBool::new(false));
-    *state.0.lock().unwrap() = stop.clone();
-    let resource_dir = app.path().resource_dir().ok();
-    let directories: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-    let app_c = app.clone();
-
-    tokio::task::spawn_blocking(move || {
-        let exiftool = resource_dir.as_deref().and_then(crate::exiftool::find_exiftool);
-        Ok(crate::organizer::preview_rewrite_metadata(
-            &directories,
+    run_organizer_job(paths, app, state, move |dirs, res_dir, stop, app_c| {
+        let exiftool = res_dir.as_deref().and_then(crate::exiftool::find_exiftool);
+        crate::organizer::preview_rewrite_metadata(
+            &dirs,
             &config,
             exiftool.as_deref(),
             stop,
             |p| { let _ = app_c.emit("organize_progress", &p); },
-        ))
+        )
     })
-    .await?
+    .await
 }
 
 /// Renames (and optionally moves) files according to the organizer config.
@@ -1015,23 +1025,17 @@ pub async fn execute_organize(
             message: "Output directory is required when 'Only rename' is disabled".to_string(),
         });
     }
-    let stop = Arc::new(AtomicBool::new(false));
-    *state.0.lock().unwrap() = stop.clone();
-    let resource_dir = app.path().resource_dir().ok();
-    let directories: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-    let app_c = app.clone();
-
-    tokio::task::spawn_blocking(move || {
-        let exiftool = resource_dir.as_deref().and_then(crate::exiftool::find_exiftool);
-        Ok(crate::organizer::execute(
-            &directories,
+    run_organizer_job(paths, app, state, move |dirs, res_dir, stop, app_c| {
+        let exiftool = res_dir.as_deref().and_then(crate::exiftool::find_exiftool);
+        crate::organizer::execute(
+            &dirs,
             &config,
             exiftool.as_deref(),
             stop,
             |p| { let _ = app_c.emit("organize_progress", &p); },
-        ))
+        )
     })
-    .await?
+    .await
 }
 
 /// Rewrites EXIF date tags on all files using the best available date.
@@ -1042,23 +1046,17 @@ pub async fn execute_metadata_rewrite(
     app: AppHandle,
     state: State<'_, OrganizerState>,
 ) -> Result<crate::organizer::OrganizerSummary, AppError> {
-    let stop = Arc::new(AtomicBool::new(false));
-    *state.0.lock().unwrap() = stop.clone();
-    let resource_dir = app.path().resource_dir().ok();
-    let directories: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-    let app_c = app.clone();
-
-    tokio::task::spawn_blocking(move || {
-        let exiftool = resource_dir.as_deref().and_then(crate::exiftool::find_exiftool);
-        Ok(crate::organizer::rewrite_metadata(
-            &directories,
+    run_organizer_job(paths, app, state, move |dirs, res_dir, stop, app_c| {
+        let exiftool = res_dir.as_deref().and_then(crate::exiftool::find_exiftool);
+        crate::organizer::rewrite_metadata(
+            &dirs,
             &config,
             exiftool.as_deref(),
             stop,
             |p| { let _ = app_c.emit("organize_progress", &p); },
-        ))
+        )
     })
-    .await?
+    .await
 }
 
 /// Stops any in-progress organizer operation.
