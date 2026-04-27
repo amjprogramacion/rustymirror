@@ -1,24 +1,37 @@
 use super::{AppError, cache_data_dir};
 
 /// Returns the size of the hash cache in bytes, or 0 if not found.
+/// Includes the WAL and SHM sidecar files so the reported size reflects
+/// all data written since the last checkpoint, not just the main db file.
 #[tauri::command]
 pub fn get_cache_size(app: tauri::AppHandle) -> u64 {
-    cache_data_dir(&app).ok()
-        .map(|d| d.join("rustymirror_cache.db"))
-        .and_then(|p| std::fs::metadata(p).ok())
-        .map(|m| m.len())
-        .unwrap_or(0)
+    let base = match cache_data_dir(&app).ok().map(|d| d.join("rustymirror_cache.db")) {
+        Some(p) => p,
+        None    => return 0,
+    };
+    let file_size = |suffix: &str| -> u64 {
+        let mut p = base.clone();
+        let name = format!("{}{}", base.file_name().unwrap_or_default().to_string_lossy(), suffix);
+        p.set_file_name(name);
+        std::fs::metadata(p).map(|m| m.len()).unwrap_or(0)
+    };
+    file_size("") + file_size("-wal") + file_size("-shm")
 }
 
-/// Deletes the hash cache database file.
+/// Deletes the hash cache database file and its WAL/SHM sidecars.
 #[tauri::command]
 pub fn clear_cache(app: tauri::AppHandle) -> Result<(), AppError> {
-    let path = cache_data_dir(&app)?.join("rustymirror_cache.db");
-    if path.exists() {
-        std::fs::remove_file(&path)
-            .map_err(|e| AppError::Io { message: e.to_string() })?;
-        tracing::debug!(path = %path.display(), "hash cache cleared");
+    let base = cache_data_dir(&app)?.join("rustymirror_cache.db");
+    for suffix in &["", "-wal", "-shm"] {
+        let mut p = base.clone();
+        let name = format!("{}{}", base.file_name().unwrap_or_default().to_string_lossy(), suffix);
+        p.set_file_name(name);
+        if p.exists() {
+            std::fs::remove_file(&p)
+                .map_err(|e| AppError::Io { message: e.to_string() })?;
+        }
     }
+    tracing::debug!(path = %base.display(), "hash cache cleared");
     Ok(())
 }
 

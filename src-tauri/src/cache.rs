@@ -66,25 +66,47 @@ impl Cache {
                 header_hash TEXT,
                 width       INTEGER NOT NULL DEFAULT 0,
                 height      INTEGER NOT NULL DEFAULT 0,
-                modified    TEXT    NOT NULL DEFAULT ''
+                modified    TEXT    NOT NULL DEFAULT '',
+                blur_score  REAL
+            );
+            CREATE TABLE IF NOT EXISTS bktree_cache (
+                fingerprint TEXT    NOT NULL,
+                fast_mode   INTEGER NOT NULL,
+                blob        BLOB    NOT NULL,
+                PRIMARY KEY (fingerprint, fast_mode)
             );
         ")?;
         Self::migrate(&conn)?;
         Ok(Self { conn: Mutex::new(conn) })
     }
 
+    /// Add a column only if it doesn't already exist — makes ALTER TABLE migrations idempotent.
+    /// Needed because the CREATE TABLE DDL has been kept up-to-date with all columns, so fresh
+    /// databases already have the columns that older migrations would try to ADD.
+    fn add_column_if_missing(conn: &Connection, table: &str, column: &str, definition: &str) -> Result<()> {
+        let exists = conn
+            .prepare(&format!("PRAGMA table_info({})", table))?
+            .query_map([], |r| r.get::<_, String>(1))?
+            .flatten()
+            .any(|name| name == column);
+        if !exists {
+            conn.execute_batch(&format!("ALTER TABLE {} ADD COLUMN {} {};", table, column, definition))?;
+        }
+        Ok(())
+    }
+
     fn migrate(conn: &Connection) -> Result<()> {
         let version: i32 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         if version < 1 {
-            conn.execute_batch("ALTER TABLE file_cache ADD COLUMN fast_phash TEXT;")?;
+            Self::add_column_if_missing(conn, "file_cache", "fast_phash", "TEXT")?;
             conn.execute_batch("PRAGMA user_version = 1")?;
         }
         if version < 2 {
-            conn.execute_batch("ALTER TABLE file_cache ADD COLUMN header_hash TEXT;")?;
+            Self::add_column_if_missing(conn, "file_cache", "header_hash", "TEXT")?;
             conn.execute_batch("PRAGMA user_version = 2")?;
         }
         if version < 3 {
-            conn.execute_batch("ALTER TABLE file_cache ADD COLUMN blur_score REAL;")?;
+            Self::add_column_if_missing(conn, "file_cache", "blur_score", "REAL")?;
             conn.execute_batch("PRAGMA user_version = 3")?;
         }
         if version < 4 {

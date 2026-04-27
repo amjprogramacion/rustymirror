@@ -78,8 +78,12 @@ where
     let dbg_has_hh        = std::sync::atomic::AtomicUsize::new(0);
     let dbg_hh_match      = std::sync::atomic::AtomicUsize::new(0);
     let dbg_hh_read_fail  = std::sync::atomic::AtomicUsize::new(0);
-    tracing::debug!("cache: {} entries ({} paths to check)",
-        cache.as_ref().map(|c| c.count()).unwrap_or(0), paths.len());
+    tracing::debug!(
+        cache_rows = cache.as_ref().map(|c| c.count()).unwrap_or(0),
+        paths = paths.len(),
+        cache_available = cache.is_some(),
+        "phase 1 starting"
+    );
 
     // Process one file: returns the FileRecord (or None on stop, Err on failure).
     // `path_cache_key` is pre-computed by the caller (already normalised in
@@ -181,10 +185,36 @@ where
     'folders: for (start, len) in folder_groups {
         if stop_phase1.load(AOrdering::Relaxed) { break 'folders; }
 
+        // Accumulates cache entries across threads; flushes to SQLite every 5 files.
+        let pending: std::sync::Mutex<Vec<(String, String, CachedFile)>> =
+            std::sync::Mutex::new(Vec::with_capacity(5));
+
         let folder_results: Vec<Option<Result<FileRecord, FailedFileKind>>> = (start..start + len)
             .into_par_iter()
-            .map(|idx| process_one(&paths[idx], &path_strings[idx]))
+            .map(|idx| {
+                let result = process_one(&paths[idx], &path_strings[idx]);
+                if let (Some(Ok(r)), Some(ref c)) = (&result, &cache) {
+                    let ph_hex = r.ph.as_ref().map(phash_to_hex);
+                    let existing = bulk_cache.get(&cache_key(&r.entry.path));
+                    let preserve = existing.and_then(|e| e.data.phash_hex_for_mode(!fast_mode).map(str::to_owned));
+                    let (phash, fast_phash) = CachedFile::phash_pair_for_mode(fast_mode, ph_hex, preserve);
+                    let mut guard = pending.lock().unwrap();
+                    guard.push((cache_key(&r.entry.path), r.mtime_key.clone(), build_cached_file(r, phash, fast_phash)));
+                    if guard.len() >= 5 {
+                        let batch = std::mem::take(&mut *guard);
+                        drop(guard);
+                        let _ = c.put_batch(&batch);
+                    }
+                }
+                result
+            })
             .collect();
+
+        // Flush any remaining entries that didn't fill a full batch.
+        if let Some(ref c) = cache {
+            let tail = pending.into_inner().unwrap();
+            if !tail.is_empty() { let _ = c.put_batch(&tail); }
+        }
 
         for (i, rec) in folder_results.into_iter().enumerate() {
             results[start + i] = rec;
@@ -231,25 +261,6 @@ where
         "phase 1 done"
     );
     drop(_p1);
-
-    // Always persist to cache — even on cancellation, so partial results aren't lost.
-    if let Some(ref c) = cache {
-        let to_cache: Vec<(String, String, CachedFile)> = records.iter()
-            .map(|r| {
-                let ph_hex = r.ph.as_ref().map(phash_to_hex);
-                // Preserve the pHash for the other mode from the bulk cache, if present.
-                let existing = bulk_cache.get(&cache_key(&r.entry.path));
-                let preserve = existing.and_then(|e| e.data.phash_hex_for_mode(!fast_mode).map(str::to_owned));
-                let (phash, fast_phash) = CachedFile::phash_pair_for_mode(fast_mode, ph_hex, preserve);
-                (cache_key(&r.entry.path), r.mtime_key.clone(), build_cached_file(r, phash, fast_phash))
-            })
-            .collect();
-        if let Err(e) = c.put_batch(&to_cache) {
-            tracing::debug!("cache write error: {}", e);
-        } else {
-            tracing::debug!("cache: wrote {} entries", to_cache.len());
-        }
-    }
 
     if stop.load(AOrdering::Relaxed) {
         tracing::debug!("scan stopped by user — partial cache saved ({} records)", records.len());

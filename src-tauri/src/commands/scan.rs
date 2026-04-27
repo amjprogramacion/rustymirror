@@ -24,10 +24,15 @@ pub async fn scan_directories(
     let app_clone  = app.clone();
     let app_clone2 = app.clone();
     let resource_dir = app.path().resource_dir().ok();
-    let cache = cache_data_dir(&app).ok()
-        .and_then(|d| crate::cache::Cache::open(&d).ok())
+    let cache = cache_data_dir(&app)
+        .map_err(|e| { tracing::warn!("cache_data_dir failed: {e}"); e }).ok()
+        .and_then(|d| {
+            crate::cache::Cache::open(&d)
+                .map_err(|e| { tracing::warn!("Cache::open failed: {e}"); e })
+                .ok()
+        })
         .map(std::sync::Arc::new);
-    tracing::debug!("cache: {}", if cache.is_some() { "ok" } else { "unavailable" });
+    tracing::info!("cache: {}", if cache.is_some() { "ok" } else { "unavailable" });
     tracing::debug!("scan_directories called with {} paths", paths.len());
     for p in &paths { tracing::debug!("  path: {}", p); }
 
