@@ -120,6 +120,15 @@ impl Cache {
             ")?;
             conn.execute_batch("PRAGMA user_version = 4")?;
         }
+        if version < 5 {
+            // pHash algorithm changed: removed 64×64 Nearest pre-resize so hashes
+            // are now computed at full resolution. Old cached values are incompatible.
+            conn.execute_batch("
+                UPDATE file_cache SET phash = NULL, fast_phash = NULL;
+                DELETE FROM bktree_cache;
+                PRAGMA user_version = 5;
+            ")?;
+        }
         Ok(())
     }
 

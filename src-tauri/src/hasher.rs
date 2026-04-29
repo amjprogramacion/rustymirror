@@ -1,6 +1,6 @@
 use std::path::Path;
 use anyhow::Result;
-use image::{imageops::FilterType, GenericImageView};
+use image::GenericImageView;
 use image_hasher::{HashAlg, HasherConfig, ImageHash};
 
 /// Reads the file once and returns Blake3 hash + raw bytes.
@@ -102,8 +102,10 @@ fn extract_exif_thumbnail(data: &[u8]) -> Option<Vec<u8>> {
 ///   Always decodes the full image. Slower but uses the highest-quality source,
 ///   making the hash more reliable for borderline similarity cases.
 ///
-/// Either path pre-resizes to 64×64 with Nearest before hashing, so hash
-/// dimensions are identical regardless of which source was used.
+/// The image is passed directly to image_hasher without any pre-resize so the
+/// library can apply its own high-quality filter when scaling down to the 8×8
+/// hash grid. Pre-resizing with Nearest beforehand discarded too much information
+/// and caused visually different images to collide at Hamming distance 0.
 ///
 /// Returns `Err` if the image cannot be decoded; callers that want to skip
 /// undecoded files can call `.ok()` at the use site.
@@ -116,16 +118,14 @@ pub fn perceptual_hash_from_bytes(bytes: &[u8], use_thumbnail: bool) -> Result<I
     if use_thumbnail {
         if let Some(thumb) = extract_exif_thumbnail(bytes) {
             if let Ok(img) = image::load_from_memory(&thumb) {
-                let small = img.resize_exact(64, 64, FilterType::Nearest);
-                return Ok(hasher.hash_image(&small));
+                return Ok(hasher.hash_image(&img));
             }
         }
     }
 
     // Full image decode (always used in precise mode; fallback in fast mode)
     let img = image::load_from_memory(bytes)?;
-    let small = img.resize_exact(64, 64, FilterType::Nearest);
-    Ok(hasher.hash_image(&small))
+    Ok(hasher.hash_image(&img))
 }
 
 /// Sharpness score via Laplacian variance.
