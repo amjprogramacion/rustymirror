@@ -159,3 +159,11 @@ pub struct AnalyzeProgress {
     pub phase: String,
 }
 
+/// Emitted during metadata scan (scan_for_metadata command)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaScanProgress {
+    pub total: usize,
+    pub processed: usize,
+}
+

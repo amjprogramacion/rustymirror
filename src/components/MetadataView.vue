@@ -5,6 +5,8 @@
     v-if="meta.scanning || (meta.geocoding && prefetchFilters)"
     :title="meta.geocoding ? 'Fetching locations…' : 'Scanning images…'"
     :subtitle="meta.geocoding ? `${meta.images.length.toLocaleString()} images found` : null"
+    :progress="!meta.geocoding ? { scanned: meta.scanProgress.processed, total: meta.scanProgress.total } : undefined"
+    :progress-percent="!meta.geocoding && meta.scanProgress.total > 0 ? Math.round((meta.scanProgress.processed / meta.scanProgress.total) * 100) : 0"
   />
 
   <!-- Empty state -->

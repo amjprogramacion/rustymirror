@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { load } from '@tauri-apps/plugin-store'
 import { useSettings } from '../composables/useSettings'
 import { errorMessage } from '../utils/errors'
@@ -68,6 +69,7 @@ export const useMetadataStore = defineStore('metadata', {
     multiSelect: false,
     selected: new Set(),
     networkFolders: new Set(),
+    scanProgress: { total: 0, processed: 0 },
   }),
 
   getters: {
@@ -210,7 +212,12 @@ export const useMetadataStore = defineStore('metadata', {
       this.error = null
       this.failedFiles = []
       this.activeHistoryEntryId = null
+      this.scanProgress = { total: 0, processed: 0 }
       _geocodeAbortController = null
+
+      const unlistenProgress = await listen('meta_scan_progress', (e) => {
+        this.scanProgress = e.payload
+      })
 
       try {
         // Check fingerprint to detect cache hits
@@ -261,6 +268,7 @@ export const useMetadataStore = defineStore('metadata', {
       } catch (e) {
         if (!errorMessage(e).includes('stopped')) this.error = errorMessage(e)
       } finally {
+        unlistenProgress()
         this.scanning = false
       }
     },

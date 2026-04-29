@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 use super::{AppError, MetaScanResult, MetaScanState, evict_cache_for, to_pathbuf_vec, extract_tag_string, extract_tag_f64, extract_tag_u64};
-use crate::types::FailedFile;
+use crate::types::{FailedFile, MetaScanProgress};
 
 /// Scans directories and returns all images with basic file metadata.
 /// Used by the metadata editor mode.
@@ -19,10 +19,13 @@ pub async fn scan_for_metadata(
     let stop = Arc::new(AtomicBool::new(false));
     *meta_scan_state.0.lock().unwrap() = stop.clone();
     let resource_dir = app.path().resource_dir().ok();
+    let app_handle = app.clone();
 
     tokio::task::spawn_blocking(move || {
         let directories = to_pathbuf_vec(&paths);
         let all_images = crate::scanner::collect_images(&directories);
+        let total = all_images.len();
+        let _ = app_handle.emit("meta_scan_progress", MetaScanProgress { total, processed: 0 });
 
         let exiftool = resource_dir
             .as_deref()
@@ -45,8 +48,9 @@ pub async fn scan_for_metadata(
         const CHUNK: usize = 500;
         let mut entries: Vec<crate::types::ImageEntry> = Vec::with_capacity(all_images.len());
         let mut failed_files: Vec<FailedFile> = Vec::new();
+        let mut processed: usize = 0;
 
-        for chunk in all_images.chunks(CHUNK) {
+        'outer: for chunk in all_images.chunks(CHUNK) {
             if stop.load(Ordering::Relaxed) {
                 break;
             }
@@ -77,6 +81,9 @@ pub async fn scan_for_metadata(
                 };
 
             for p in chunk {
+                if stop.load(Ordering::Relaxed) {
+                    break 'outer;
+                }
                 let path_str = p.to_string_lossy().to_string();
                 let fs_meta = match std::fs::metadata(p) {
                     Ok(m) => m,
@@ -85,6 +92,8 @@ pub async fn scan_for_metadata(
                             path: path_str,
                             kind: crate::types::FailedFileKind::from_io(&e),
                         });
+                        processed += 1;
+                        let _ = app_handle.emit("meta_scan_progress", MetaScanProgress { total, processed });
                         continue;
                     }
                 };
@@ -149,9 +158,14 @@ pub async fn scan_for_metadata(
                     blur_score: None,
                     device,
                 });
+                processed += 1;
+                let _ = app_handle.emit("meta_scan_progress", MetaScanProgress { total, processed });
             }
         }
 
+        if stop.load(Ordering::Relaxed) {
+            return Err(AppError::Scan { message: "scan stopped".into() });
+        }
         entries.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(MetaScanResult { images: entries, failed_files })
     })
