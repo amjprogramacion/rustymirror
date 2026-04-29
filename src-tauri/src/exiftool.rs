@@ -4,10 +4,10 @@
 //! (mirrors how `magick.exe` is bundled via `tauri.conf.json` resources glob).
 
 use std::{
-    io::Write as _,
+    io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
-    process::Command,
-    sync::OnceLock,
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 #[cfg(target_os = "windows")]
@@ -189,4 +189,109 @@ fn base_cmd(exiftool: &Path) -> Command {
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
     cmd
+}
+
+// ── ExifTool daemon (stay-open mode) ─────────────────────────────────────────
+
+/// A long-lived ExifTool process that accepts multiple batch queries over stdin/stdout.
+///
+/// Eliminates per-query Perl startup overhead: the process is spawned once and
+/// kept alive for the duration of the scan.  Each call to `batch_query` sends
+/// the file list + tags via stdin, waits for the `{ready}` sentinel on stdout,
+/// and returns the parsed JSON array.
+///
+/// Stdin is written from a background thread so that large outputs on stdout
+/// cannot fill the OS pipe buffer and deadlock the call.
+pub struct ExifToolDaemon {
+    child: Child,
+    stdin: Arc<Mutex<ChildStdin>>,
+    stdout: BufReader<ChildStdout>,
+}
+
+impl ExifToolDaemon {
+    pub fn start(exiftool: &Path) -> anyhow::Result<Self> {
+        let mut child = base_cmd(exiftool)
+            .args(["-stay_open", "True", "-@", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+
+        let stdin = Arc::new(Mutex::new(
+            child.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?,
+        ));
+        let stdout = BufReader::new(
+            child.stdout.take().ok_or_else(|| anyhow::anyhow!("no stdout"))?,
+        );
+        Ok(Self { child, stdin, stdout })
+    }
+
+    /// Send `paths` + `tags` to the daemon and return one JSON object per file.
+    pub fn batch_query(
+        &mut self,
+        paths: &[std::path::PathBuf],
+        tags: &[&str],
+    ) -> anyhow::Result<Vec<serde_json::Value>> {
+        if paths.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build the full command block as a single string.
+        let mut cmd = String::with_capacity(paths.len() * 64 + tags.len() * 24 + 16);
+        cmd.push_str("-json\n");
+        for &tag in tags {
+            cmd.push_str(tag);
+            cmd.push('\n');
+        }
+        for p in paths {
+            cmd.push_str(&p.to_string_lossy());
+            cmd.push('\n');
+        }
+        cmd.push_str("-execute\n");
+
+        // Write stdin in a background thread so large stdout output cannot fill
+        // the OS pipe buffer (64 KB on Linux) and deadlock the caller.
+        let stdin = Arc::clone(&self.stdin);
+        let writer = std::thread::spawn(move || -> std::io::Result<()> {
+            let mut guard = stdin.lock().unwrap();
+            guard.write_all(cmd.as_bytes())?;
+            guard.flush()
+        });
+
+        // Read stdout until the `{ready}` sentinel.
+        let mut output = String::new();
+        let mut line = String::new();
+        loop {
+            line.clear();
+            if self.stdout.read_line(&mut line)? == 0 {
+                break; // EOF — process exited unexpectedly
+            }
+            if line.trim_end().starts_with("{ready}") {
+                break;
+            }
+            output.push_str(&line);
+        }
+
+        writer
+            .join()
+            .map_err(|_| anyhow::anyhow!("stdin writer thread panicked"))?
+            .map_err(|e| anyhow::anyhow!("stdin write error: {e}"))?;
+
+        if output.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+        let arr: serde_json::Value = serde_json::from_str(&output)
+            .unwrap_or(serde_json::Value::Array(Vec::new()));
+        Ok(arr.as_array().cloned().unwrap_or_default())
+    }
+}
+
+impl Drop for ExifToolDaemon {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.stdin.lock() {
+            let _ = write!(guard, "-stay_open\nFalse\n");
+            let _ = guard.flush();
+        }
+        let _ = self.child.wait();
+    }
 }

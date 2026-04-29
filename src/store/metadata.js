@@ -70,6 +70,7 @@ export const useMetadataStore = defineStore('metadata', {
     selected: new Set(),
     networkFolders: new Set(),
     scanProgress: { total: 0, processed: 0 },
+    heicProgress: { analyzed: 0, total: 0, phase: '' },
   }),
 
   getters: {
@@ -213,10 +214,14 @@ export const useMetadataStore = defineStore('metadata', {
       this.failedFiles = []
       this.activeHistoryEntryId = null
       this.scanProgress = { total: 0, processed: 0 }
+      this.heicProgress = { analyzed: 0, total: 0, phase: '' }
       _geocodeAbortController = null
 
       const unlistenProgress = await listen('meta_scan_progress', (e) => {
         this.scanProgress = e.payload
+      })
+      const unlistenHeic = await listen('meta_analyze_progress', (e) => {
+        this.heicProgress = e.payload
       })
 
       try {
@@ -269,6 +274,7 @@ export const useMetadataStore = defineStore('metadata', {
         if (!errorMessage(e).includes('stopped')) this.error = errorMessage(e)
       } finally {
         unlistenProgress()
+        unlistenHeic()
         this.scanning = false
       }
     },

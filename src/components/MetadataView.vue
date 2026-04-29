@@ -7,6 +7,7 @@
     :subtitle="meta.geocoding ? `${meta.images.length.toLocaleString()} images found` : null"
     :progress="!meta.geocoding ? { scanned: meta.scanProgress.processed, total: meta.scanProgress.total } : undefined"
     :progress-percent="!meta.geocoding && meta.scanProgress.total > 0 ? Math.round((meta.scanProgress.processed / meta.scanProgress.total) * 100) : 0"
+    :analyze-progress="!meta.geocoding ? meta.heicProgress : undefined"
   />
 
   <!-- Empty state -->

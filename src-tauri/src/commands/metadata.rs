@@ -1,15 +1,18 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use rayon::prelude::*;
 use tauri::{Emitter, Manager, State};
 
 use super::{AppError, MetaScanResult, MetaScanState, evict_cache_for, to_pathbuf_vec, extract_tag_string, extract_tag_f64, extract_tag_u64};
-use crate::types::{FailedFile, MetaScanProgress};
+use crate::types::{AnalyzeProgress, FailedFile, MetaScanProgress};
 
 /// Scans directories and returns all images with basic file metadata.
 /// Used by the metadata editor mode.
 ///
-/// Uses ExifTool in batch mode (one process call per chunk of 500 files) for
-/// fast metadata extraction across all supported formats including HEIC/AVIF.
+/// Phase 1 — ExifTool daemon: one Perl process is started for the whole scan;
+/// chunks of 500 files are sent via stdin, eliminating per-chunk startup overhead.
+/// Phase 2 — HEIC parallel: HEIC/HEIF/AVIF entries are corrected in parallel
+/// via rayon, since heic_capture_info calls magick externally for each file.
 #[tauri::command]
 pub async fn scan_for_metadata(
     paths: Vec<String>,
@@ -27,11 +30,6 @@ pub async fn scan_for_metadata(
         let total = all_images.len();
         let _ = app_handle.emit("meta_scan_progress", MetaScanProgress { total, processed: 0 });
 
-        let exiftool = resource_dir
-            .as_deref()
-            .and_then(crate::exiftool::find_exiftool);
-
-        // Lightweight tag set for the metadata scan (sort fields only).
         // GPS and dimension tags use # for raw numeric output.
         const SCAN_TAGS: &[&str] = &[
             "-EXIF:DateTimeOriginal",
@@ -45,45 +43,49 @@ pub async fn scan_for_metadata(
             "-ExifImageHeight#",
         ];
 
+        // Start a single long-lived ExifTool daemon for the whole scan.
+        // Falls back to empty meta_maps if ExifTool is unavailable.
+        let exiftool_path = resource_dir.as_deref().and_then(crate::exiftool::find_exiftool);
+        let mut daemon = exiftool_path.as_deref().and_then(|et| {
+            crate::exiftool::ExifToolDaemon::start(et)
+                .map_err(|e| tracing::warn!("exiftool daemon start failed: {e}"))
+                .ok()
+        });
+
         const CHUNK: usize = 500;
-        let mut entries: Vec<crate::types::ImageEntry> = Vec::with_capacity(all_images.len());
+        let mut entries: Vec<crate::types::ImageEntry> = Vec::with_capacity(total);
         let mut failed_files: Vec<FailedFile> = Vec::new();
+        let mut heic_indices: Vec<usize> = Vec::new();
         let mut processed: usize = 0;
 
+        // ── Phase 1: exiftool daemon queries + per-file entry building ────────
         'outer: for chunk in all_images.chunks(CHUNK) {
-            if stop.load(Ordering::Relaxed) {
-                break;
-            }
+            if stop.load(Ordering::Relaxed) { break; }
 
-            // Build a normalised-path → JSON-object map from the exiftool batch call.
-            // ExifTool returns SourceFile with forward slashes on Windows, so we
-            // normalise both sides to forward slashes for the lookup.
+            // ExifTool returns SourceFile with forward slashes on Windows; normalise
+            // both sides to forward slashes for the lookup.
             let meta_map: std::collections::HashMap<String, serde_json::Value> =
-                if let Some(ref et) = exiftool {
-                    match crate::exiftool::batch_read_tags(et, chunk, SCAN_TAGS) {
-                        Ok(results) => results
-                            .into_iter()
-                            .filter_map(|obj| {
-                                let src = obj
-                                    .get("SourceFile")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.replace('\\', "/"))?;
-                                Some((src, obj))
-                            })
-                            .collect(),
-                        Err(e) => {
-                            tracing::warn!("exiftool batch scan failed: {e}");
-                            std::collections::HashMap::new()
-                        }
+                match daemon.as_mut().map(|d| d.batch_query(chunk, SCAN_TAGS)) {
+                    Some(Ok(results)) => results
+                        .into_iter()
+                        .filter_map(|obj| {
+                            let src = obj
+                                .get("SourceFile")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.replace('\\', "/"))?;
+                            Some((src, obj))
+                        })
+                        .collect(),
+                    Some(Err(e)) => {
+                        tracing::warn!("exiftool daemon query failed: {e}");
+                        std::collections::HashMap::new()
                     }
-                } else {
-                    std::collections::HashMap::new()
+                    None => std::collections::HashMap::new(),
                 };
 
             for p in chunk {
-                if stop.load(Ordering::Relaxed) {
-                    break 'outer;
-                }
+                if stop.load(Ordering::Relaxed) { break 'outer; }
+
                 let path_str = p.to_string_lossy().to_string();
                 let fs_meta = match std::fs::metadata(p) {
                     Ok(m) => m,
@@ -112,29 +114,27 @@ pub async fn scan_for_metadata(
                 let lookup_key = path_str.replace('\\', "/");
                 let obj = meta_map.get(&lookup_key);
 
-                let mut width = extract_tag_u64(obj, "ImageWidth")
+                let width = extract_tag_u64(obj, "ImageWidth")
                     .or_else(|| extract_tag_u64(obj, "ExifImageWidth"))
                     .unwrap_or(0) as u32;
-                let mut height = extract_tag_u64(obj, "ImageHeight")
+                let height = extract_tag_u64(obj, "ImageHeight")
                     .or_else(|| extract_tag_u64(obj, "ExifImageHeight"))
                     .unwrap_or(0) as u32;
 
-                let is_heic_format = p.extension()
+                let is_heic = p.extension()
                     .and_then(|e| e.to_str())
                     .map(|e| matches!(e.to_lowercase().as_str(), "heic" | "heif" | "avif"))
                     .unwrap_or(false);
 
-                // For HEIC/HEIF/AVIF use the shared helper (heic_capture_info):
-                // converts to a small temp JPEG via magick and reads dimensions
-                // and DateTimeOriginal from the embedded EXIF block (local
-                // wall-clock time, not QuickTime UTC).
-                let date_taken: Option<String> = if is_heic_format {
-                    let (w, h, date) = crate::heic::heic_capture_info(p, resource_dir.as_deref());
-                    if w > 0 { width = w; height = h; }
-                    date
-                } else {
-                    extract_tag_string(obj, "DateTimeOriginal").map(crate::metadata::exif_date_to_iso)
-                };
+                // For HEIC/HEIF/AVIF, defer dimension and date corrections to Phase 2
+                // (parallel heic_capture_info) which reads local-time DateTimeOriginal
+                // from the EXIF block instead of QuickTime UTC.
+                if is_heic {
+                    heic_indices.push(entries.len());
+                }
+
+                let date_taken = extract_tag_string(obj, "DateTimeOriginal")
+                    .map(crate::metadata::exif_date_to_iso);
 
                 let make = extract_tag_string(obj, "Make");
                 let model = extract_tag_string(obj, "Model");
@@ -163,9 +163,56 @@ pub async fn scan_for_metadata(
             }
         }
 
+        drop(daemon); // sends -stay_open False, waits for exiftool to exit
+
         if stop.load(Ordering::Relaxed) {
             return Err(AppError::Scan { message: "scan stopped".into() });
         }
+
+        // ── Phase 2: HEIC/HEIF/AVIF correction in parallel ───────────────────
+        // heic_capture_info calls magick externally per file — parallelising with
+        // rayon gives near-linear speedup on multi-core machines.
+        if !heic_indices.is_empty() {
+            let heic_total = heic_indices.len();
+            let heic_done = AtomicUsize::new(0);
+
+            // Emit the initial HEIC phase event before starting rayon so the
+            // frontend transitions straight from the scan bar to the analyze bar
+            // without going through the indeterminate fallback.
+            let _ = app_handle.emit("meta_analyze_progress", AnalyzeProgress {
+                analyzed: 0,
+                total: heic_total,
+                phase: "Correcting HEICs…".into(),
+            });
+
+            let corrections: Vec<(usize, u32, u32, Option<String>)> = heic_indices
+                .par_iter()
+                .filter_map(|&idx| {
+                    if stop.load(Ordering::Relaxed) { return None; }
+                    let path = std::path::Path::new(&entries[idx].path);
+                    let (w, h, date) = crate::heic::heic_capture_info(path, resource_dir.as_deref());
+                    let done = heic_done.fetch_add(1, Ordering::Relaxed) + 1;
+                    let _ = app_handle.emit("meta_analyze_progress", AnalyzeProgress {
+                        analyzed: done,
+                        total: heic_total,
+                        phase: "Correcting HEICs…".into(),
+                    });
+                    if w == 0 && date.is_none() { return None; }
+                    Some((idx, w, h, date))
+                })
+                .collect();
+
+            for (idx, w, h, date) in corrections {
+                let e = &mut entries[idx];
+                if w > 0 { e.width = w; e.height = h; }
+                e.date_taken = date;
+            }
+        }
+
+        if stop.load(Ordering::Relaxed) {
+            return Err(AppError::Scan { message: "scan stopped".into() });
+        }
+
         entries.sort_by(|a, b| a.path.cmp(&b.path));
         Ok(MetaScanResult { images: entries, failed_files })
     })
