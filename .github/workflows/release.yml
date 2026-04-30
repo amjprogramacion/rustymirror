@@ -49,7 +49,7 @@ jobs:
       - name: Download ExifTool
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://sourceforge.net/projects/exiftool/files/exiftool-13.57_64.zip/download" -OutFile exiftool.zip
+          curl.exe -L "https://sourceforge.net/projects/exiftool/files/exiftool-13.57_64.zip/download" -o exiftool.zip
           Expand-Archive -Path exiftool.zip -DestinationPath exiftool_tmp
           Copy-Item "exiftool_tmp\exiftool-13.57_64\exiftool(-k).exe" "src-tauri\resources\exiftool.exe"
           Copy-Item "exiftool_tmp\exiftool-13.57_64\exiftool_files" "src-tauri\resources\exiftool_files" -Recurse
