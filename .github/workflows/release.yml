@@ -46,6 +46,13 @@ jobs:
           config: cliff.toml
           args: --current --strip header
 
+      - name: Download ImageMagick
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://imagemagick.org/archive/binaries/ImageMagick-7.1.2-21-portable-Q16-x64.7z" -OutFile magick.7z
+          7z e magick.7z magick.exe -o"src-tauri\resources" -y
+          Remove-Item magick.7z
+
       - name: Download ExifTool
         shell: pwsh
         run: |

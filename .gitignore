@@ -28,3 +28,4 @@ dist
 # Bundled sidecar binaries (large — download separately)
 src-tauri/resources/exiftool.exe
 src-tauri/resources/exiftool_files
+src-tauri/resources/magick.exe
