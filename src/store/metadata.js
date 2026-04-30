@@ -60,6 +60,7 @@ export const useMetadataStore = defineStore('metadata', {
     sortDir: 'asc',   // 'asc'  | 'desc'
     locationNames: {}, // path → "City, Country" (populated in background after scan)
     geocoding: false,
+    geocodingManual: false,
     filterDateFrom: '',   // 'YYYY-MM-DD' or ''
     filterDateTo:   '',
     filterLocation: '',   // exact location name or '' = all
@@ -367,6 +368,17 @@ export const useMetadataStore = defineStore('metadata', {
         this.geocoding = false
         _geocodeAbortController = null
         await saveGeoCache(geoCache)
+      }
+    },
+
+    async fetchLocationsManual() {
+      if (this.geocodingManual || this.geocoding || this.scanning) return
+      this.locationNames = {}
+      this.geocodingManual = true
+      try {
+        await this.geocodeAll()
+      } finally {
+        this.geocodingManual = false
       }
     },
 

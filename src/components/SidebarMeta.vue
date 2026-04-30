@@ -78,6 +78,16 @@
             </select>
             <SelectChevron />
           </div>
+          <button
+            class="filter-fetch-sq"
+            :disabled="meta.geocodingManual || meta.scanning"
+            @click="meta.fetchLocationsManual()"
+            title="Fetch locations"
+          >
+            <span class="fetch-spin" :class="{ spinning: meta.geocodingManual }">
+              <RefreshIcon />
+            </span>
+          </button>
           <button v-if="meta.filterLocation" class="filter-clear-sq" @click="meta.filterLocation = ''" title="Clear">
             <ClearIcon />
           </button>
@@ -127,6 +137,7 @@ import { useMetadataHistoryStore } from '../store/metadataHistory'
 import { useFolderPicker } from '../composables/useFolderPicker'
 import SelectChevron from './SelectChevron.vue'
 import ClearIcon from './ClearIcon.vue'
+import RefreshIcon from './RefreshIcon.vue'
 import FolderSection from './FolderSection.vue'
 import SidebarScanButton from './SidebarScanButton.vue'
 import SidebarHistory from './SidebarHistory.vue'
@@ -204,7 +215,7 @@ function pickMetaFolder() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  aspect-ratio: 1;
   align-self: stretch;
   flex-shrink: 0;
   background: var(--bg-card);
@@ -218,5 +229,40 @@ function pickMetaFolder() {
   background: var(--color-danger);
   border-color: var(--color-danger);
   color: #fff;
+}
+
+.filter-fetch-sq {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  align-self: stretch;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.filter-fetch-sq:hover:not(:disabled) {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+.filter-fetch-sq:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.fetch-spin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fetch-spin.spinning {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>
