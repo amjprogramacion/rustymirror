@@ -105,6 +105,16 @@
             </select>
             <SelectChevron />
           </div>
+          <button
+            class="filter-fetch-sq"
+            :disabled="meta.devicesManual || meta.scanning"
+            @click="meta.fetchDevicesManual()"
+            title="Refresh devices"
+          >
+            <span class="fetch-spin" :class="{ spinning: meta.devicesManual }">
+              <RefreshIcon />
+            </span>
+          </button>
           <button v-if="meta.filterDevice" class="filter-clear-sq" @click="meta.filterDevice = ''" title="Clear">
             <ClearIcon />
           </button>

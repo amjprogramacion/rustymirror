@@ -61,6 +61,7 @@ export const useMetadataStore = defineStore('metadata', {
     locationNames: {}, // path → "City, Country" (populated in background after scan)
     geocoding: false,
     geocodingManual: false,
+    devicesManual: false,
     filterDateFrom: '',   // 'YYYY-MM-DD' or ''
     filterDateTo:   '',
     filterLocation: '',   // exact location name or '' = all
@@ -379,6 +380,23 @@ export const useMetadataStore = defineStore('metadata', {
         await this.geocodeAll()
       } finally {
         this.geocodingManual = false
+      }
+    },
+
+    async fetchDevicesManual() {
+      if (this.devicesManual || this.scanning) return
+      this.devicesManual = true
+      try {
+        const seen = new Set()
+        for (const img of this.images) {
+          if (img.device) seen.add(img.device)
+        }
+        this.discoveredDevices = [...seen].sort((a, b) =>
+          a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }))
+        const store = await getStore()
+        await store.set(DISCOVERED_DEVICES_KEY, this.discoveredDevices)
+      } catch { /* ignore */ } finally {
+        this.devicesManual = false
       }
     },
 
