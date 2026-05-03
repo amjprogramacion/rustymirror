@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useOrganizerHistoryStore } from './organizerHistory'
+import { useMetadataStore } from './metadata'
 
 export const useOrganizerStore = defineStore('organizer', () => {
   const folders = ref([])
@@ -69,6 +70,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
   }
 
   function _buildConfig() {
+    const metaStore = useMetadataStore()
     return {
       onlyRename:      config.value.onlyRename,
       datePriority:    config.value.datePriority,
@@ -77,6 +79,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
       outputDirectory: config.value.outputDirectory,
       renameTemplate:  config.value.renameTemplate,
       folderTemplate:  config.value.folderTemplate,
+      deviceAliases:   metaStore.deviceAliases,
     }
   }
 

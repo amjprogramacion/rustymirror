@@ -53,6 +53,8 @@ pub struct OrganizerConfig {
     pub rename_template: String,
     #[serde(default = "default_folder_template")]
     pub folder_template: String,
+    #[serde(default)]
+    pub device_aliases: HashMap<String, String>,
 }
 
 fn default_rename_template() -> String {
@@ -73,6 +75,7 @@ impl Default for OrganizerConfig {
             output_directory: String::new(),
             rename_template: default_rename_template(),
             folder_template: default_folder_template(),
+            device_aliases: HashMap::new(),
         }
     }
 }
@@ -461,6 +464,30 @@ pub fn extract_device(filename: &str, exif_obj: &serde_json::Value) -> String {
     "DESCONOCIDO".to_string()
 }
 
+// Returns the alias-resolved device name. Looks up "Make Model" (case-insensitive) in
+// device_aliases, falling back to extract_device if no alias is configured.
+fn resolve_device(filename: &str, exif_obj: &serde_json::Value, config: &OrganizerConfig) -> String {
+    if !config.device_aliases.is_empty() {
+        let make  = exif_obj.get("Make").and_then(|v| v.as_str()).map(str::trim).unwrap_or("");
+        let model = exif_obj.get("Model").and_then(|v| v.as_str()).map(str::trim).unwrap_or("");
+        let lookup = match (make.is_empty(), model.is_empty()) {
+            (false, false) => format!("{} {}", make, model).to_lowercase(),
+            (false, true)  => make.to_lowercase(),
+            (true,  false) => model.to_lowercase(),
+            _              => String::new(),
+        };
+        if !lookup.is_empty() {
+            if let Some(alias) = config.device_aliases.iter()
+                .find(|(k, _)| k.to_lowercase() == lookup)
+                .map(|(_, v)| v)
+            {
+                return alias.clone();
+            }
+        }
+    }
+    extract_device(filename, exif_obj)
+}
+
 // ─── Filename / path building ─────────────────────────────────────────────────
 
 static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -677,7 +704,7 @@ fn process_files_with_order(
         let exif_obj = exif_map.get(&path_str.replace('\\', "/")).unwrap_or(&empty);
 
         let (date, date_source) = extract_date(filename, exif_obj, config, &mut incr);
-        let device = extract_device(filename, exif_obj);
+        let device = resolve_device(filename, exif_obj, config);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
         let found = (0..16).find_map(|_| {
@@ -773,7 +800,7 @@ pub fn execute(
         let exif_obj = exif_map.get(&path_str.replace('\\', "/")).unwrap_or(&empty);
 
         let (date, _) = extract_date(filename, exif_obj, config, &mut incr);
-        let device = extract_device(filename, exif_obj);
+        let device = resolve_device(filename, exif_obj, config);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
         match try_rename_file(path, kind, &date, &device, &ext, config) {

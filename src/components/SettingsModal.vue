@@ -306,18 +306,41 @@
                 <template v-else-if="dataTab === 'devices'">
                   <section class="settings-section">
                     <div class="location-list">
-                      <div
-                        v-for="dev in allDevices"
-                        :key="dev.name"
-                        class="location-item"
-                      >
-                        <span class="location-name">{{ dev.name }}</span>
-                        <button
-                          class="location-remove"
-                          title="Remove"
-                          @click="meta.removeDevice(dev.name)"
-                        >✕</button>
-                      </div>
+                      <template v-for="dev in allDevices" :key="dev.name">
+                        <!-- Normal row -->
+                        <div v-if="editingAliasFor !== dev.name" class="location-item">
+                          <span class="location-name">
+                            {{ dev.name }}
+                            <span v-if="meta.deviceAliases[dev.name]" class="device-alias-badge">
+                              → {{ meta.deviceAliases[dev.name] }}
+                            </span>
+                          </span>
+                          <button
+                            class="location-edit"
+                            title="Set alias"
+                            @click="startEditAlias(dev.name)"
+                          >✎</button>
+                          <button
+                            class="location-remove"
+                            title="Remove"
+                            @click="meta.removeDevice(dev.name)"
+                          >✕</button>
+                        </div>
+                        <!-- Inline alias editor -->
+                        <div v-else class="location-item location-item--editing">
+                          <input
+                            class="settings-input location-add-input"
+                            type="text"
+                            :placeholder="`Alias for ${dev.name}…`"
+                            v-model="editingAliasValue"
+                            @keydown.enter="confirmAlias"
+                            @keydown.escape="cancelAlias"
+                            autofocus
+                          />
+                          <button class="btn-setting btn-setting--active" @click="confirmAlias">Save</button>
+                          <button class="btn-setting" @click="cancelAlias">Cancel</button>
+                        </div>
+                      </template>
                       <p v-if="!allDevices.length" class="settings-hint location-empty">
                         No devices yet. Run a metadata scan to discover devices from image EXIF data.
                       </p>
@@ -469,6 +492,26 @@ function cancelAddLocation() {
 
 const addingDevice = ref(false)
 const newDeviceName = ref('')
+const editingAliasFor = ref(null)
+const editingAliasValue = ref('')
+
+function startEditAlias(devName) {
+  editingAliasFor.value = devName
+  editingAliasValue.value = meta.deviceAliases[devName] ?? ''
+}
+
+function confirmAlias() {
+  if (editingAliasFor.value) {
+    meta.setDeviceAlias(editingAliasFor.value, editingAliasValue.value)
+  }
+  editingAliasFor.value = null
+  editingAliasValue.value = ''
+}
+
+function cancelAlias() {
+  editingAliasFor.value = null
+  editingAliasValue.value = ''
+}
 
 const allDevices = computed(() => {
   const customSet = new Set(meta.customDevices)
@@ -537,6 +580,7 @@ onMounted(() => {
   meta.loadDiscoveredLocations()
   meta.loadCustomDevices()
   meta.loadDiscoveredDevices()
+  meta.loadDeviceAliases()
 })
 </script>
 
@@ -986,6 +1030,39 @@ onMounted(() => {
 
 .btn-add-location {
   align-self: flex-start;
+}
+
+/* ── Device alias ── */
+.device-alias-badge {
+  font-size: 10px;
+  color: var(--color-accent);
+  opacity: 0.85;
+  margin-left: 4px;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+.location-edit {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+}
+.location-item:hover .location-edit { opacity: 1; }
+.location-edit:hover { color: var(--color-accent); }
+
+.location-item--editing {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-card);
+  border-radius: var(--border-radius-sm);
 }
 
 /* ── Transition ── */

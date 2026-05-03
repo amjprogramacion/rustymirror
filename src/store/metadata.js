@@ -13,6 +13,7 @@ const CUSTOM_LOCATIONS_KEY = 'customLocations'
 const DISCOVERED_LOCATIONS_KEY = 'discoveredLocations'
 const CUSTOM_DEVICES_KEY = 'customDevices'
 const DISCOVERED_DEVICES_KEY = 'discoveredDevices'
+const DEVICE_ALIASES_KEY = 'deviceAliases'
 
 let _geocodeAbortController = null
 let _store = null
@@ -52,6 +53,7 @@ export const useMetadataStore = defineStore('metadata', {
     discoveredLocations: [],
     customDevices: [],
     discoveredDevices: [],
+    deviceAliases: {}, // { "Make Model": "Alias" }
     scanDone: false,
     activeHistoryEntryId: null,
     images: [],
@@ -537,6 +539,28 @@ export const useMetadataStore = defineStore('metadata', {
       } catch {}
     },
 
+    async loadDeviceAliases() {
+      try {
+        const store = await getStore()
+        this.deviceAliases = (await store.get(DEVICE_ALIASES_KEY)) ?? {}
+      } catch { this.deviceAliases = {} }
+    },
+
+    async setDeviceAlias(deviceName, alias) {
+      const trimmed = alias.trim()
+      const next = { ...this.deviceAliases }
+      if (trimmed) {
+        next[deviceName] = trimmed
+      } else {
+        delete next[deviceName]
+      }
+      this.deviceAliases = next
+      try {
+        const store = await getStore()
+        await store.set(DEVICE_ALIASES_KEY, this.deviceAliases)
+      } catch {}
+    },
+
     async removeDevice(name) {
       this.discoveredDevices = this.discoveredDevices.filter(d => d !== name)
       this.customDevices     = this.customDevices.filter(d => d !== name)
@@ -547,10 +571,18 @@ export const useMetadataStore = defineStore('metadata', {
         img.device === name ? { ...img, device: undefined } : img
       )
 
+      // Remove alias if one exists
+      if (this.deviceAliases[name]) {
+        const next = { ...this.deviceAliases }
+        delete next[name]
+        this.deviceAliases = next
+      }
+
       try {
         const store = await getStore()
         await store.set(DISCOVERED_DEVICES_KEY, this.discoveredDevices)
         await store.set(CUSTOM_DEVICES_KEY, this.customDevices)
+        await store.set(DEVICE_ALIASES_KEY, this.deviceAliases)
       } catch {}
     },
 

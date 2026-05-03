@@ -24,10 +24,10 @@
       <div class="ps-row" v-if="showDevice">
         <span class="ps-label">Device</span>
         <template v-if="isBatch && batchAgg">
-          <span class="ps-value" v-if="batchAgg.make !== MIXED_VALUE && batchAgg.model !== MIXED_VALUE">{{ [batchAgg.make, batchAgg.model].filter(Boolean).join(' ') }}</span>
+          <span class="ps-value" v-if="batchAgg.make !== MIXED_VALUE && batchAgg.model !== MIXED_VALUE">{{ displayDevice(batchAgg.make, batchAgg.model) }}</span>
           <span class="ps-value ps-value--muted" v-else>Various values</span>
         </template>
-        <span class="ps-value" v-else-if="meta">{{ [meta.make, meta.model].filter(Boolean).join(' ') }}</span>
+        <span class="ps-value" v-else-if="meta">{{ displayDevice(meta.make, meta.model) }}</span>
       </div>
 
       <div class="ps-row" v-if="showLens">
@@ -54,9 +54,17 @@
 <script setup>
 import { computed } from 'vue'
 import CollapsibleSection from './CollapsibleSection.vue'
+import { useMetadataStore } from '../store/metadata'
 import { formatSize } from '../utils/formatters'
 import { MIXED_VALUE } from '../constants'
 import '../styles/panel-sections.css'
+
+const metaStore = useMetadataStore()
+
+function displayDevice(make, model) {
+  const raw = [make, model].filter(Boolean).join(' ')
+  return raw ? (metaStore.deviceAliases[raw] || raw) : ''
+}
 
 const props = defineProps({
   meta:        Object,

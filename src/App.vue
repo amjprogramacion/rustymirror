@@ -24,6 +24,7 @@ import UpdateToast from './components/UpdateToast.vue'
 import { useUpdater } from './composables/useUpdater'
 import { useMode } from './composables/useMode'
 import { usePanelStore } from './store/panel'
+import { useMetadataStore } from './store/metadata'
 
 const { activeMode } = useMode()
 const panel = usePanelStore()
@@ -37,9 +38,11 @@ watch(activeMode, (newMode, oldMode) => {
 })
 
 const { autoCheck, checkForUpdates } = useUpdater()
+const metaStore = useMetadataStore()
 
 onMounted(() => {
   if (autoCheck.value) checkForUpdates({ notify: true, silent: true })
+  metaStore.loadDeviceAliases()
 })
 </script>
 
