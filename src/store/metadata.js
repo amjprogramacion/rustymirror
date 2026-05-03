@@ -465,6 +465,37 @@ export const useMetadataStore = defineStore('metadata', {
       } catch {}
     },
 
+    async removeLocation(name) {
+      this.discoveredLocations = this.discoveredLocations.filter(l => l !== name)
+      this.customLocations     = this.customLocations.filter(l => l !== name)
+      if (this.filterLocation === name) this.filterLocation = ''
+
+      // Remove from session locationNames
+      const newNames = {}
+      for (const [path, locName] of Object.entries(this.locationNames)) {
+        if (locName !== name) newNames[path] = locName
+      }
+      this.locationNames = newNames
+
+      // Remove matching entries from geo cache
+      try {
+        const store = await getStore()
+        const geoCache = (await store.get(GEO_CACHE_KEY)) ?? {}
+        let changed = false
+        for (const [key, val] of Object.entries(geoCache)) {
+          if (val === name) { delete geoCache[key]; changed = true }
+        }
+        if (changed) {
+          const stats = geoCacheStats(geoCache)
+          this.geoCacheCount = stats.count
+          this.geoCacheBytes = stats.bytes
+          await store.set(GEO_CACHE_KEY, geoCache)
+        }
+        await store.set(DISCOVERED_LOCATIONS_KEY, this.discoveredLocations)
+        await store.set(CUSTOM_LOCATIONS_KEY, this.customLocations)
+      } catch {}
+    },
+
     async loadCustomDevices() {
       try {
         const store = await getStore()
@@ -502,6 +533,23 @@ export const useMetadataStore = defineStore('metadata', {
       this.customDevices = this.customDevices.filter(d => d !== name)
       try {
         const store = await getStore()
+        await store.set(CUSTOM_DEVICES_KEY, this.customDevices)
+      } catch {}
+    },
+
+    async removeDevice(name) {
+      this.discoveredDevices = this.discoveredDevices.filter(d => d !== name)
+      this.customDevices     = this.customDevices.filter(d => d !== name)
+      if (this.filterDevice === name) this.filterDevice = ''
+
+      // Clear device field from images so availableDevices getter stops listing it
+      this.images = this.images.map(img =>
+        img.device === name ? { ...img, device: undefined } : img
+      )
+
+      try {
+        const store = await getStore()
+        await store.set(DISCOVERED_DEVICES_KEY, this.discoveredDevices)
         await store.set(CUSTOM_DEVICES_KEY, this.customDevices)
       } catch {}
     },

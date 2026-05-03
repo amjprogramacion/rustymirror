@@ -268,10 +268,9 @@
                       >
                         <span class="location-name">{{ loc.name }}</span>
                         <button
-                          v-if="loc.custom"
                           class="location-remove"
                           title="Remove"
-                          @click="meta.removeCustomLocation(loc.name)"
+                          @click="meta.removeLocation(loc.name)"
                         >✕</button>
                       </div>
                       <p v-if="!allLocations.length" class="settings-hint location-empty">
@@ -314,10 +313,9 @@
                       >
                         <span class="location-name">{{ dev.name }}</span>
                         <button
-                          v-if="dev.custom"
                           class="location-remove"
                           title="Remove"
-                          @click="meta.removeCustomDevice(dev.name)"
+                          @click="meta.removeDevice(dev.name)"
                         >✕</button>
                       </div>
                       <p v-if="!allDevices.length" class="settings-hint location-empty">
