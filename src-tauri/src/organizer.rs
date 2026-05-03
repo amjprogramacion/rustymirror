@@ -599,6 +599,7 @@ fn build_new_filename(kind: &FileKind, date: &str, ext: &str, config: &Organizer
 
     let stem = apply_hex_uid_tokens(&stem);
     let stem = apply_crypto_uid_tokens(&stem);
+    let stem = stem.to_uppercase();
 
     Some(format!("{}.{}", stem, normalise_ext(ext)))
 }
@@ -629,7 +630,8 @@ fn build_target_dir(config: &OrganizerConfig, date: &str, device: &str) -> Optio
         .replace("{month_name}", month_name)
         .replace("{month_dir}",  &month_dir)
         .replace("{device}",     &device_clean)
-        .replace("{day}",        day);
+        .replace("{day}",        day)
+        .to_uppercase();
 
     let mut path = PathBuf::from(&config.output_directory);
     for segment in resolved.split('/') {
