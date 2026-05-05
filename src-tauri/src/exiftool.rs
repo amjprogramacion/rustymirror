@@ -237,10 +237,16 @@ fn base_cmd(exiftool: &Path) -> Command {
 ///
 /// Stdin is written from a background thread so that large outputs on stdout
 /// cannot fill the OS pipe buffer and deadlock the call.
+///
+/// On Windows the child is assigned to a Job Object with KILL_ON_JOB_CLOSE so
+/// that the OS terminates it automatically if the parent process dies before
+/// `Drop` can run the graceful shutdown.
 pub struct ExifToolDaemon {
     child: Child,
     stdin: Arc<Mutex<ChildStdin>>,
     stdout: BufReader<ChildStdout>,
+    #[cfg(target_os = "windows")]
+    job_handle: usize, // stores HANDLE (*mut c_void) as integer — keeps the struct Send
 }
 
 impl ExifToolDaemon {
@@ -252,13 +258,92 @@ impl ExifToolDaemon {
             .stderr(Stdio::null())
             .spawn()?;
 
+        #[cfg(target_os = "windows")]
+        let job_handle = Self::attach_job(&child);
+
         let stdin = Arc::new(Mutex::new(
             child.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?,
         ));
         let stdout = BufReader::new(
             child.stdout.take().ok_or_else(|| anyhow::anyhow!("no stdout"))?,
         );
-        Ok(Self { child, stdin, stdout })
+        Ok(Self {
+            child,
+            stdin,
+            stdout,
+            #[cfg(target_os = "windows")]
+            job_handle,
+        })
+    }
+
+    /// Creates a Windows Job Object with KILL_ON_JOB_CLOSE and assigns `child` to it.
+    /// Returns the raw job HANDLE (0 on failure — errors are non-fatal).
+    #[cfg(target_os = "windows")]
+    fn attach_job(child: &Child) -> usize {
+        use core::ffi::c_void;
+        use std::os::windows::io::AsRawHandle;
+
+        const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x00002000;
+        const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS: u32 = 9;
+
+        #[repr(C)]
+        struct BasicLimitInfo {
+            per_process_user_time_limit: i64,
+            per_job_user_time_limit: i64,
+            limit_flags: u32,
+            minimum_working_set_size: usize,
+            maximum_working_set_size: usize,
+            active_process_limit: u32,
+            affinity: usize,
+            priority_class: u32,
+            scheduling_class: u32,
+        }
+
+        #[repr(C)]
+        struct IoCounters { read_ops: u64, write_ops: u64, other_ops: u64, read_bytes: u64, write_bytes: u64, other_bytes: u64 }
+
+        #[repr(C)]
+        struct ExtendedLimitInfo {
+            basic: BasicLimitInfo,
+            io: IoCounters,
+            process_memory_limit: usize,
+            job_memory_limit: usize,
+            peak_process_memory: usize,
+            peak_job_memory: usize,
+        }
+
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn CreateJobObjectW(attrs: *const c_void, name: *const u16) -> *mut c_void;
+            fn SetInformationJobObject(job: *mut c_void, class: u32, info: *const c_void, len: u32) -> i32;
+            fn AssignProcessToJobObject(job: *mut c_void, process: *mut c_void) -> i32;
+            fn CloseHandle(handle: *mut c_void) -> i32;
+        }
+
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if job.is_null() { return 0; }
+
+            let mut info = std::mem::zeroed::<ExtendedLimitInfo>();
+            info.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            if SetInformationJobObject(
+                job,
+                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS,
+                &info as *const _ as *const c_void,
+                std::mem::size_of::<ExtendedLimitInfo>() as u32,
+            ) == 0 {
+                CloseHandle(job);
+                return 0;
+            }
+
+            let child_handle = child.as_raw_handle();
+            if AssignProcessToJobObject(job, child_handle) == 0 {
+                CloseHandle(job);
+                return 0;
+            }
+
+            job as usize
+        }
     }
 
     /// Send `paths` + `tags` to the daemon and return one JSON object per file.
@@ -323,10 +408,20 @@ impl ExifToolDaemon {
 
 impl Drop for ExifToolDaemon {
     fn drop(&mut self) {
+        // Graceful shutdown: ask ExifTool to exit, then wait.
         if let Ok(mut guard) = self.stdin.lock() {
             let _ = write!(guard, "-stay_open\nFalse\n");
             let _ = guard.flush();
         }
         let _ = self.child.wait();
+
+        // Close the Job Object handle. If Drop never ran (parent crash/kill),
+        // the OS closes it automatically on process exit, killing the child.
+        #[cfg(target_os = "windows")]
+        if self.job_handle != 0 {
+            #[link(name = "kernel32")]
+            extern "system" { fn CloseHandle(h: *mut core::ffi::c_void) -> i32; }
+            unsafe { CloseHandle(self.job_handle as *mut _); }
+        }
     }
 }

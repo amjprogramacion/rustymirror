@@ -15,11 +15,12 @@ export const useOrganizerStore = defineStore('organizer', () => {
     yearIfNotDate: 2015,
     outputDirectory: '',
     renameTemplate: '{type}_{date}_{time}_{4hex_uid}',
-    folderTemplate: 'REORDENADAS/{year}/{device}/{month_dir}',
+    folderTemplate: '{year}/{device}/{month_dir}',
   })
 
   const scanning            = ref(false)
   const scanResult          = ref(null)  // { total, images, videos, files } | null
+  const scanProgress        = ref({ scanned: 0, total: 0 })
   const activeHistoryEntryId = ref(null)
   const sortBy        = ref('filename')  // 'filename' | 'date' | 'type'
   const sortDir       = ref('asc')
@@ -35,6 +36,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
   const error              = ref(null)
 
   let _unlisten = null
+  let _unlistenScan = null
 
   // ── Folder management ────────────────────────────────────────────────────────
 
@@ -67,6 +69,17 @@ export const useOrganizerStore = defineStore('organizer', () => {
 
   function _unsubscribeProgress() {
     if (_unlisten) { _unlisten(); _unlisten = null }
+  }
+
+  async function _subscribeScanProgress() {
+    if (_unlistenScan) { _unlistenScan(); _unlistenScan = null }
+    _unlistenScan = await listen('media_scan_progress', ({ payload }) => {
+      scanProgress.value = payload
+    })
+  }
+
+  function _unsubscribeScanProgress() {
+    if (_unlistenScan) { _unlistenScan(); _unlistenScan = null }
   }
 
   function _buildConfig() {
@@ -117,10 +130,12 @@ export const useOrganizerStore = defineStore('organizer', () => {
 
   async function runScan() {
     if (!folders.value.length) return
-    scanning.value   = true
-    error.value      = null
-    scanResult.value = null
+    scanning.value       = true
+    scanProgress.value   = { scanned: 0, total: 0 }
+    error.value          = null
+    scanResult.value     = null
     const t0 = Date.now()
+    await _subscribeScanProgress()
     try {
       const result = await invoke('count_media_files', { paths: folders.value, config: _buildConfig() })
       scanResult.value = result
@@ -130,9 +145,10 @@ export const useOrganizerStore = defineStore('organizer', () => {
       )
       activeHistoryEntryId.value = entryId
     } catch (e) {
-      error.value = e?.message ?? String(e)
+      if (e?.type !== 'cancelled') error.value = e?.message ?? String(e)
     } finally {
       scanning.value = false
+      _unsubscribeScanProgress()
     }
   }
 
@@ -246,7 +262,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
 
   return {
     folders, config,
-    scanning, scanResult, sortBy, sortDir, activeHistoryEntryId,
+    scanning, scanResult, scanProgress, sortBy, sortDir, activeHistoryEntryId,
     previewing, previewingDate, executing, executingOp, progress,
     previewActions, previewDateActions, previewOnlyRename, lastSummary, error,
     addFolder, removeFolder, updateConfig,

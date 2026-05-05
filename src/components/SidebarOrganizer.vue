@@ -96,7 +96,7 @@
           type="text"
           :value="org.config.folderTemplate"
           @input="org.updateConfig({ folderTemplate: $event.target.value })"
-          placeholder="REORDENADAS/{year}/{device}/{month_dir}"
+          placeholder="{year}/{device}/{month_dir}"
           spellcheck="false"
           autocomplete="off"
         />
@@ -215,7 +215,7 @@ function insertFolderTag(token) {
 const MONTHS_PREVIEW = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE']
 
 const folderTemplatePreview = computed(() => {
-  const tpl = org.config.folderTemplate || 'REORDENADAS/{year}/{device}/{month_dir}'
+  const tpl = org.config.folderTemplate || '{year}/{device}/{month_dir}'
   return tpl
     .replace('{year}',       '2023')
     .replace('{month}',      '12')

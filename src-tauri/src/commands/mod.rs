@@ -7,7 +7,7 @@ mod file;
 mod cache;
 mod util;
 
-pub use util::{to_pathbuf_vec, to_base64_data_uri, extract_tag_string, extract_tag_f64, extract_tag_u64, process_exif_chunk};
+pub use util::{to_pathbuf_vec, to_base64_data_uri, extract_tag_string, extract_tag_f64, extract_tag_u64, process_exif_chunk, process_exif_chunk_daemon};
 
 // Re-export all commands
 pub use scan::*;
@@ -88,6 +88,8 @@ pub enum AppError {
     Internal { message: String },
     /// Organizer operation failure.
     Organizer { message: String },
+    /// Operation was cancelled by the user.
+    Cancelled,
 }
 
 impl From<tokio::task::JoinError> for AppError {

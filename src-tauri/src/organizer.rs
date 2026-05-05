@@ -3,7 +3,7 @@
 //! Translates the Node.js metadata-renamer CLI to Rust:
 //! - Date extraction from filename patterns and EXIF metadata
 //! - Rename to `{IMG|VID}_YYYYMMDD_HHMMSS_XXXX.ext`
-//! - Optionally move to `{output_dir}/REORDENADAS/{year}/{device}/{MM - MONTH}/`
+//! - Optionally move to `{output_dir}/{year}/{device}/{MM - MONTH}/`
 //! - Metadata rewrite: set DateTimeOriginal/CreateDate/DateTimeDigitized from best date
 
 use std::collections::HashMap;
@@ -62,7 +62,7 @@ fn default_rename_template() -> String {
 }
 
 fn default_folder_template() -> String {
-    String::from("REORDENADAS/{year}/{device}/{month_dir}")
+    String::from("{year}/{device}/{month_dir}")
 }
 
 impl Default for OrganizerConfig {
@@ -619,7 +619,7 @@ fn build_target_dir(config: &OrganizerConfig, date: &str, device: &str) -> Optio
         .collect();
 
     let tpl = if config.folder_template.is_empty() {
-        "REORDENADAS/{year}/{device}/{month_dir}"
+        "{year}/{device}/{month_dir}"
     } else {
         &config.folder_template
     };

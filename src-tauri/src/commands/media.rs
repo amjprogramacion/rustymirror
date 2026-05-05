@@ -1,7 +1,8 @@
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use tauri::{AppHandle, Emitter, Manager, State};
 
-use super::{AppError, to_pathbuf_vec, process_exif_chunk};
+use super::{AppError, OrganizerState, to_pathbuf_vec, process_exif_chunk, process_exif_chunk_daemon};
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,16 +27,29 @@ pub struct MediaCountResult {
 /// Counts all compatible media files in the given directories,
 /// split by images and videos with per-extension breakdown and EXIF date.
 #[tauri::command]
-pub async fn count_media_files(paths: Vec<String>, config: crate::organizer::OrganizerConfig, app: AppHandle) -> Result<MediaCountResult, AppError> {
+pub async fn count_media_files(
+    paths: Vec<String>,
+    config: crate::organizer::OrganizerConfig,
+    app: AppHandle,
+    state: State<'_, OrganizerState>,
+) -> Result<MediaCountResult, AppError> {
     use std::collections::{BTreeMap, HashMap, HashSet};
 
     const VIDEO_EXTS: &[&str] = &["mp4", "mov", "avi", "mpg", "mpeg", "mkv"];
-    const CHUNK: usize = 500;
+    const CHUNK: usize = 50;
+
+    let stop = Arc::new(AtomicBool::new(false));
+    *state.0.lock().unwrap() = stop.clone();
 
     let resource_dir = app.path().resource_dir().ok();
 
-    tokio::task::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || -> Result<MediaCountResult, AppError> {
         let directories = to_pathbuf_vec(&paths);
+
+        #[derive(serde::Serialize, Clone, Copy)]
+        struct MediaScanProgress { scanned: usize, total: usize }
+
+        let _ = app.emit("media_scan_progress", MediaScanProgress { scanned: 0, total: 0 });
 
         let files: HashSet<PathBuf> = directories.iter().flat_map(|dir| {
             walkdir::WalkDir::new(dir).follow_links(false).into_iter()
@@ -53,6 +67,9 @@ pub async fn count_media_files(paths: Vec<String>, config: crate::organizer::Org
                 })
         }).collect();
 
+        let total = files.len();
+        let _ = app.emit("media_scan_progress", MediaScanProgress { scanned: 0, total });
+
         let mut image_exts: BTreeMap<String, usize> = BTreeMap::new();
         let mut video_exts: BTreeMap<String, usize> = BTreeMap::new();
 
@@ -67,7 +84,7 @@ pub async fn count_media_files(paths: Vec<String>, config: crate::organizer::Org
             }
         }
 
-        // Read DateTimeOriginal + CreateDate for all files via ExifTool batch calls.
+        // Read DateTimeOriginal + CreateDate for all files via ExifTool daemon.
         let exiftool = resource_dir.as_deref().and_then(crate::exiftool::find_exiftool);
         let mut date_map: HashMap<String, (String, String)> = HashMap::new();
 
@@ -75,9 +92,23 @@ pub async fn count_media_files(paths: Vec<String>, config: crate::organizer::Org
             let mut sorted_paths: Vec<&PathBuf> = files.iter().collect();
             sorted_paths.sort();
 
-            for chunk in sorted_paths.chunks(CHUNK) {
-                let chunk_dates = process_exif_chunk(&et, chunk, config.date_priority.clone());
-                date_map.extend(chunk_dates);
+            let mut scanned = 0usize;
+            if let Ok(mut daemon) = crate::exiftool::ExifToolDaemon::start(&et) {
+                for chunk in sorted_paths.chunks(CHUNK) {
+                    if stop.load(Ordering::Relaxed) { return Err(AppError::Cancelled); }
+                    let chunk_dates = process_exif_chunk_daemon(&mut daemon, chunk, config.date_priority.clone());
+                    date_map.extend(chunk_dates);
+                    scanned += chunk.len();
+                    let _ = app.emit("media_scan_progress", MediaScanProgress { scanned, total });
+                }
+            } else {
+                for chunk in sorted_paths.chunks(CHUNK) {
+                    if stop.load(Ordering::Relaxed) { return Err(AppError::Cancelled); }
+                    let chunk_dates = process_exif_chunk(&et, chunk, config.date_priority.clone());
+                    date_map.extend(chunk_dates);
+                    scanned += chunk.len();
+                    let _ = app.emit("media_scan_progress", MediaScanProgress { scanned, total });
+                }
             }
         }
 

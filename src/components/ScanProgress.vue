@@ -16,7 +16,7 @@
           <span class="count-current">{{ progress.scanned.toLocaleString() }}</span>
           <span class="count-sep"> / </span>
           <span class="count-total">{{ progress.total.toLocaleString() }}</span>
-          <span class="count-label"> images</span>
+          <span class="count-label">&nbsp;{{ countLabel }}</span>
         </p>
         <div class="bar-track">
           <div class="bar-fill" :style="{ width: progressPercent + '%' }" />
@@ -74,6 +74,7 @@ const props = defineProps({
   // Duplicates-specific: analysis phase progress { analyzed, total, phase }
   analyzeProgress: { type: Object,  default: () => ({ analyzed: 0, total: 0, phase: '' }) },
   etaSeconds:      { type: Number,  default: null },
+  countLabel:      { type: String,  default: 'images' },
 })
 
 const isScanning = computed(() =>

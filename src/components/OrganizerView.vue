@@ -53,6 +53,9 @@
       <ScanProgress
         v-if="org.scanning && !sortedFiles.length"
         :title="busyTitle"
+        :progress="org.scanProgress"
+        :progress-percent="scanProgressPercent"
+        count-label="files"
       />
 
       <!-- File list table + operation progress overlay -->
@@ -246,6 +249,12 @@ const orgProgressPercent = computed(() => {
   const { processed, total } = org.progress
   if (!total) return 0
   return Math.round((processed / total) * 100)
+})
+
+const scanProgressPercent = computed(() => {
+  const { scanned, total } = org.scanProgress
+  if (!total) return 0
+  return Math.round((scanned / total) * 100)
 })
 
 const needsOutputDir = computed(() =>
