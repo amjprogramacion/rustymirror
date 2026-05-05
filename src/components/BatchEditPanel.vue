@@ -62,6 +62,8 @@
             :meta="meta"
             :batchAgg="batchAgg"
             :is-batch="isBatch"
+            :edit-device="isBatch ? batchEdit.device : edit.device"
+            @update:device="v => { isBatch ? (batchEdit.device = v) : (edit.device = v); if (panel.activePanel) panel.activePanel.dirty = true }"
           />
 
           <!-- Date taken -->
@@ -70,7 +72,7 @@
             :value="isBatch ? batchEdit.dateTimeOriginal : edit.dateTimeOriginal"
             :is-mixed="isBatch && batchAgg?.dateTimeOriginal === MIXED"
             :show-hint="isBatch && batchAgg?.dateTimeOriginal === MIXED && !batchEdit.dateTimeOriginal"
-            @change="v => { isBatch ? (batchEdit.dateTimeOriginal = v) : (edit.dateTimeOriginal = v); panel.dirty = true }"
+            @change="v => { isBatch ? (batchEdit.dateTimeOriginal = v) : (edit.dateTimeOriginal = v); if (panel.activePanel) panel.activePanel.dirty = true }"
           />
 
           <!-- Location -->
@@ -154,22 +156,22 @@
             :desc-mixed="isBatch && batchAgg?.imageDescription === MIXED"
             :artist-mixed="isBatch && batchAgg?.artist === MIXED"
             :copyright-mixed="isBatch && batchAgg?.copyright === MIXED"
-            :show-notice="!isBatch && !panel.dirty && !panel.saving"
+            :show-notice="!isBatch && !panel.activePanel?.dirty && !panel.activePanel?.saving"
             @update:description="v => { isBatch ? (batchEdit.imageDescription = v) : (edit.imageDescription = v) }"
             @update:artist="v => { isBatch ? (batchEdit.artist = v) : (edit.artist = v) }"
             @update:copyright="v => { isBatch ? (batchEdit.copyright = v) : (edit.copyright = v) }"
-            @change="panel.dirty = true"
+            @change="panel.activePanel && (panel.activePanel.dirty = true)"
           />
 
         </div>
 
         <!-- Floating action bar -->
         <Transition name="mbp-bar">
-          <div class="mbp-float-bar" v-if="panel.dirty || panel.saving">
+          <div class="mbp-float-bar" v-if="panel.activePanel?.dirty || panel.activePanel?.saving">
             <div class="mbp-actions">
-              <button class="mbp-btn mbp-btn-ghost" @click="isBatch ? resetBatch() : resetEdit()" :disabled="panel.saving">Reset</button>
-              <button class="mbp-btn mbp-btn-primary" @click="isBatch ? saveBatch() : save()" :disabled="panel.saving">
-                <span v-if="panel.saving">Saving…</span>
+              <button class="mbp-btn mbp-btn-ghost" @click="isBatch ? resetBatch() : resetEdit()" :disabled="panel.activePanel?.saving">Reset</button>
+              <button class="mbp-btn mbp-btn-primary" @click="isBatch ? saveBatch() : save()" :disabled="panel.activePanel?.saving">
+                <span v-if="panel.activePanel?.saving">Saving…</span>
                 <span v-else-if="isBatch">Save to {{ panel.activePanel?.entries?.length }} images</span>
                 <span v-else>Save changes</span>
               </button>
@@ -212,6 +214,13 @@ import PanelSectionExposure   from './PanelSectionExposure.vue'
 import PanelSectionDate       from './PanelSectionDate.vue'
 import PanelSectionDetails    from './PanelSectionDetails.vue'
 import { MIXED_VALUE as MIXED } from '../constants'
+
+function splitDevice(device) {
+  if (!device) return { make: '', model: '' }
+  const idx = device.indexOf(' ')
+  if (idx === -1) return { make: device, model: '' }
+  return { make: device.slice(0, idx), model: device.slice(idx + 1) }
+}
 
 const store     = useDuplicatesStore()
 const panel     = usePanelStore()
@@ -344,29 +353,31 @@ const batchAgg = computed(() => {
 })
 
 // ── Batch: edit state ─────────────────────────────────────────────────────────
-const batchEdit = ref({ dateTimeOriginal: null, imageDescription: null, artist: null, copyright: null })
+const batchEdit = ref({ dateTimeOriginal: null, imageDescription: null, artist: null, copyright: null, device: null })
 const batchGpsCombinedRaw   = ref('')
 const batchGpsCombinedError = ref(null)
 
 function resetBatch() {
   const agg = batchAgg.value
   if (!agg || !panel.activePanel) return
+  const deviceMixed = agg.make === MIXED || agg.model === MIXED
   batchEdit.value = {
     dateTimeOriginal: agg.dateTimeOriginal === MIXED ? null : agg.dateTimeOriginal,
     imageDescription: agg.imageDescription === MIXED ? null : agg.imageDescription,
     artist:           agg.artist           === MIXED ? null : agg.artist,
     copyright:        agg.copyright        === MIXED ? null : agg.copyright,
+    device:           deviceMixed ? null : [agg.make, agg.model].filter(Boolean).join(' '),
   }
   batchGpsCombinedRaw.value   = (!agg.gps.mixed && agg.gps.lat != null) ? formatBatchGps(agg.gps.lat, agg.gps.lon) : ''
   batchGpsCombinedError.value = null
-  panel.dirty = false
+  if (panel.activePanel) panel.activePanel.dirty = false
 }
 
 watch(batchAgg, (agg) => { if (agg) resetBatch() }, { immediate: true })
 
 function onBatchGpsInput() {
   batchGpsCombinedError.value = null
-  panel.dirty = true
+  if (panel.activePanel) panel.activePanel.dirty = true
 }
 
 const batchGpsParsed    = computed(() => parseCombinedGps(batchGpsCombinedRaw.value))
@@ -416,6 +427,24 @@ async function saveBatch() {
     lon = parsed.lon
   }
 
+  // null device = mixed/unchanged; '' = delete; non-empty string = set new device
+  let devMake = null, devModel = null, devDelete = false
+  if (batchEdit.value.device !== null) {
+    const origDevice = (() => {
+      const agg = batchAgg.value
+      if (!agg || agg.make === MIXED || agg.model === MIXED) return null
+      return [agg.make, agg.model].filter(Boolean).join(' ')
+    })()
+    if (batchEdit.value.device !== origDevice) {
+      if (batchEdit.value.device === '') {
+        devDelete = true
+      } else {
+        const split = splitDevice(batchEdit.value.device)
+        devMake  = split.make  || null
+        devModel = split.model || null
+      }
+    }
+  }
   showNotification('saving', 'Saving changes…', 0)
   await store.saveBatchMetadata({
     dateTimeOriginal: batchEdit.value.dateTimeOriginal || null,
@@ -424,6 +453,9 @@ async function saveBatch() {
     copyright:        batchEdit.value.copyright        || null,
     gpsLatitude:      lat,
     gpsLongitude:     lon,
+    make:         devMake,
+    model:        devModel,
+    deleteDevice: devDelete,
   })
   if (panel.activePanel?.error) {
     showNotification('error', panel.activePanel.error, 4000)
@@ -442,7 +474,7 @@ const {
   previewLat, previewLon, hasGpsPreview,
   onCombinedInput, onGpsInput, normalizeGpsInput,
   resetGps, validateGps,
-} = useGpsEditor(meta, () => { panel.dirty = true })
+} = useGpsEditor(meta, () => { if (panel.activePanel) panel.activePanel.dirty = true })
 
 function onMapSetLocation({ lat, lon }) {
   if (isBatch.value) {
@@ -462,6 +494,7 @@ const edit = ref({
   imageDescription: '',
   artist: '',
   copyright: '',
+  device: '',
 })
 
 function resetEdit() {
@@ -471,9 +504,10 @@ function resetEdit() {
     imageDescription: meta.value.imageDescription ?? '',
     artist:           meta.value.artist ?? '',
     copyright:        meta.value.copyright ?? '',
+    device:           [meta.value.make, meta.value.model].filter(Boolean).join(' '),
   }
   resetGps(meta.value)
-  panel.dirty = false
+  if (panel.activePanel) panel.activePanel.dirty = false
 }
 
 watch(meta, (m) => { if (m) resetEdit() }, { immediate: true })
@@ -482,6 +516,17 @@ async function save() {
   const { ok, lat, lon } = validateGps()
   if (!ok) return
 
+  const origDevice = [meta.value?.make, meta.value?.model].filter(Boolean).join(' ')
+  let make = null, model = null, deleteDevice = false
+  if (edit.value.device !== origDevice) {
+    if (edit.value.device === '') {
+      deleteDevice = true
+    } else {
+      const split = splitDevice(edit.value.device)
+      make  = split.make  || null
+      model = split.model || null
+    }
+  }
   showNotification('saving', 'Saving changes…', 0)
   await store.saveMetadata({
     dateTimeOriginal: edit.value.dateTimeOriginal || null,
@@ -490,6 +535,9 @@ async function save() {
     copyright:        edit.value.copyright || null,
     gpsLatitude:      lat,
     gpsLongitude:     lon,
+    make,
+    model,
+    deleteDevice,
   })
   if (panel.activePanel?.error) {
     showNotification('error', panel.activePanel.error, 4000)

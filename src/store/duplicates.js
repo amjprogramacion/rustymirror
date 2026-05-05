@@ -369,7 +369,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
       const d      = new Date()
       const pad    = n => String(n).padStart(2, '0')
       const now    = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-      const device = [metadata.make, metadata.model].filter(Boolean).join(' ') || undefined
+      const device = [metadata.make, metadata.model].filter(Boolean).join(' ') || null
       for (const group of this.groups) {
         const idx = group.entries.findIndex(e => e.path === path)
         if (idx !== -1) {
@@ -379,7 +379,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
             dateTaken:    metadata.dateTimeOriginal ?? group.entries[idx].dateTaken,
             gpsLatitude:  metadata.gpsLatitude  ?? null,
             gpsLongitude: metadata.gpsLongitude ?? null,
-            device:       device ?? group.entries[idx].device,
+            device,
           })
           break
         }

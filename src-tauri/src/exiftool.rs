@@ -78,16 +78,30 @@ pub fn find_exiftool(resource_dir: &Path) -> Option<PathBuf> {
 ///
 /// Fields suffixed with `#` in `extra_args` bypass PrintConv (return raw numbers).
 /// GPS tags should always use `#` so coordinates come back as decimal f64.
+///
+/// The file path is written to a temp argfile (UTF-8) so non-ASCII characters in
+/// network-drive paths (e.g. accented letters) are handled correctly on Windows.
 pub fn read_tags(
     exiftool: &Path,
     image_path: &Path,
     extra_args: &[&str],
 ) -> anyhow::Result<serde_json::Value> {
-    let output = base_cmd(exiftool)
+    let argfile_path = std::env::temp_dir()
+        .join(format!("rustymirror_et_read_{}.txt", std::process::id()));
+    {
+        let mut f = std::fs::File::create(&argfile_path)?;
+        writeln!(f, "{}", image_path.to_string_lossy())?;
+    }
+
+    let result = base_cmd(exiftool)
         .arg("-json")
         .args(extra_args)
-        .arg(image_path)
-        .output()?;
+        .arg("-@")
+        .arg(&argfile_path)
+        .output();
+
+    let _ = std::fs::remove_file(&argfile_path);
+    let output = result?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -145,6 +159,9 @@ pub fn batch_read_tags(
 }
 
 /// Apply `tag=value` pairs to a file in-place (`-overwrite_original`).
+///
+/// The file path is written to a temp argfile (UTF-8) so non-ASCII characters in
+/// network-drive paths (e.g. accented letters) are handled correctly on Windows.
 pub fn write_tags(
     exiftool: &Path,
     image_path: &Path,
@@ -154,16 +171,31 @@ pub fn write_tags(
         return Ok(());
     }
 
+    let argfile_path = std::env::temp_dir()
+        .join(format!("rustymirror_et_write_{}.txt", std::process::id()));
+    {
+        let mut f = std::fs::File::create(&argfile_path)?;
+        writeln!(f, "{}", image_path.to_string_lossy())?;
+    }
+
     let mut cmd = base_cmd(exiftool);
     cmd.arg("-overwrite_original");
     for (tag, value) in tags {
         cmd.arg(format!("-{tag}={value}"));
     }
-    cmd.arg(image_path);
+    cmd.arg("-@").arg(&argfile_path);
 
-    let output = cmd.output()?;
+    let result = cmd.output();
+    let _ = std::fs::remove_file(&argfile_path);
+    let output = result?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    tracing::debug!("exiftool write stdout: {stdout}");
+    if !stderr.is_empty() {
+        tracing::warn!("exiftool write stderr: {stderr}");
+    }
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("exiftool write failed: {stderr}");
     }
     Ok(())
@@ -188,6 +220,9 @@ fn base_cmd(exiftool: &Path) -> Command {
     let mut cmd = Command::new(exiftool);
     #[cfg(target_os = "windows")]
     cmd.creation_flags(CREATE_NO_WINDOW);
+    // Tell ExifTool that filenames (passed via argfile or CLI) are UTF-8 encoded.
+    // Required for non-ASCII paths (accented chars, CJK, etc.) on Windows.
+    cmd.args(["-charset", "FileName=UTF8"]);
     cmd
 }
 

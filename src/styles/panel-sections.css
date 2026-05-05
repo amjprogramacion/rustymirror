@@ -68,7 +68,7 @@
 /* Exposure and FileCamera use a fixed-width label column. */
 .ps-rows .ps-label {
   flex-shrink: 0;
-  width: 80px;
+  width: 52px;
   font-size: var(--font-size-xs);
 }
 

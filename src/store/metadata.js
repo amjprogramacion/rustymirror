@@ -180,14 +180,14 @@ export const useMetadataStore = defineStore('metadata', {
       const idx = this.images.findIndex(e => e.path === path)
       if (idx === -1) return
       const entry = this.images[idx]
-      const device = [metadata.make, metadata.model].filter(Boolean).join(' ') || undefined
+      const device = [metadata.make, metadata.model].filter(Boolean).join(' ') || null
       if (device) this.saveDiscoveredDevice(device)
       this.images[idx] = {
         ...entry,
         dateTaken:    metadata.dateTimeOriginal ?? entry.dateTaken,
         gpsLatitude:  metadata.gpsLatitude  ?? null,
         gpsLongitude: metadata.gpsLongitude ?? null,
-        device:       device ?? entry.device,
+        device,
       }
     },
 

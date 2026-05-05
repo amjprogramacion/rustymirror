@@ -110,6 +110,13 @@ pub struct MetadataUpdate {
     pub copyright: Option<String>,
     pub gps_latitude: Option<f64>,
     pub gps_longitude: Option<f64>,
+    /// None = don't touch, Some("v") = set to v.
+    pub make: Option<String>,
+    /// None = don't touch, Some("v") = set to v.
+    pub model: Option<String>,
+    /// true = delete both Make and Model tags from the file.
+    #[serde(default)]
+    pub delete_device: bool,
 }
 
 /// Reason a file was skipped during a scan.

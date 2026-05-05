@@ -221,6 +221,40 @@ pub fn write_metadata(path: &Path, update: &MetadataUpdate, resource_dir: &Path)
         tags.push(("XMP:Rights", c.clone()));
     }
 
+    if update.delete_device {
+        // ExifTool's unqualified "-Make=" may delete only the preferred writable
+        // location. Camera names can exist in multiple groups (EXIF IFD0, XMP,
+        // QuickTime UserData/Keys for HEIC/MOV-like containers), and a later
+        // unqualified read can still find one of the remaining copies.
+        for tag in [
+            "All:Make",
+            "All:Model",
+            "IFD0:Make",
+            "IFD0:Model",
+            "IFD1:Make",
+            "IFD1:Model",
+            "EXIF:Make",
+            "EXIF:Model",
+            "XMP:Make",
+            "XMP:Model",
+            "XMP-tiff:Make",
+            "XMP-tiff:Model",
+            "UserData:Make",
+            "UserData:Model",
+            "Keys:Make",
+            "Keys:Model",
+        ] {
+            tags.push((tag, String::new()));
+        }
+    } else {
+        if let Some(ref make) = update.make {
+            tags.push(("Make", make.clone()));
+        }
+        if let Some(ref model) = update.model {
+            tags.push(("Model", model.clone()));
+        }
+    }
+
     if let Some(lat) = update.gps_latitude {
         // ExifTool accepts signed decimal and sets Ref automatically.
         tags.push(("GPSLatitude", format!("{lat:.8}")));

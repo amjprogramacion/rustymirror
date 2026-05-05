@@ -50,9 +50,11 @@
         <PanelSectionFileCamera
           class="mp-section"
           :meta="meta"
+          :edit-device="edit.device"
           :collapsible="true"
           :collapsed="collapsed.file"
           @toggle="toggle('file')"
+          @update:device="v => { edit.device = v; panel.activePanel.dirty = true }"
         />
 
         <!-- Date -->
@@ -202,6 +204,13 @@ import PanelSectionDate       from './PanelSectionDate.vue'
 import PanelSectionDetails    from './PanelSectionDetails.vue'
 import { MP_MIN_WIDTH, MP_MIN_THUMB_HEIGHT } from '../constants'
 
+function splitDevice(device) {
+  if (!device) return { make: '', model: '' }
+  const idx = device.indexOf(' ')
+  if (idx === -1) return { make: device, model: '' }
+  return { make: device.slice(0, idx), model: device.slice(idx + 1) }
+}
+
 const store  = useDuplicatesStore()
 const panel  = usePanelStore()
 const thumbs = useThumbnailStore()
@@ -313,15 +322,18 @@ const edit = ref({
   imageDescription: '',
   artist: '',
   copyright: '',
+  device: '',
 })
 
 function resetEdit() {
   if (!meta.value) return
+  const device = [meta.value.make, meta.value.model].filter(Boolean).join(' ')
   edit.value = {
     dateTimeOriginal: meta.value.dateTimeOriginal ?? null,
     imageDescription: meta.value.imageDescription ?? '',
     artist:           meta.value.artist ?? '',
     copyright:        meta.value.copyright ?? '',
+    device,
   }
   resetGps(meta.value)
   if (panel.activePanel) panel.activePanel.dirty = false
@@ -333,6 +345,17 @@ async function save() {
   const { ok, lat, lon } = validateGps()
   if (!ok) return
 
+  const origDevice = [meta.value?.make, meta.value?.model].filter(Boolean).join(' ')
+  let make = null, model = null, deleteDevice = false
+  if (edit.value.device !== origDevice) {
+    if (edit.value.device === '') {
+      deleteDevice = true
+    } else {
+      const split = splitDevice(edit.value.device)
+      make  = split.make  || null
+      model = split.model || null
+    }
+  }
   await store.saveMetadata({
     dateTimeOriginal: edit.value.dateTimeOriginal || null,
     imageDescription: edit.value.imageDescription || null,
@@ -340,6 +363,9 @@ async function save() {
     copyright:        edit.value.copyright || null,
     gpsLatitude:      lat,
     gpsLongitude:     lon,
+    make,
+    model,
+    deleteDevice,
   })
   if (panel.activePanel?.error) {
     showNotification('error', panel.activePanel.error, 4000)
