@@ -96,7 +96,7 @@ pub async fn count_media_files(
             if let Ok(mut daemon) = crate::exiftool::ExifToolDaemon::start(&et) {
                 for chunk in sorted_paths.chunks(CHUNK) {
                     if stop.load(Ordering::Relaxed) { return Err(AppError::Cancelled); }
-                    let chunk_dates = process_exif_chunk_daemon(&mut daemon, chunk, config.date_priority.clone());
+                    let chunk_dates = process_exif_chunk_daemon(&mut daemon, chunk, &config.date_priority_order);
                     date_map.extend(chunk_dates);
                     scanned += chunk.len();
                     let _ = app.emit("media_scan_progress", MediaScanProgress { scanned, total });
@@ -104,7 +104,7 @@ pub async fn count_media_files(
             } else {
                 for chunk in sorted_paths.chunks(CHUNK) {
                     if stop.load(Ordering::Relaxed) { return Err(AppError::Cancelled); }
-                    let chunk_dates = process_exif_chunk(&et, chunk, config.date_priority.clone());
+                    let chunk_dates = process_exif_chunk(&et, chunk, &config.date_priority_order);
                     date_map.extend(chunk_dates);
                     scanned += chunk.len();
                     let _ = app.emit("media_scan_progress", MediaScanProgress { scanned, total });

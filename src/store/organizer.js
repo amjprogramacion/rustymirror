@@ -10,7 +10,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
 
   const config = ref({
     onlyRename: true,
-    datePriority: 'exif',        // 'exif' | 'filename'
+    datePriorityOrder: ['exif', 'filename', 'modify'],
     overrideYear: false,
     yearIfNotDate: 2015,
     outputDirectory: '',
@@ -86,14 +86,14 @@ export const useOrganizerStore = defineStore('organizer', () => {
   function _buildConfig() {
     const metaStore = useMetadataStore()
     return {
-      onlyRename:      config.value.onlyRename,
-      datePriority:    config.value.datePriority,
-      overrideYear:    config.value.overrideYear,
-      yearIfNotDate:   config.value.yearIfNotDate,
-      outputDirectory: config.value.outputDirectory,
-      renameTemplate:  config.value.renameTemplate,
-      folderTemplate:  config.value.folderTemplate,
-      deviceAliases:   metaStore.deviceAliases,
+      onlyRename:          config.value.onlyRename,
+      datePriorityOrder:   config.value.datePriorityOrder,
+      overrideYear:        config.value.overrideYear,
+      yearIfNotDate:       config.value.yearIfNotDate,
+      outputDirectory:     config.value.outputDirectory,
+      renameTemplate:      config.value.renameTemplate,
+      folderTemplate:      config.value.folderTemplate,
+      deviceAliases:       metaStore.deviceAliases,
     }
   }
 

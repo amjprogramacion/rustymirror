@@ -45,24 +45,32 @@
   <section class="sidebar-section">
     <p class="section-label">Options</p>
 
-    <!-- Date priority -->
-    <div class="config-row">
-      <span class="config-label">Date source</span>
-      <div class="toggle-group">
-        <button
-          class="toggle-btn"
-          :class="{ active: org.config.datePriority === 'exif' }"
-          @click="org.updateConfig({ datePriority: 'exif' })"
-        >EXIF</button>
-        <button
-          class="toggle-btn"
-          :class="{ active: org.config.datePriority === 'filename' }"
-          @click="org.updateConfig({ datePriority: 'filename' })"
-        >Filename</button>
+    <!-- Date priority chain (drag-and-drop) -->
+    <div class="config-block">
+      <span class="config-label">Date source priority</span>
+      <div class="priority-list">
+        <div
+          v-for="(item, idx) in priorityItems"
+          :key="item.id"
+          :data-pidx="idx"
+          class="priority-item"
+          :class="{
+            'priority-item--locked':        item.locked,
+            'priority-item--dragging':      dragIdx === idx,
+            'priority-item--line-above':    dropLine === idx      && dragIdx !== -1 && dragIdx !== idx && dragIdx !== idx - 1,
+            'priority-item--line-below':    dropLine === idx + 1  && dragIdx !== -1 && dragIdx !== idx && dragIdx !== idx + 1 && idx === priorityItems.length - 2,
+          }"
+          @pointerdown="onPointerDown(idx, $event)"
+        >
+          <span class="priority-handle" aria-hidden="true">{{ item.locked ? '·' : '⠿' }}</span>
+          <span class="priority-label">{{ item.label }}</span>
+          <span class="priority-badge">{{ idx + 1 }}</span>
+        </div>
       </div>
     </div>
 
-    <!-- Only rename -->
+    <!-- Only rename + output dir + folder template — shown only after scan -->
+    <template v-if="org.scanResult">
     <div class="config-row">
       <span class="config-label">Only rename (don't move)</span>
       <label class="toggle">
@@ -141,6 +149,8 @@
       <span class="template-preview">{{ templatePreview }}</span>
     </div>
 
+    </template><!-- /v-if="org.scanResult" -->
+
   </section>
 
   <!-- Recent scans -->
@@ -184,6 +194,63 @@ function pickFolder() {
 
 function pickOutputDir() {
   pickDirectory(path => org.updateConfig({ outputDirectory: path }))
+}
+
+// ── Date priority drag-and-drop ───────────────────────────────────────────────
+
+const PRIORITY_META = {
+  exif:     { label: 'EXIF metadata' },
+  filename: { label: 'Filename pattern' },
+  modify:   { label: 'File date (mtime)' },
+  fallback: { label: 'Fallback year' },
+}
+
+const priorityItems = computed(() => [
+  ...org.config.datePriorityOrder.map(id => ({ id, ...PRIORITY_META[id], locked: false })),
+  { id: 'fallback', ...PRIORITY_META.fallback, locked: true },
+])
+
+const dragIdx  = ref(-1)
+const dropLine = ref(-1)   // insertion index: item will be placed BEFORE this position
+
+function onPointerDown(idx, evt) {
+  if (priorityItems.value[idx].locked) return
+  evt.preventDefault()
+  dragIdx.value  = idx
+  dropLine.value = -1
+  window.addEventListener('pointermove', _onPointerMove)
+  window.addEventListener('pointerup',   _onPointerUp)
+}
+
+function _onPointerMove(evt) {
+  const el = document.elementFromPoint(evt.clientX, evt.clientY)?.closest('[data-pidx]')
+  if (!el) return
+  const idx = parseInt(el.dataset.pidx)
+  if (isNaN(idx)) return
+  const maxOrdinal = org.config.datePriorityOrder.length  // 3
+  if (idx >= maxOrdinal) {
+    // hovering over fallback → line after last orderable item
+    dropLine.value = maxOrdinal
+    return
+  }
+  const rect = el.getBoundingClientRect()
+  dropLine.value = evt.clientY < rect.top + rect.height / 2 ? idx : idx + 1
+}
+
+function _onPointerUp() {
+  window.removeEventListener('pointermove', _onPointerMove)
+  window.removeEventListener('pointerup',   _onPointerUp)
+  const from = dragIdx.value
+  const line = dropLine.value
+  dragIdx.value  = -1
+  dropLine.value = -1
+  if (from === -1 || line === -1 || line === from || line === from + 1) return
+  const order = [...org.config.datePriorityOrder]
+  const [moved] = order.splice(from, 1)
+  // line is in original-array terms; adjust for the removal
+  const insertAt = line > from ? line - 1 : line
+  order.splice(insertAt, 0, moved)
+  org.updateConfig({ datePriorityOrder: order })
 }
 
 // ── Folder template ───────────────────────────────────────────────────────────
@@ -294,28 +361,6 @@ const templatePreview = computed(() => {
   font-size: 11px;
   color: var(--text-muted);
   flex-shrink: 0;
-}
-
-/* ── Toggle group ── */
-.toggle-group {
-  display: flex;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  overflow: hidden;
-}
-.toggle-btn {
-  padding: 3px 9px;
-  font-size: 11px;
-  background: none;
-  color: var(--text-muted);
-  border: none;
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition);
-}
-.toggle-btn:first-child { border-right: 1px solid var(--border-color); }
-.toggle-btn.active {
-  background: var(--color-accent);
-  color: #fff;
 }
 
 /* ── Dir picker ── */
@@ -442,5 +487,64 @@ const templatePreview = computed(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── Date priority list ── */
+.priority-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.priority-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 7px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  transition: background var(--transition), border-color var(--transition), opacity var(--transition);
+}
+.priority-item--locked {
+  cursor: default;
+  opacity: 0.55;
+}
+.priority-item--dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+}
+.priority-item--line-above::before,
+.priority-item--line-below::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-accent);
+  border-radius: 1px;
+}
+.priority-item--line-above::before { top: -3px; }
+.priority-item--line-below::after  { bottom: -3px; }
+.priority-handle {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1;
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+}
+.priority-label {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.priority-badge {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 </style>

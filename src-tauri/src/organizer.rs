@@ -30,22 +30,25 @@ const MONTHS_ES: [&str; 12] = [
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
+/// Orderable date-source slot used in the priority chain.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub enum DatePriority {
-    Filename,
+pub enum DateSourceOrder {
     Exif,
+    Filename,
+    Modify,
 }
 
-impl Default for DatePriority {
-    fn default() -> Self { DatePriority::Exif }
+fn default_date_priority_order() -> Vec<DateSourceOrder> {
+    vec![DateSourceOrder::Exif, DateSourceOrder::Filename, DateSourceOrder::Modify]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OrganizerConfig {
     pub only_rename: bool,
-    pub date_priority: DatePriority,
+    #[serde(default = "default_date_priority_order")]
+    pub date_priority_order: Vec<DateSourceOrder>,
     pub override_year: bool,
     pub year_if_not_date: i32,
     pub output_directory: String,
@@ -69,7 +72,7 @@ impl Default for OrganizerConfig {
     fn default() -> Self {
         OrganizerConfig {
             only_rename: false,
-            date_priority: DatePriority::Exif,
+            date_priority_order: default_date_priority_order(),
             override_year: false,
             year_if_not_date: 2015,
             output_directory: String::new(),
@@ -408,20 +411,13 @@ pub fn extract_date(
             .map(|p| p.format("%Y:%m:%d %H:%M:%S").to_string())
     });
 
-    let (date, source) = match config.date_priority {
-        DatePriority::Filename => {
-            if let Some(d) = from_filename         { (Some(d), DateSource::Filename) }
-            else if let Some(d) = from_exif        { (Some(d), DateSource::Exif) }
-            else if let Some(d) = from_modify      { (Some(d), DateSource::Modify) }
-            else                                   { (None, DateSource::Fallback) }
-        }
-        DatePriority::Exif => {
-            if let Some(d) = from_exif             { (Some(d), DateSource::Exif) }
-            else if let Some(d) = from_modify      { (Some(d), DateSource::Modify) }
-            else if let Some(d) = from_filename    { (Some(d), DateSource::Filename) }
-            else                                   { (None, DateSource::Fallback) }
-        }
-    };
+    let (date, source) = config.date_priority_order.iter()
+        .find_map(|slot| match slot {
+            DateSourceOrder::Exif     => from_exif.clone().map(|d| (Some(d), DateSource::Exif)),
+            DateSourceOrder::Filename => from_filename.clone().map(|d| (Some(d), DateSource::Filename)),
+            DateSourceOrder::Modify   => from_modify.clone().map(|d| (Some(d), DateSource::Modify)),
+        })
+        .unwrap_or((None, DateSource::Fallback));
 
     if let Some(d) = date {
         return (apply_year_override(&d, config), source);

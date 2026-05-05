@@ -41,29 +41,30 @@ pub fn extract_tag_u64(obj: Option<&serde_json::Value>, key: &str) -> Option<u64
         .or_else(|| v.as_str().and_then(|s| s.split_whitespace().next()?.parse().ok()))
 }
 
-/// Selects the best available date based on priority rule.
+/// Selects the best available date by iterating the caller-supplied priority order.
 /// Returns (date, source) tuple where source identifies the date origin.
 pub fn select_date_by_priority(
-    priority: crate::organizer::DatePriority,
+    priority_order: &[crate::organizer::DateSourceOrder],
     from_filename: Option<String>,
     from_exif: Option<String>,
     from_exif_source: &str,
     from_modify: Option<String>,
 ) -> Option<(String, String)> {
-    match priority {
-        crate::organizer::DatePriority::Filename => {
-            if let Some(d) = from_filename { Some((d, "filename".to_owned())) }
-            else if let Some(d) = from_exif { Some((d, from_exif_source.to_owned())) }
-            else if let Some(d) = from_modify { Some((d, "modify".to_owned())) }
-            else { None }
-        }
-        crate::organizer::DatePriority::Exif => {
-            if let Some(d) = from_exif { Some((d, from_exif_source.to_owned())) }
-            else if let Some(d) = from_modify { Some((d, "modify".to_owned())) }
-            else if let Some(d) = from_filename { Some((d, "filename".to_owned())) }
-            else { None }
+    use crate::organizer::DateSourceOrder;
+    for slot in priority_order {
+        match slot {
+            DateSourceOrder::Filename => {
+                if let Some(d) = from_filename.clone() { return Some((d, "filename".to_owned())); }
+            }
+            DateSourceOrder::Exif => {
+                if let Some(d) = from_exif.clone() { return Some((d, from_exif_source.to_owned())); }
+            }
+            DateSourceOrder::Modify => {
+                if let Some(d) = from_modify.clone() { return Some((d, "modify".to_owned())); }
+            }
         }
     }
+    None
 }
 
 /// Same as `process_exif_chunk` but uses an already-running `ExifToolDaemon`
@@ -71,7 +72,7 @@ pub fn select_date_by_priority(
 pub fn process_exif_chunk_daemon(
     daemon: &mut crate::exiftool::ExifToolDaemon,
     chunk: &[&PathBuf],
-    priority: crate::organizer::DatePriority,
+    priority_order: &[crate::organizer::DateSourceOrder],
 ) -> std::collections::HashMap<String, (String, String)> {
     use std::collections::HashMap;
 
@@ -110,7 +111,7 @@ pub fn process_exif_chunk_daemon(
             .map(|s| s.to_owned());
 
         if let (Some(src), Some(entry)) = (src_path, select_date_by_priority(
-            priority.clone(),
+            priority_order,
             from_filename,
             from_exif,
             from_exif_source,
@@ -128,7 +129,7 @@ pub fn process_exif_chunk_daemon(
 pub fn process_exif_chunk(
     et: &PathBuf,
     chunk: &[&PathBuf],
-    priority: crate::organizer::DatePriority,
+    priority_order: &[crate::organizer::DateSourceOrder],
 ) -> std::collections::HashMap<String, (String, String)> {
     use std::collections::HashMap;
 
@@ -171,7 +172,7 @@ pub fn process_exif_chunk(
             .map(|s| s.to_owned());
 
         if let (Some(src), Some(entry)) = (src_path, select_date_by_priority(
-            priority.clone(),
+            priority_order,
             from_filename,
             from_exif,
             from_exif_source,
