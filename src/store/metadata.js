@@ -47,6 +47,7 @@ export const useMetadataStore = defineStore('metadata', {
   state: () => ({
     folders: [],
     scanning: false,
+    stopping: false,
     geoCacheCount: 0,
     geoCacheBytes: 0,
     customLocations: [],
@@ -280,6 +281,7 @@ export const useMetadataStore = defineStore('metadata', {
         unlistenProgress()
         unlistenHeic()
         this.scanning = false
+        this.stopping = false
       }
     },
 
@@ -304,6 +306,7 @@ export const useMetadataStore = defineStore('metadata', {
     },
 
     async stopScan() {
+      this.stopping = true
       try { await invoke('stop_meta_scan') } catch { /* ignore */ }
       if (_geocodeAbortController) {
         _geocodeAbortController.abort()

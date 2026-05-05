@@ -3,6 +3,7 @@
   <!-- Scanning / geocoding progress -->
   <ScanProgress
     v-if="meta.scanning || (meta.geocoding && prefetchFilters && !meta.scanDone)"
+    :stopping="meta.stopping"
     :title="meta.geocoding ? 'Fetching locations…' : 'Scanning images…'"
     :subtitle="meta.geocoding ? `${meta.images.length.toLocaleString()} images found` : null"
     :progress="!meta.geocoding ? { scanned: meta.scanProgress.processed, total: meta.scanProgress.total } : undefined"

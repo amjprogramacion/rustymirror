@@ -2,6 +2,7 @@
   <!-- Scanning progress -->
   <ScanProgress
     v-if="store.scanning"
+    :stopping="store.stopping"
     :fingerprinting="store.fingerprinting"
     :scan-label="store.scanLabel"
     :progress="store.progress"

@@ -52,6 +52,7 @@
       <!-- Scan progress (shown before first results arrive) -->
       <ScanProgress
         v-if="org.scanning && !sortedFiles.length"
+        :stopping="org.stopping"
         :title="busyTitle"
         :progress="org.scanProgress"
         :progress-percent="scanProgressPercent"

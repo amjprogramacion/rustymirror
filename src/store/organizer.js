@@ -19,6 +19,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
   })
 
   const scanning            = ref(false)
+  const stopping            = ref(false)
   const scanResult          = ref(null)  // { total, images, videos, files } | null
   const scanProgress        = ref({ scanned: 0, total: 0 })
   const activeHistoryEntryId = ref(null)
@@ -148,6 +149,7 @@ export const useOrganizerStore = defineStore('organizer', () => {
       if (e?.type !== 'cancelled') error.value = e?.message ?? String(e)
     } finally {
       scanning.value = false
+      stopping.value = false
       _unsubscribeScanProgress()
     }
   }
@@ -257,12 +259,13 @@ export const useOrganizerStore = defineStore('organizer', () => {
   }
 
   async function stop() {
+    stopping.value = true
     await invoke('stop_organize').catch(() => {})
   }
 
   return {
     folders, config,
-    scanning, scanResult, scanProgress, sortBy, sortDir, activeHistoryEntryId,
+    scanning, stopping, scanResult, scanProgress, sortBy, sortDir, activeHistoryEntryId,
     previewing, previewingDate, executing, executingOp, progress,
     previewActions, previewDateActions, previewOnlyRename, lastSummary, error,
     addFolder, removeFolder, updateConfig,

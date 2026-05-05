@@ -14,6 +14,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
   state: () => ({
     folders: [],
     scanning: false,
+    stopping: false,
     scanLabel: '',
     progress: { scanned: 0, total: 0 },
     analyzeProgress: { analyzed: 0, total: 0, phase: '' },
@@ -340,6 +341,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
         this.error = errorMessage(e)
       } finally {
         this.scanning = false
+        this.stopping = false
         this.fingerprinting = false
         this.scanLabel = ''
         this.scanStartTime = null
@@ -351,6 +353,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
     async stopScan() {
       logger.warn('scan stopped by user')
       this._scanCancelled = true
+      this.stopping = true
       this.scanLabel = 'Stopping…'
       await invoke('stop_scan')
       // Do NOT set scanning = false here — the startScan finally block handles it.

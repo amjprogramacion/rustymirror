@@ -1,10 +1,15 @@
 <template>
   <div class="scan-overlay">
     <div class="scan-card">
-      <div class="spinner" v-if="fingerprinting || isScanning || isAnalyzing" />
+      <div class="spinner" v-if="stopping || fingerprinting || isScanning || isAnalyzing" />
+
+      <!-- Stopping: hide all progress, show only spinner + message -->
+      <template v-if="stopping">
+        <p class="scan-title">Stopping…</p>
+      </template>
 
       <!-- Fingerprinting: folder analysis before scan -->
-      <template v-if="fingerprinting">
+      <template v-else-if="fingerprinting">
         <p class="scan-title">{{ title || 'Analyzing selected folders…' }}</p>
         <div class="bar-track"><div class="bar-indeterminate" /></div>
       </template>
@@ -60,6 +65,7 @@
 import { computed } from 'vue'
 
 const props = defineProps({
+  stopping:        { type: Boolean, default: false },
   // Generic title shown in all indeterminate phases
   title:           { type: String,  default: null },
   // Optional secondary line (e.g. "1 234 images found" during geocoding)

@@ -3,6 +3,7 @@
 
   <SidebarScanButton
     :scanning="meta.scanning || meta.geocoding"
+    :stopping="meta.stopping"
     :disabled="meta.folders.length === 0"
     @start="meta.startScan()"
     @stop="meta.stopScan()"

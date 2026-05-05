@@ -3,6 +3,7 @@
 
   <SidebarScanButton
     :scanning="store.scanning"
+    :stopping="store.stopping"
     :disabled="store.folders.length === 0"
     @start="store.startScan()"
     @stop="store.stopScan()"

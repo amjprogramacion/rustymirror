@@ -52,7 +52,7 @@ pub async fn scan_for_metadata(
                 .ok()
         });
 
-        const CHUNK: usize = 500;
+        const CHUNK: usize = 50;
         let mut entries: Vec<crate::types::ImageEntry> = Vec::with_capacity(total);
         let mut failed_files: Vec<FailedFile> = Vec::new();
         let mut heic_indices: Vec<usize> = Vec::new();
