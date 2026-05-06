@@ -411,29 +411,35 @@ pub fn extract_date(
             .map(|p| p.format("%Y:%m:%d %H:%M:%S").to_string())
     });
 
-    let (date, source) = config.date_priority_order.iter()
-        .find_map(|slot| match slot {
-            DateSourceOrder::Exif     => from_exif.clone().map(|d| (Some(d), DateSource::Exif)),
-            DateSourceOrder::Filename => from_filename.clone().map(|d| (Some(d), DateSource::Filename)),
-            DateSourceOrder::Modify   => from_modify.clone().map(|d| (Some(d), DateSource::Modify)),
-        })
-        .unwrap_or((None, DateSource::Fallback));
-
-    if let Some(d) = date {
-        return (apply_year_override(&d, config), source);
-    }
-
-    // Secondary filename patterns (used only when primary + EXIF both fail)
-    if let Some(d) = find_compact_datetime_no_sec(filename) {
-        return (apply_year_override(&d, config), DateSource::Filename);
-    }
-    if let Some(key) = find_img_date_key(filename) {
-        let full = incremental_time(&key, incr_cache);
-        return (apply_year_override(&full, config), DateSource::Filename);
-    }
-    if let Some(key) = find_wa_date_key(filename) {
-        let full = incremental_time(&key, incr_cache);
-        return (apply_year_override(&full, config), DateSource::Filename);
+    for slot in &config.date_priority_order {
+        match slot {
+            DateSourceOrder::Exif => {
+                if let Some(d) = from_exif.clone() {
+                    return (apply_year_override(&d, config), DateSource::Exif);
+                }
+            }
+            DateSourceOrder::Filename => {
+                if let Some(d) = from_filename.clone() {
+                    return (apply_year_override(&d, config), DateSource::Filename);
+                }
+                if let Some(d) = find_compact_datetime_no_sec(filename) {
+                    return (apply_year_override(&d, config), DateSource::Filename);
+                }
+                if let Some(key) = find_img_date_key(filename) {
+                    let full = incremental_time(&key, incr_cache);
+                    return (apply_year_override(&full, config), DateSource::Filename);
+                }
+                if let Some(key) = find_wa_date_key(filename) {
+                    let full = incremental_time(&key, incr_cache);
+                    return (apply_year_override(&full, config), DateSource::Filename);
+                }
+            }
+            DateSourceOrder::Modify => {
+                if let Some(d) = from_modify.clone() {
+                    return (apply_year_override(&d, config), DateSource::Modify);
+                }
+            }
+        }
     }
 
     let now = chrono::Local::now().naive_local();

@@ -63,6 +63,7 @@
           @pointerdown="onPointerDown(idx, $event)"
         >
           <span class="priority-handle" aria-hidden="true">{{ item.locked ? '·' : '⠿' }}</span>
+          <button class="priority-info-btn" @pointerdown.stop @click.stop="openInfo(item.id)">i</button>
           <span class="priority-label">{{ item.label }}</span>
           <span class="priority-badge">{{ idx + 1 }}</span>
         </div>
@@ -169,6 +170,22 @@
       </span>
     </template>
   </SidebarHistory>
+
+  <!-- Date source info modal -->
+  <Teleport to="body">
+    <div v-if="infoItem" class="priority-modal-overlay" @click="infoItem = null">
+      <div class="priority-modal" @click.stop>
+        <div class="priority-modal-header">
+          <span class="priority-modal-title">{{ PRIORITY_INFO[infoItem].title }}</span>
+          <button class="priority-modal-close" @click="infoItem = null">✕</button>
+        </div>
+        <p class="priority-modal-body">{{ PRIORITY_INFO[infoItem].body }}</p>
+        <ul v-if="PRIORITY_INFO[infoItem].examples" class="priority-modal-examples">
+          <li v-for="ex in PRIORITY_INFO[infoItem].examples" :key="ex">{{ ex }}</li>
+        </ul>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
@@ -204,6 +221,36 @@ const PRIORITY_META = {
   modify:   { label: 'File date (mtime)' },
   fallback: { label: 'Fallback year' },
 }
+
+const PRIORITY_INFO = {
+  exif: {
+    title: 'EXIF metadata',
+    body: 'Reads DateTimeOriginal, CreateDate, or MediaCreateDate from the file via ExifTool. If multiple tags are present, picks the oldest. Most reliable source for photos taken with cameras or phones.',
+    examples: ['DateTimeOriginal: 2023:05:21 14:30:00', 'CreateDate / MediaCreateDate (video)'],
+  },
+  filename: {
+    title: 'Filename pattern',
+    body: 'Scans the filename for recognisable date patterns. Covers the following formats:',
+    examples: [
+      '20230521_143000  →  full datetime',
+      '2023-05-21-14-30-00  →  dashed datetime',
+      '20230521_1430  →  datetime without seconds',
+      'IMG_20230521_…  →  date only, time assigned sequentially',
+      '-20230521-WA0001  →  WhatsApp export',
+    ],
+  },
+  modify: {
+    title: 'File date (mtime)',
+    body: 'Uses the file system modification date (FileModifyDate). Unreliable if files have been copied, synced, or migrated — those operations reset this date. Use as a last resort before fallback.',
+  },
+  fallback: {
+    title: 'Fallback year',
+    body: 'When no other source finds a date, the configured fallback year is used with the current clock time. This slot is always last and cannot be reordered.',
+  },
+}
+
+const infoItem = ref(null)
+function openInfo(id) { infoItem.value = id }
 
 const priorityItems = computed(() => [
   ...org.config.datePriorityOrder.map(id => ({ id, ...PRIORITY_META[id], locked: false })),
@@ -546,5 +593,100 @@ const templatePreview = computed(() => {
   font-size: 10px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+/* ── Info button ── */
+.priority-info-btn {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: none;
+  color: var(--text-muted);
+  font-size: 9px;
+  font-style: italic;
+  font-family: Georgia, serif;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: border-color var(--transition), color var(--transition);
+}
+.priority-info-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* ── Info modal ── */
+.priority-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.priority-modal {
+  background: var(--bg-surface, var(--bg-card));
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 16px 18px;
+  max-width: 340px;
+  width: calc(100vw - 48px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.priority-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.priority-modal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.priority-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+  border-radius: var(--border-radius-sm);
+  transition: color var(--transition), background var(--transition);
+}
+.priority-modal-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+}
+.priority-modal-body {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 0 0 8px;
+}
+.priority-modal-examples {
+  margin: 0;
+  padding: 0 0 0 4px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.priority-modal-examples li {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-muted);
+  padding: 2px 6px;
+  background: var(--bg-card);
+  border-radius: var(--border-radius-sm);
+  border-left: 2px solid var(--color-accent);
 }
 </style>
