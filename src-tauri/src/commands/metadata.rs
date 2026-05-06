@@ -33,6 +33,8 @@ pub async fn scan_for_metadata(
         // GPS and dimension tags use # for raw numeric output.
         const SCAN_TAGS: &[&str] = &[
             "-EXIF:DateTimeOriginal",
+            "-QuickTime:CreateDate",
+            "-Keys:CreationDate",
             "-Make",
             "-Model",
             "-GPSLatitude#",
@@ -134,6 +136,8 @@ pub async fn scan_for_metadata(
                 }
 
                 let date_taken = extract_tag_string(obj, "DateTimeOriginal")
+                    .or_else(|| extract_tag_string(obj, "CreationDate"))
+                    .or_else(|| extract_tag_string(obj, "CreateDate"))
                     .map(crate::metadata::exif_date_to_iso);
 
                 let make = extract_tag_string(obj, "Make");

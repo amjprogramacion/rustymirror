@@ -198,6 +198,15 @@ pub fn write_tags(
     if !output.status.success() {
         anyhow::bail!("exiftool write failed: {stderr}");
     }
+    let updated = stdout
+        .lines()
+        .any(|line| line.contains("files updated") && !line.trim_start().starts_with('0'));
+    let unchanged = stdout
+        .lines()
+        .any(|line| line.contains("files unchanged") || line.contains("image files unchanged"));
+    if !updated && unchanged {
+        anyhow::bail!("exiftool did not update the file: {stdout}{stderr}");
+    }
     Ok(())
 }
 

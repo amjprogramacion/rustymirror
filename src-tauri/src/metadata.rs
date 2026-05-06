@@ -20,6 +20,8 @@ const READ_TAGS: &[&str] = &[
     // time) instead of the QuickTime atom (UTC), which would show 2 h behind for
     // a UTC+2 user because the frontend intentionally skips timezone conversion.
     "-EXIF:DateTimeOriginal",
+    "-QuickTime:CreateDate",
+    "-Keys:CreationDate",
     "-ModifyDate",
     // Camera / lens
     "-Make",
@@ -109,6 +111,13 @@ fn iso_to_exif_date(s: &str) -> String {
     s.to_string()
 }
 
+fn is_video_format(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| matches!(e.to_lowercase().as_str(), "mp4" | "mov" | "avi" | "mpg" | "mpeg" | "mkv"))
+        .unwrap_or(false)
+}
+
 // ── public API ────────────────────────────────────────────────────────────────
 
 /// Read all available EXIF/file metadata from `path` using ExifTool.
@@ -141,7 +150,10 @@ pub fn read_metadata(path: &Path, resource_dir: &Path) -> Result<ImageMetadata> 
     // For HEIC/HEIF/AVIF use the shared helper: converts to a small temp JPEG,
     // reads original dimensions, and parses DateTimeOriginal from the embedded
     // EXIF block (local wall-clock time, not QuickTime UTC).
-    let mut date_time_original = tag_str(&obj, "DateTimeOriginal").map(exif_date_to_iso);
+    let mut date_time_original = tag_str(&obj, "DateTimeOriginal")
+        .or_else(|| tag_str(&obj, "CreationDate"))
+        .or_else(|| tag_str(&obj, "CreateDate"))
+        .map(exif_date_to_iso);
     if is_heic_format {
         let (w, h, date) = crate::heic::heic_capture_info(path, Some(resource_dir));
         if w > 0 { width = w; height = h; }
@@ -200,10 +212,26 @@ pub fn write_metadata(path: &Path, update: &MetadataUpdate, resource_dir: &Path)
 
     if let Some(ref dt) = update.date_time_original {
         let exif_dt = iso_to_exif_date(dt);
-        tags.push(("DateTimeOriginal", exif_dt.clone()));
-        // CreateDate is the EXIF tag used by many tools (including Apple) for
-        // HEIC/MP4; keep both in sync so viewers agree on the capture time.
-        tags.push(("CreateDate", exif_dt));
+        if is_video_format(path) {
+            // MOV/MP4 capture dates live in QuickTime atoms/Keys, not EXIF.
+            // Keep common variants in sync so viewers agree on the capture time.
+            for tag in [
+                "QuickTime:CreateDate",
+                "QuickTime:ModifyDate",
+                "QuickTime:TrackCreateDate",
+                "QuickTime:TrackModifyDate",
+                "QuickTime:MediaCreateDate",
+                "QuickTime:MediaModifyDate",
+                "Keys:CreationDate",
+            ] {
+                tags.push((tag, exif_dt.clone()));
+            }
+        } else {
+            tags.push(("DateTimeOriginal", exif_dt.clone()));
+            // CreateDate is the EXIF tag used by many tools (including Apple) for
+            // HEIC; keep both in sync so viewers agree on the capture time.
+            tags.push(("CreateDate", exif_dt));
+        }
     }
 
     if let Some(ref desc) = update.image_description {
