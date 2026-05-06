@@ -14,12 +14,16 @@
       <div class="mp-thumb-wrap" :style="{ height: thumbHeight + 'px' }">
         <div class="mp-thumb-resize-handle" @mousedown.prevent="startThumbResize" />
         <video
-          v-if="isVideo"
+          v-if="isVideo && !videoError"
           :src="videoSrc"
           class="mp-video"
           controls
           preload="metadata"
+          @error="videoError = true"
         />
+        <div v-else-if="isVideo && videoError" class="mp-thumb-placeholder">
+          <span class="mp-thumb-ext">{{ fileExt(entry.path).toUpperCase() }}</span>
+        </div>
         <img
           v-else-if="thumbSrc"
           :src="thumbSrc"
@@ -401,6 +405,7 @@ const thumbSrc = computed(() => {
   const p = entry.value?.path
   if (!p) return null
   const ext = fileExt(p)
+  if (VIDEO_EXTS.has(ext)) return null
   if (HEIC.has(ext)) {
     return thumbs.thumbCache[p] && thumbs.thumbCache[p] !== '__error__'
       ? thumbs.thumbCache[p]
@@ -412,9 +417,12 @@ const thumbSrc = computed(() => {
 const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime || meta.value.fNumber || meta.value.isoSpeed || meta.value.focalLength))
 
 const isVideo = computed(() => {
-  const p = entry.value?.path
+  const p = panel.activePanel?.entry?.path
   return p ? VIDEO_EXTS.has(fileExt(p)) : false
 })
+
+const videoError = ref(false)
+watch(() => panel.activePanel?.entry?.path, () => { videoError.value = false })
 
 const videoSrc = computed(() => {
   const p = entry.value?.path

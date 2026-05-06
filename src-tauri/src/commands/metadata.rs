@@ -26,7 +26,7 @@ pub async fn scan_for_metadata(
 
     tokio::task::spawn_blocking(move || {
         let directories = to_pathbuf_vec(&paths);
-        let all_images = crate::scanner::collect_images(&directories);
+        let all_images = crate::scanner::collect_media(&directories);
         let total = all_images.len();
         let _ = app_handle.emit("meta_scan_progress", MetaScanProgress { total, processed: 0 });
 

@@ -14,8 +14,16 @@
         <!-- Single mode: thumbnail + file info -->
         <div class="mbp-left" v-if="!isBatch">
           <div class="mbp-thumb-wrap">
+            <video
+              v-if="isVideo && !videoError"
+              :src="videoSrc"
+              class="mbp-thumb mbp-video"
+              preload="metadata"
+              muted
+              @error="videoError = true"
+            />
             <img
-              v-if="thumbSrc"
+              v-else-if="thumbSrc"
               :src="thumbSrc"
               class="mbp-thumb"
               draggable="false"
@@ -227,6 +235,7 @@ const panel     = usePanelStore()
 const thumbs    = useThumbnailStore()
 const metaStore = useMetadataStore()
 const HEIC      = new Set(['heic', 'heif'])
+const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mpg', 'mpeg', 'mkv'])
 
 // ── Panel height resize ───────────────────────────────────────────────────────
 const MIN_HEIGHT = 200
@@ -551,11 +560,26 @@ const thumbSrc = computed(() => {
   const p = entry.value?.path
   if (!p) return null
   const ext = fileExt(p)
+  if (VIDEO_EXTS.has(ext)) return null
   if (HEIC.has(ext)) {
     return thumbs.thumbCache[p] && thumbs.thumbCache[p] !== '__error__'
       ? thumbs.thumbCache[p]
       : null
   }
+  return thumbs.directSrcCache[p] ?? convertFileSrc(p)
+})
+
+const isVideo = computed(() => {
+  const p = entry.value?.path
+  return p ? VIDEO_EXTS.has(fileExt(p)) : false
+})
+
+const videoError = ref(false)
+watch(() => entry.value?.path, () => { videoError.value = false })
+
+const videoSrc = computed(() => {
+  const p = entry.value?.path
+  if (!p) return null
   return thumbs.directSrcCache[p] ?? convertFileSrc(p)
 })
 

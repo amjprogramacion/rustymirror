@@ -4,8 +4,8 @@
   <ScanProgress
     v-if="meta.scanning || (meta.geocoding && prefetchFilters && !meta.scanDone)"
     :stopping="meta.stopping"
-    :title="meta.geocoding ? 'Fetching locations…' : 'Scanning images…'"
-    :subtitle="meta.geocoding ? `${meta.images.length.toLocaleString()} images found` : null"
+    :title="meta.geocoding ? 'Fetching locations…' : 'Scanning files…'"
+    :subtitle="meta.geocoding ? `${meta.images.length.toLocaleString()} files found` : null"
     :progress="!meta.geocoding ? { scanned: meta.scanProgress.processed, total: meta.scanProgress.total } : undefined"
     :progress-percent="!meta.geocoding && meta.scanProgress.total > 0 ? Math.round((meta.scanProgress.processed / meta.scanProgress.total) * 100) : 0"
     :analyze-progress="!meta.geocoding ? meta.heicProgress : undefined"
@@ -14,7 +14,7 @@
   <!-- Empty state -->
   <div class="empty-state" v-else-if="!meta.scanDone">
     <p class="empty-title">No folders selected</p>
-    <p class="empty-sub">Add folders in the sidebar and press <strong>Scan</strong> to load images.</p>
+    <p class="empty-sub">Add folders in the sidebar and press <strong>Scan</strong> to load files.</p>
   </div>
 
   <!-- Results -->
@@ -47,7 +47,7 @@
         <span class="badge" v-if="meta.selectedCount > 0">{{ meta.selectedCount }}</span>
       </button>
 
-      <span class="image-count">{{ meta.filteredImages.length }} image{{ meta.filteredImages.length !== 1 ? 's' : '' }}<template v-if="meta.selectedCount > 0"> · {{ meta.selectedCount }} selected</template></span>
+      <span class="image-count">{{ meta.filteredImages.length }} file{{ meta.filteredImages.length !== 1 ? 's' : '' }}<template v-if="meta.selectedCount > 0"> · {{ meta.selectedCount }} selected</template></span>
 
       <!-- Search -->
       <SearchInput v-model="meta.searchQuery" />
@@ -57,9 +57,9 @@
     <div class="grid-scroll" ref="gridEl" :style="panel.activePanel ? { paddingBottom: (panel.panelHeight + 16) + 'px' } : {}">
       <div v-if="meta.filteredImages.length === 0" class="no-results">
         <template v-if="meta.searchQuery">
-          No images match <em>"{{ meta.searchQuery }}"</em>.
+          No files match <em>"{{ meta.searchQuery }}"</em>.
         </template>
-        <template v-else>No images found.</template>
+        <template v-else>No files found.</template>
       </div>
 
       <div class="cards-grid">
@@ -73,19 +73,26 @@
           @click="onCardClick(entry, idx)"
         >
           <div class="thumb-wrap" :data-path="entry.path">
+            <video
+              v-if="isVideoPath(entry.path) && directSrcCache[entry.path]"
+              :src="directSrcCache[entry.path]"
+              class="thumb"
+              preload="metadata"
+              muted
+            />
             <img
-              v-if="directSrcCache[entry.path]"
+              v-else-if="!isVideoPath(entry.path) && directSrcCache[entry.path]"
               :src="directSrcCache[entry.path]"
               class="thumb"
               draggable="false"
             />
             <img
-              v-else-if="thumbCache[entry.path] && thumbCache[entry.path] !== THUMB_ERROR"
+              v-else-if="!isVideoPath(entry.path) && thumbCache[entry.path] && thumbCache[entry.path] !== THUMB_ERROR"
               :src="thumbCache[entry.path]"
               class="thumb"
               draggable="false"
             />
-            <div v-else-if="thumbCache[entry.path] === THUMB_ERROR" class="thumb-placeholder">
+            <div v-else-if="!isVideoPath(entry.path) && thumbCache[entry.path] === THUMB_ERROR" class="thumb-placeholder">
               <span class="thumb-ext">{{ fileExt(entry.path).toUpperCase() }}</span>
               <span class="thumb-no-preview">No preview</span>
             </div>
@@ -258,11 +265,17 @@ const { prefetchFilters } = useSettings()
 const gridEl    = ref(null)
 const THUMB_ERROR = '__error__'
 const HEIC_EXTS   = new Set(['heic', 'heif'])
+const VIDEO_EXTS  = new Set(['mp4', 'mov', 'avi', 'mpg', 'mpeg', 'mkv'])
 
 const thumbCache     = thumbs.thumbCache
 const directSrcCache = thumbs.directSrcCache
 
+function isVideoPath(path) {
+  return VIDEO_EXTS.has(fileExt(path))
+}
+
 function needsRust(path) {
+  if (isVideoPath(path)) return false
   return HEIC_EXTS.has(fileExt(path)) || meta.isNetworkPath(path)
 }
 

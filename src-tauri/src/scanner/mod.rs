@@ -26,6 +26,7 @@ use self::record::{
 use self::walk::is_heic;
 
 pub use self::walk::collect_images;
+pub use self::walk::collect_media;
 
 
 pub fn find_duplicates<F1, F2>(
