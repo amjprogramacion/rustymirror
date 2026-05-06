@@ -13,8 +13,15 @@
       <!-- Thumbnail — resizable height -->
       <div class="mp-thumb-wrap" :style="{ height: thumbHeight + 'px' }">
         <div class="mp-thumb-resize-handle" @mousedown.prevent="startThumbResize" />
+        <video
+          v-if="isVideo"
+          :src="videoSrc"
+          class="mp-video"
+          controls
+          preload="metadata"
+        />
         <img
-          v-if="thumbSrc"
+          v-else-if="thumbSrc"
           :src="thumbSrc"
           class="mp-thumb"
           draggable="false"
@@ -215,6 +222,7 @@ const store  = useDuplicatesStore()
 const panel  = usePanelStore()
 const thumbs = useThumbnailStore()
 const HEIC   = new Set(['heic', 'heif'])
+const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mpg', 'mpeg', 'mkv'])
 
 const panelWidth  = ref(MP_MIN_WIDTH)
 const mapViewStore  = useMapViewStore()
@@ -402,6 +410,16 @@ const thumbSrc = computed(() => {
 })
 
 const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime || meta.value.fNumber || meta.value.isoSpeed || meta.value.focalLength))
+
+const isVideo = computed(() => {
+  const p = entry.value?.path
+  return p ? VIDEO_EXTS.has(fileExt(p)) : false
+})
+
+const videoSrc = computed(() => {
+  const p = entry.value?.path
+  return p ? convertFileSrc(p) : null
+})
 </script>
 
 <style scoped>
@@ -512,6 +530,14 @@ const hasExposureInfo = computed(() => meta.value && (meta.value.exposureTime ||
   height: 100%;
   object-fit: contain;
   display: block;
+}
+
+.mp-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #000;
 }
 
 .mp-thumb-placeholder {
