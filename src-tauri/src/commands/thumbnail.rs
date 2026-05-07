@@ -1,6 +1,21 @@
 use tauri::Manager;
 use super::{AppError, cache_data_dir, to_base64_data_uri};
 
+/// Cache key for a thumbnail: hashes `{prefix}:{path_lower}:{size}:{mtime_secs}`.
+/// Reading just the file metadata (stat) is cheap even on SMB/NAS, so the full
+/// file is never read on a cache hit.
+fn thumb_meta_key(prefix: &str, path: &str, meta: &std::fs::Metadata) -> String {
+    use std::time::UNIX_EPOCH;
+    let size  = meta.len();
+    let mtime = meta.modified().ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let raw  = format!("{}:{}:{}:{}", prefix, path.to_lowercase(), size, mtime);
+    let hash = blake3::hash(raw.as_bytes());
+    format!("{}_{}.jpg", prefix, &hash.to_hex()[..16])
+}
+
 #[tauri::command]
 pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String, AppError> {
     let resource_dir    = app.path().resource_dir().ok();
@@ -16,13 +31,10 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
         let is_heic = lower.ends_with(".heic") || lower.ends_with(".heif") || lower.ends_with(".avif");
 
         if is_heic {
-            // Read once — used for the cache key.
-            let heic_bytes = std::fs::read(&path).map_err(|e| thumb_err(e.to_string()))?;
-
+            // Stat only — no full file read until we know it's a cache miss.
+            let meta = std::fs::metadata(&path).map_err(|e| thumb_err(e.to_string()))?;
             let cache_path = thumb_cache_dir.as_ref().map(|dir| {
-                let hash = blake3::hash(&heic_bytes);
-                let name = format!("{}.jpg", &hash.to_hex()[..16]);
-                dir.join(name)
+                dir.join(thumb_meta_key("heic", &path, &meta))
             });
 
             if let Some(ref cp) = cache_path {
@@ -69,12 +81,11 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
 
         // Non-HEIC: handles local PNGs (WebView2 struggles with some variants)
         // and network paths (which cannot use convertFileSrc).
-        let bytes = std::fs::read(&path).map_err(|e| thumb_err(e.to_string()))?;
 
-        let cache_path = thumb_cache_dir.as_ref().and_then(|dir| {
-            let hash = blake3::hash(&bytes);
-            let name = format!("jpg_{}.jpg", &hash.to_hex()[..16]);
-            Some(dir.join(name))
+        // Stat only — no full file read until we know it's a cache miss.
+        let meta = std::fs::metadata(&path).map_err(|e| thumb_err(e.to_string()))?;
+        let cache_path = thumb_cache_dir.as_ref().map(|dir| {
+            dir.join(thumb_meta_key("jpg", &path, &meta))
         });
 
         if let Some(ref cp) = cache_path {
@@ -87,6 +98,8 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
         }
 
         tracing::debug!("thumb MISS (jpg/net): {}", path);
+
+        let bytes = std::fs::read(&path).map_err(|e| thumb_err(e.to_string()))?;
 
         let img = match image::load_from_memory(&bytes) {
             Ok(img) => img,
