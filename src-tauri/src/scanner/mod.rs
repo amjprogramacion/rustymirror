@@ -67,6 +67,14 @@ where
     let counter = std::sync::atomic::AtomicUsize::new(0);
     let stop_phase1 = stop.clone();
 
+    // HEIC pHash is deferred to phase 3 (magick conversion), so phase 1 work
+    // per HEIC file is just a cache lookup or a blake3 read — much faster than
+    // a full image decode. Report progress only for non-HEIC files so N/M
+    // reflects the actual heavy work in this phase.
+    // Fall back to total so the UI still moves in all-HEIC libraries.
+    let non_heic_total = paths.iter().filter(|p| !is_heic(p)).count();
+    let scan_total = if non_heic_total > 0 { non_heic_total } else { total };
+
     let path_strings: Vec<String> = paths.iter()
         .map(|p| cache_key(&p.to_string_lossy())).collect();
 
@@ -156,8 +164,10 @@ where
             make_record(path, fast_mode)
         };
 
-        let done = counter.fetch_add(1, AOrdering::Relaxed) + 1;
-        scan_cb(done, total);
+        if !is_heic(path) || scan_total == total {
+            let done = counter.fetch_add(1, AOrdering::Relaxed) + 1;
+            scan_cb(done, scan_total);
+        }
         Some(record)
     };
 
