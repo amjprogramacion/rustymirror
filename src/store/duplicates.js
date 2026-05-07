@@ -1,4 +1,21 @@
 import { defineStore } from 'pinia'
+
+// Sort entries within a group: original(s) first, then copies ordered by
+// filename (exact groups) or modified date (similar/sameDate groups).
+// Called once when groups are stored so filteredGroups never re-sorts.
+function sortedGroupEntries(g) {
+  const copies = g.entries.filter(e => !e.isOriginal).sort((a, b) => {
+    if (g.kind === 'exact') {
+      return fileName(a.path).localeCompare(fileName(b.path), undefined, { sensitivity: 'base' })
+    }
+    return a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0
+  })
+  return [...g.entries.filter(e => e.isOriginal), ...copies]
+}
+
+function normalizeGroups(groups) {
+  return groups.map(g => ({ ...g, entries: sortedGroupEntries(g) }))
+}
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { logger } from '../utils/logger'
@@ -125,23 +142,10 @@ export const useDuplicatesStore = defineStore('duplicates', {
       return arr
     },
 
-    // Stage 5 — reorder entries within each group (original first, then copies)
-    //   - exact groups  → alphabetical by filename ascending (case-insensitive)
-    //   - other groups  → by date ascending
+    // Stage 5 — entry order is already normalised when groups are stored,
+    // so this stage just passes _groupsSorted through unchanged.
     filteredGroups() {
-      return this._groupsSorted.map(g => ({
-        ...g,
-        entries: [
-          ...g.entries.filter(e => e.isOriginal),
-          ...[...g.entries.filter(e => !e.isOriginal)]
-            .sort((a, b) => {
-              if (g.kind === 'exact') {
-                return fileName(a.path).localeCompare(fileName(b.path), undefined, { sensitivity: 'base' })
-              }
-              return a.modified < b.modified ? -1 : a.modified > b.modified ? 1 : 0
-            })
-        ]
-      }))
+      return this._groupsSorted
     },
 
     groupCounts(state) {
@@ -227,7 +231,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
       if (!this.groups.length) return
       this.retentionRule = rule
       try {
-        this.groups = await invoke('apply_retention_rule_cmd', { groups: this.groups, rule })
+        this.groups = normalizeGroups(await invoke('apply_retention_rule_cmd', { groups: this.groups, rule }))
       } catch (e) {
         logger.warn('apply_retention_rule_cmd failed:', errorMessage(e))
       }
@@ -322,6 +326,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
           : null
 
         if (!this._scanCancelled) {
+          groups = normalizeGroups(groups)
           const imageCount = groups.reduce((n, g) => n + g.entries.length, 0)
           const entryId = await history.addEntry(this.folders, groups.length, imageCount, groups, fingerprint, this.similarityThreshold, fastMode, crossDatePhash, durationMs)
 
@@ -384,6 +389,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
             gpsLongitude: metadata.gpsLongitude ?? null,
             device,
           })
+          group.entries = sortedGroupEntries(group)
           break
         }
       }
@@ -465,7 +471,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
             )[0]
             remaining.forEach(e => { e.isOriginal = e.path === best.path })
           }
-          return { ...g, entries: remaining }
+          return { ...g, entries: sortedGroupEntries({ ...g, entries: remaining }) }
         })
         .filter(Boolean)
 
