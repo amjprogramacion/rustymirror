@@ -3,7 +3,8 @@ use std::path::Path;
 use unicode_normalization::UnicodeNormalization;
 
 use crate::cache::CachedFile;
-use crate::hasher::{perceptual_hash_from_bytes, read_file_data};
+use image::GenericImageView;
+use crate::hasher::{perceptual_hash_from_bytes, perceptual_hash_from_image, laplacian_variance_from_image, try_thumbnail_hash, read_file_data};
 use crate::types::{FailedFileKind, ImageEntry};
 
 use super::walk::is_heic;
@@ -241,21 +242,28 @@ pub(super) fn make_record(path: &Path, fast_mode: bool) -> Result<FileRecord, Fa
     let heic = is_heic(path);
     let modified = if !heic { read_capture_date(path, &bytes, &meta) } else { fs_modified.clone() };
 
-    let (width, height) = if !heic {
-        let cursor = std::io::Cursor::new(&bytes);
-        image::io::Reader::new(cursor)
-            .with_guessed_format().ok()
-            .and_then(|r| r.into_dimensions().ok())
-            .unwrap_or((0, 0))
-    } else { (0, 0) };
-
-    let ph = if !heic {
-        perceptual_hash_from_bytes(&bytes, fast_mode).ok()
-    } else { None };
-
-    let blur_score = if !heic {
-        crate::hasher::laplacian_variance(&bytes)
-    } else { None };
+    // Decode the image once and derive dimensions, pHash, and blur from the same
+    // DynamicImage — avoids two separate full decodes per file in precise mode.
+    let (width, height, ph, blur_score) = if !heic {
+        match image::load_from_memory(&bytes) {
+            Ok(img) => {
+                let (w, h) = img.dimensions();
+                let blur = laplacian_variance_from_image(&img);
+                let ph = if fast_mode {
+                    // Fast mode: prefer the cheap embedded EXIF thumbnail; fall back
+                    // to the already-decoded full image so we never decode twice.
+                    try_thumbnail_hash(&bytes)
+                        .or_else(|| Some(perceptual_hash_from_image(&img)))
+                } else {
+                    Some(perceptual_hash_from_image(&img))
+                };
+                (w, h, ph, blur)
+            }
+            Err(_) => (0, 0, None, None),
+        }
+    } else {
+        (0, 0, None, None)
+    };
 
     let header_hash = Some(blake3::hash(&bytes[..bytes.len().min(4096)]).to_hex().to_string());
 

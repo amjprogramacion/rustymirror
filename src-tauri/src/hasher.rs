@@ -92,6 +92,28 @@ fn extract_exif_thumbnail(data: &[u8]) -> Option<Vec<u8>> {
     tiff.get(off..off + len).map(<[u8]>::to_vec)
 }
 
+/// Tries to decode the embedded EXIF JPEG thumbnail and compute its pHash.
+/// Returns `None` if no thumbnail is present or it cannot be decoded.
+pub fn try_thumbnail_hash(bytes: &[u8]) -> Option<ImageHash> {
+    let thumb = extract_exif_thumbnail(bytes)?;
+    let img = image::load_from_memory(&thumb).ok()?;
+    let hasher = HasherConfig::new()
+        .hash_size(8, 8)
+        .hash_alg(HashAlg::Gradient)
+        .to_hasher();
+    Some(hasher.hash_image(&img))
+}
+
+/// Computes pHash from an already-decoded `DynamicImage`.
+/// Use this when the image has already been loaded to avoid a redundant decode.
+pub fn perceptual_hash_from_image(img: &image::DynamicImage) -> ImageHash {
+    let hasher = HasherConfig::new()
+        .hash_size(8, 8)
+        .hash_alg(HashAlg::Gradient)
+        .to_hasher();
+    hasher.hash_image(img)
+}
+
 /// Computes pHash from already-loaded bytes.
 ///
 /// `use_thumbnail = true`  (fast mode):
@@ -110,35 +132,22 @@ fn extract_exif_thumbnail(data: &[u8]) -> Option<Vec<u8>> {
 /// Returns `Err` if the image cannot be decoded; callers that want to skip
 /// undecoded files can call `.ok()` at the use site.
 pub fn perceptual_hash_from_bytes(bytes: &[u8], use_thumbnail: bool) -> Result<ImageHash, image::ImageError> {
-    let hasher = HasherConfig::new()
-        .hash_size(8, 8)
-        .hash_alg(HashAlg::Gradient)
-        .to_hasher();
-
     if use_thumbnail {
-        if let Some(thumb) = extract_exif_thumbnail(bytes) {
-            if let Ok(img) = image::load_from_memory(&thumb) {
-                return Ok(hasher.hash_image(&img));
-            }
+        if let Some(hash) = try_thumbnail_hash(bytes) {
+            return Ok(hash);
         }
     }
-
-    // Full image decode (always used in precise mode; fallback in fast mode)
     let img = image::load_from_memory(bytes)?;
-    Ok(hasher.hash_image(&img))
+    Ok(perceptual_hash_from_image(&img))
 }
 
-/// Sharpness score via Laplacian variance.
+/// Sharpness score via Laplacian variance on an already-decoded `DynamicImage`.
+/// Use this when the image has already been loaded to avoid a redundant decode.
 ///
-/// Decodes to luma and downsamples to at most 256 px on the longest side
-/// before applying the 4-neighbour Laplacian kernel — cheap enough to run on
-/// every image during the scan without meaningfully slowing it down.
-///
-/// Returns `None` if the image cannot be decoded or is smaller than 3×3 px.
+/// Returns `None` if the image is smaller than 3×3 px.
 /// Higher values mean a sharper image (typical range: ~10 for blurry, ~500+
 /// for very sharp; depends on image content and resolution).
-pub fn laplacian_variance(bytes: &[u8]) -> Option<f64> {
-    let img = image::load_from_memory(bytes).ok()?;
+pub fn laplacian_variance_from_image(img: &image::DynamicImage) -> Option<f64> {
     let (w, h) = img.dimensions();
 
     // Downsample to ≤256 px on the longest side so computation stays O(1) in practice.
@@ -175,3 +184,4 @@ pub fn laplacian_variance(bytes: &[u8]) -> Option<f64> {
     let mean = sum / n;
     Some(sum_sq / n - mean * mean)
 }
+
