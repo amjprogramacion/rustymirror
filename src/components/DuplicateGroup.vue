@@ -85,7 +85,7 @@
 
 <script setup>
 import { ref, inject, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { convertFileSrc, invoke } from '@tauri-apps/api/core'
+import { invoke } from '@tauri-apps/api/core'
 import { useDuplicatesStore } from '../store/duplicates'
 import { useThumbnailStore } from '../store/thumbnails'
 import { usePanelStore } from '../store/panel'
@@ -96,31 +96,17 @@ const store  = useDuplicatesStore()
 const thumbs = useThumbnailStore()
 const panel  = usePanelStore()
 const THUMB_ERROR = '__error__'
-const HEIC_EXTS = new Set(['heic', 'heif'])
-// PNGs are always processed via Rust to avoid WebView2 rendering issues with
-// certain PNG variants (16-bit depth, Display P3 / ICC color profiles, etc.).
-// Rust decodes and re-encodes as a plain JPEG thumbnail, which WebView2 handles fine.
-const RUST_THUMB_EXTS = new Set(['png'])
 
 const thumbObserver = inject('thumbObserver')
 const groupEl = ref(null)
 const observedEls = []
 
-function needsRust(path) {
-  const ext = fileExt(path)
-  return HEIC_EXTS.has(ext) || RUST_THUMB_EXTS.has(ext) || store.isNetworkPath(path)
-}
-
 onMounted(() => {
-  for (const entry of props.group.entries) {
-    if (!needsRust(entry.path) && !(entry.path in thumbs.directSrcCache)) {
-      thumbs.setDirectSrc(entry.path, convertFileSrc(entry.path))
-    }
-  }
-
-  const toObserve = props.group.entries.filter(e =>
-    needsRust(e.path) && !(e.path in thumbs.thumbCache)
-  )
+  // All images go through the Rust 180px thumbnail generator (disk-cached).
+  // Loading the full-resolution original via convertFileSrc would force WebView2
+  // to hold a multi-MB decoded bitmap per card; with a screenful of large photos
+  // that thrashes the image-decode cache and makes scrolling stutter.
+  const toObserve = props.group.entries.filter(e => !(e.path in thumbs.thumbCache))
 
   if (toObserve.length === 0) return
 

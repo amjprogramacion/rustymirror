@@ -54,7 +54,7 @@
     </div>
 
     <!-- Grid -->
-    <div class="grid-scroll" ref="gridEl" :style="panel.activePanel ? { paddingBottom: (panel.panelHeight + 16) + 'px' } : {}">
+    <div class="grid-scroll" ref="gridEl" @scroll="onScroll" :style="panel.activePanel ? { paddingBottom: (panel.panelHeight + 16) + 'px' } : {}">
       <div v-if="meta.filteredImages.length === 0" class="no-results">
         <template v-if="meta.searchQuery">
           No files match <em>"{{ meta.searchQuery }}"</em>.
@@ -62,15 +62,14 @@
         <template v-else>No files found.</template>
       </div>
 
-      <div class="cards-grid">
+      <div class="cards-grid" :style="gridStyle">
         <div
-          v-for="(entry, idx) in meta.filteredImages"
+          v-for="entry in visibleImages"
           :key="entry.path"
           class="card"
           :class="{ selected: meta.selected.has(entry.path), focused: !panel.activePanel?.batch && panel.activePanel?.entry?.path === entry.path && !meta.selected.has(entry.path) }"
           :tabindex="0"
-          :data-card-path="entry.path"
-          @click="onCardClick(entry, idx)"
+          @click="onCardClick(entry)"
         >
           <div class="thumb-wrap" :data-path="entry.path">
             <video
@@ -244,7 +243,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted, watch, nextTick } from 'vue'
 import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { useMetadataStore } from '../store/metadata'
@@ -264,7 +263,6 @@ const thumbs = useThumbnailStore()
 const { prefetchFilters } = useSettings()
 const gridEl    = ref(null)
 const THUMB_ERROR = '__error__'
-const HEIC_EXTS   = new Set(['heic', 'heif'])
 const VIDEO_EXTS  = new Set(['mp4', 'mov', 'avi', 'mpg', 'mpeg', 'mkv'])
 
 const thumbCache     = thumbs.thumbCache
@@ -274,43 +272,92 @@ function isVideoPath(path) {
   return VIDEO_EXTS.has(fileExt(path))
 }
 
-function needsRust(path) {
-  if (isVideoPath(path)) return false
-  return HEIC_EXTS.has(fileExt(path)) || meta.isNetworkPath(path)
-}
+// ── Virtualized grid (windowing) ──────────────────────────────────────────────
+// Only the cards near the viewport are kept in the DOM / Vue's vnode tree.
+// Rendering thousands of cards at once makes scrolling janky because every
+// reactive update has to diff all of them; here we render at most a few rows.
+const COLUMNS           = 8     // matches `grid-template-columns: repeat(8, 1fr)`
+const BUFFER_ROWS       = 4     // rows rendered above & below the viewport
+const FALLBACK_ROW_H    = 240   // used until a real card height is measured
 
-// ── Thumbnail lazy loading ────────────────────────────────────────────────────
-let observer = null
+const scrollTop  = ref(0)
+const viewportH  = ref(0)
+const rowHeight  = ref(0)
 
-function setupObserver(root) {
-  observer?.disconnect()
+const totalRows = computed(() => Math.ceil(meta.filteredImages.length / COLUMNS))
 
-  observer = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      const path = e.target.dataset.cardPath
-      if (!path) continue
-      if (path in thumbCache || path in directSrcCache) {
-        observer.unobserve(e.target)
-        continue
-      }
-      if (e.isIntersecting) {
-        if (needsRust(path)) {
-          thumbs.enqueueThumbnail(path)
-        } else {
-          thumbs.setDirectSrc(path, convertFileSrc(path))
-          observer.unobserve(e.target)
-        }
-      } else {
-        thumbs.dequeueThumbnail(path)
-      }
-    }
-  }, { root, rootMargin: '400px', threshold: 0 })
+const visibleRange = computed(() => {
+  const total = meta.filteredImages.length
+  if (total === 0) return { start: 0, end: 0, padTop: 0, padBottom: 0 }
+  const rh = rowHeight.value || FALLBACK_ROW_H
+  const vh = viewportH.value || 800
+  const firstRow  = Math.max(0, Math.floor(scrollTop.value / rh))
+  const rowsInView = Math.ceil(vh / rh)
+  const startRow = Math.max(0, firstRow - BUFFER_ROWS)
+  const endRow   = Math.min(totalRows.value, firstRow + rowsInView + BUFFER_ROWS)
+  return {
+    start: startRow * COLUMNS,
+    end: Math.min(total, endRow * COLUMNS),
+    padTop: startRow * rh,
+    padBottom: Math.max(0, (totalRows.value - endRow) * rh),
+  }
+})
 
-  root.querySelectorAll('.card[data-card-path]').forEach(el => {
-    const path = el.dataset.cardPath
-    if (path && !(path in thumbCache) && !(path in directSrcCache)) observer.observe(el)
+const visibleImages = computed(() =>
+  meta.filteredImages.slice(visibleRange.value.start, visibleRange.value.end)
+)
+
+const gridStyle = computed(() => ({
+  paddingTop:    visibleRange.value.padTop + 'px',
+  paddingBottom: visibleRange.value.padBottom + 'px',
+}))
+
+let rafPending = false
+function onScroll() {
+  if (rafPending) return
+  rafPending = true
+  requestAnimationFrame(() => {
+    rafPending = false
+    if (gridEl.value) scrollTop.value = gridEl.value.scrollTop
   })
 }
+
+// Measure viewport height and a real card's row height (card + row gap).
+function measure() {
+  const el = gridEl.value
+  if (!el) return
+  viewportH.value = el.clientHeight
+  const card = el.querySelector('.card')
+  if (card) {
+    const gap = parseFloat(getComputedStyle(card.parentElement).rowGap) || 0
+    const h = card.offsetHeight + gap
+    if (h > 0) rowHeight.value = h
+  }
+}
+
+// Kick off thumbnail loading for the cards currently in the window. Because we
+// only render visible cards, "rendered" already means "near the viewport", so
+// no IntersectionObserver is needed.
+//
+// Images ALWAYS go through the Rust 180px thumbnail generator (disk-cached).
+// Loading the full-resolution original via convertFileSrc would force WebView2
+// to hold a multi-MB decoded bitmap per card; with a screenful of large photos
+// that thrashes the image-decode cache and makes scrolling stutter. Only videos
+// use the original file directly (as a <video> source).
+watch(visibleImages, (list) => {
+  for (const entry of list) {
+    const path = entry.path
+    if (path in thumbCache || path in directSrcCache) continue
+    if (isVideoPath(path)) thumbs.setDirectSrc(path, convertFileSrc(path))
+    else                   thumbs.enqueueThumbnail(path)
+  }
+  if (!rowHeight.value) nextTick(measure)
+}, { immediate: true })
+
+let resizeObs = null
+onMounted(() => {
+  nextTick(measure)
+})
 
 function toggleMultiSelect() {
   const enabling = !meta.multiSelect
@@ -359,24 +406,34 @@ watch(() => [meta.filterDateFrom, meta.filterDateTo, meta.filterLocation, meta.f
 watch(() => meta.scanning, (scanning) => { if (scanning) panel.closePanel() })
 
 // When visible images change (filter/sort), cancel pending thumb loads and
-// re-register the observer so newly visible cards get prioritised.
+// scroll back to the top so the window starts fresh.
 watch(
   () => meta.filteredImages,
   () => {
     thumbs.clearThumbQueue()
-    nextTick(() => { if (gridEl.value) setupObserver(gridEl.value) })
+    scrollTop.value = 0
+    nextTick(() => {
+      if (gridEl.value) gridEl.value.scrollTop = 0
+      measure()
+    })
   }
 )
 
 // Watch the ref directly: fires the moment the v-else block mounts and
 // assigns gridEl. requestAnimationFrame ensures layout is complete before
-// we query card positions.
+// we measure card/viewport dimensions.
 watch(gridEl, (el) => {
-  if (el) requestAnimationFrame(() => setupObserver(el))
-  else observer?.disconnect()
+  resizeObs?.disconnect()
+  if (el) {
+    requestAnimationFrame(measure)
+    resizeObs = new ResizeObserver(() => measure())
+    resizeObs.observe(el)
+  } else {
+    resizeObs = null
+  }
 })
 
-onBeforeUnmount(() => observer?.disconnect())
+onBeforeUnmount(() => resizeObs?.disconnect())
 
 // ── Card interaction ──────────────────────────────────────────────────────────
 function onCardClick(entry) {
@@ -546,7 +603,6 @@ async function doDelete() {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   gap: var(--space-3);
-  will-change: scroll-position;
 }
 
 /* ── Card ── */
