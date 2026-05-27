@@ -8,6 +8,39 @@
       <button class="map-zoom-btn" @click="zoomOut" title="Zoom out">−</button>
     </div>
 
+    <!-- Location search -->
+    <div class="map-search" :class="{ open: searchOpen }">
+      <button
+        v-if="!searchOpen"
+        class="map-search-btn"
+        @click="openSearch"
+        title="Search a place"
+      >🔍</button>
+      <div v-else class="map-search-box">
+        <input
+          ref="searchInput"
+          v-model="searchQuery"
+          class="map-search-input"
+          type="text"
+          placeholder="Search a place…"
+          @keydown.enter.prevent="doSearch"
+          @keydown.esc.prevent="closeSearch"
+        />
+        <button class="map-search-go" @click="doSearch" title="Search">🔍</button>
+        <button class="map-search-close" @click="closeSearch" title="Close">✕</button>
+        <ul v-if="searching || searchError || searchResults.length" class="map-search-results">
+          <li v-if="searching" class="map-search-msg">Searching…</li>
+          <li v-else-if="searchError" class="map-search-msg">{{ searchError }}</li>
+          <li
+            v-for="r in searchResults"
+            :key="r.id"
+            class="map-search-result"
+            @click="selectResult(r)"
+          >{{ r.label }}</li>
+        </ul>
+      </div>
+    </div>
+
     <!-- Satellite toggle -->
     <button class="map-sat-btn" @click="toggleSatellite" :title="isSatellite ? 'Map view' : 'Satellite view'">
       <span v-if="isSatellite">🗺</span>
@@ -31,7 +64,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -68,6 +101,15 @@ const emit = defineEmits(['set-location'])
 const mapEl       = ref(null)
 const isSatellite = ref(false)
 const ctxMenu     = ref({ visible: false, x: 0, y: 0, lat: 0, lon: 0 })
+
+// Location search (Nominatim / OpenStreetMap geocoding)
+const searchOpen    = ref(false)
+const searchQuery   = ref('')
+const searchResults = ref([])
+const searching     = ref(false)
+const searchError   = ref('')
+const searchInput   = ref(null)
+const ZOOM_SEARCH   = 14
 let map       = null
 let marker    = null
 let tileLayer = null
@@ -116,6 +158,50 @@ function zoomOut() { map?.zoomOut() }
 function applyLocation() {
   emit('set-location', { lat: ctxMenu.value.lat, lon: ctxMenu.value.lon })
   ctxMenu.value.visible = false
+}
+
+function openSearch() {
+  searchOpen.value = true
+  nextTick(() => searchInput.value?.focus())
+}
+
+function closeSearch() {
+  searchOpen.value = false
+  searchQuery.value = ''
+  searchResults.value = []
+  searchError.value = ''
+  searching.value = false
+}
+
+async function doSearch() {
+  const q = searchQuery.value.trim()
+  if (!q || searching.value) return
+  searching.value = true
+  searchError.value = ''
+  searchResults.value = []
+  try {
+    const url = 'https://nominatim.openstreetmap.org/search'
+      + `?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`
+    const res = await fetch(url, { headers: { Accept: 'application/json' } })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    searchResults.value = data.map((d) => ({
+      id:    d.place_id,
+      label: d.display_name,
+      lat:   parseFloat(d.lat),
+      lon:   parseFloat(d.lon),
+    }))
+    if (!searchResults.value.length) searchError.value = 'No results'
+  } catch {
+    searchError.value = 'Search failed'
+  } finally {
+    searching.value = false
+  }
+}
+
+function selectResult(r) {
+  map?.setView([r.lat, r.lon], ZOOM_SEARCH)
+  closeSearch()
 }
 
 let resizeObserver = null
@@ -248,6 +334,120 @@ defineExpose({
   background: #f0f0f0 !important;
 }
 
+/* Location search */
+.map-search {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  pointer-events: all;
+}
+
+.map-search-btn {
+  width: 26px;
+  height: 26px;
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.35) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  padding: 0 !important;
+  margin: 0 !important;
+  transition: background 0.15s;
+  opacity: 1 !important;
+}
+.map-search-btn:hover {
+  background: #f0f0f0 !important;
+}
+
+.map-search-box {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  overflow: visible;
+}
+
+.map-search-input {
+  width: 180px;
+  height: 26px;
+  border: none !important;
+  outline: none !important;
+  padding: 0 8px !important;
+  margin: 0 !important;
+  font-size: 12px;
+  color: #333 !important;
+  background: transparent !important;
+}
+
+.map-search-go,
+.map-search-close {
+  width: 26px;
+  height: 26px;
+  background: #fff !important;
+  color: #333 !important;
+  border: none !important;
+  border-left: 1px solid rgba(0, 0, 0, 0.2) !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  opacity: 1 !important;
+}
+.map-search-go:hover,
+.map-search-close:hover {
+  background: #f0f0f0 !important;
+}
+
+.map-search-results {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  right: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.map-search-result,
+.map-search-msg {
+  padding: 6px 9px;
+  font-size: 11px;
+  color: #333;
+  line-height: 1.3;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.map-search-result {
+  cursor: pointer;
+}
+.map-search-result:hover {
+  background: #f0f0f0;
+}
+.map-search-result:last-child {
+  border-bottom: none;
+}
+.map-search-msg {
+  color: #888;
+  cursor: default;
+}
 
 </style>
 
