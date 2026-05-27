@@ -210,6 +210,77 @@ pub fn write_tags(
     Ok(())
 }
 
+/// Apply the same `tag=value` pairs to many files in one ExifTool invocation
+/// (`-overwrite_original`). All paths are listed in a single argfile, so one
+/// process writes them sequentially instead of N concurrent processes racing on
+/// the same SMB share.
+///
+/// Returns the input paths that ExifTool failed to update (matched against its
+/// stderr `Error:` lines). An empty Vec means every file was written.
+pub fn batch_write_tags(
+    exiftool: &Path,
+    paths: &[PathBuf],
+    tags: &[(&str, String)],
+) -> anyhow::Result<Vec<String>> {
+    if paths.is_empty() || tags.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let argfile_path = std::env::temp_dir()
+        .join(format!("rustymirror_et_batch_write_{}.txt", std::process::id()));
+    {
+        let mut f = std::fs::File::create(&argfile_path)?;
+        for p in paths {
+            writeln!(f, "{}", p.to_string_lossy())?;
+        }
+    }
+
+    let mut cmd = base_cmd(exiftool);
+    cmd.arg("-overwrite_original");
+    for (tag, value) in tags {
+        cmd.arg(format!("-{tag}={value}"));
+    }
+    cmd.arg("-@").arg(&argfile_path);
+
+    let result = cmd.output();
+    let _ = std::fs::remove_file(&argfile_path);
+    let output = result?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    tracing::debug!("exiftool batch write stdout: {stdout}");
+    if !stderr.is_empty() {
+        tracing::warn!("exiftool batch write stderr: {stderr}");
+    }
+
+    // ExifTool keeps processing the rest of the batch after a per-file failure
+    // and exits non-zero only when nothing was written. Rather than fail the
+    // whole batch, report which inputs errored by matching error lines (which
+    // contain the offending path, slash-normalised) against the known inputs.
+    // Only `Error:` lines mean a file was not written. ExifTool also emits many
+    // benign `Warning:` lines (minor tag fixups, etc.) that must not be counted
+    // as failures.
+    let stderr_norm = stderr.replace('\\', "/");
+    let mut failed: Vec<String> = Vec::new();
+    for p in paths {
+        let needle = p.to_string_lossy().replace('\\', "/");
+        let errored = stderr_norm
+            .lines()
+            .any(|line| line.contains("Error:") && line.contains(&needle));
+        if errored {
+            failed.push(p.to_string_lossy().to_string());
+        }
+    }
+
+    // Only treat the run as fully failed when the process errored out AND no
+    // file was updated — otherwise partial successes are reported via `failed`.
+    if !output.status.success() && !stdout.contains("files updated") {
+        anyhow::bail!("exiftool batch write failed: {stderr}");
+    }
+
+    Ok(failed)
+}
+
 // ── internal helpers ─────────────────────────────────────────────────────────
 
 fn parse_first_obj(stdout: &[u8]) -> anyhow::Result<serde_json::Value> {

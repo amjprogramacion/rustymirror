@@ -272,3 +272,34 @@ pub async fn write_metadata(
 
     Ok(())
 }
+
+/// Writes the same metadata `update` to many files in a single ExifTool
+/// invocation. Returns the paths that failed to update (empty = all written).
+///
+/// Used by the batch/multi-edit panel. Doing all files in one process avoids the
+/// concurrent-`CreateFile` storm that made writes fail intermittently on NAS
+/// shares when each file spawned its own exiftool process.
+#[tauri::command]
+pub async fn batch_write_metadata(
+    paths: Vec<String>,
+    update: crate::types::MetadataUpdate,
+    app: tauri::AppHandle,
+) -> Result<Vec<String>, AppError> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| AppError::Metadata { path: String::new(), message: e.to_string() })?;
+    let paths_clone = paths.clone();
+    let failed = tokio::task::spawn_blocking(move || {
+        let pbs = to_pathbuf_vec(&paths_clone);
+        crate::metadata::batch_write_metadata(&pbs, &update, &resource_dir)
+            .map_err(|e| AppError::Metadata { path: String::new(), message: e.to_string() })
+    })
+    .await??;
+
+    // Invalidate the SQLite cache for every written path so the next scan
+    // re-reads the updated metadata.
+    evict_cache_for(&app, &paths);
+
+    Ok(failed)
+}

@@ -208,11 +208,50 @@ pub fn write_metadata(path: &Path, update: &MetadataUpdate, resource_dir: &Path)
     let exiftool =
         find_exiftool(resource_dir).ok_or_else(|| anyhow!("ExifTool not found"))?;
 
-    let mut tags: Vec<(&str, String)> = Vec::new();
+    let tags = build_write_tags(update, is_video_format(path));
+    crate::exiftool::write_tags(&exiftool, path, &tags)
+}
+
+/// Apply the same `update` to many files in a single ExifTool invocation.
+///
+/// One process writes every file sequentially (vs. one process per file fired
+/// concurrently from the frontend, which on a NAS produces intermittent
+/// `Error creating file: …_exiftool_tmp` failures when the SMB share is hit by
+/// dozens of simultaneous `CreateFile` calls). Files are split into video and
+/// non-video groups because capture-date tags differ between the two.
+///
+/// Returns the paths (as ExifTool reported them) that failed to update.
+pub fn batch_write_metadata(
+    paths: &[std::path::PathBuf],
+    update: &MetadataUpdate,
+    resource_dir: &Path,
+) -> Result<Vec<String>> {
+    let exiftool =
+        find_exiftool(resource_dir).ok_or_else(|| anyhow!("ExifTool not found"))?;
+
+    let (videos, images): (Vec<_>, Vec<_>) =
+        paths.iter().cloned().partition(|p| is_video_format(p));
+
+    let mut failed = Vec::new();
+    if !images.is_empty() {
+        let tags = build_write_tags(update, false);
+        failed.extend(crate::exiftool::batch_write_tags(&exiftool, &images, &tags)?);
+    }
+    if !videos.is_empty() {
+        let tags = build_write_tags(update, true);
+        failed.extend(crate::exiftool::batch_write_tags(&exiftool, &videos, &tags)?);
+    }
+    Ok(failed)
+}
+
+/// Build the `-TAG=value` list for an `update`. `is_video` switches capture-date
+/// tags between QuickTime atoms (video) and EXIF DateTimeOriginal/CreateDate.
+fn build_write_tags(update: &MetadataUpdate, is_video: bool) -> Vec<(&'static str, String)> {
+    let mut tags: Vec<(&'static str, String)> = Vec::new();
 
     if let Some(ref dt) = update.date_time_original {
         let exif_dt = iso_to_exif_date(dt);
-        if is_video_format(path) {
+        if is_video {
             // MOV/MP4 capture dates live in QuickTime atoms/Keys, not EXIF.
             // Keep common variants in sync so viewers agree on the capture time.
             for tag in [
@@ -300,5 +339,5 @@ pub fn write_metadata(path: &Path, update: &MetadataUpdate, resource_dir: &Path)
         ));
     }
 
-    crate::exiftool::write_tags(&exiftool, path, &tags)
+    tags
 }

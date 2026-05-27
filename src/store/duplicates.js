@@ -414,10 +414,16 @@ export const useDuplicatesStore = defineStore('duplicates', {
       if (!panel.activePanel?.batch) return
       panel.activePanel = { ...panel.activePanel, saving: true, error: null }
       try {
-        await Promise.all(panel.activePanel.entries.map(e => invoke('write_metadata', { path: e.path, update })))
+        const paths = panel.activePanel.entries.map(e => e.path)
+        // Single backend call writes every file in one exiftool process —
+        // avoids the concurrent-write storm that failed intermittently on NAS.
+        const failed = await invoke('batch_write_metadata', { paths, update })
         const allMetadata = await Promise.all(panel.activePanel.entries.map(e => invoke('read_metadata', { path: e.path })))
         if (panel.activePanel) {
-          panel.activePanel = { ...panel.activePanel, allMetadata, saving: false, dirty: false }
+          const error = failed?.length
+            ? `No se pudieron actualizar ${failed.length} de ${paths.length} archivos`
+            : null
+          panel.activePanel = { ...panel.activePanel, allMetadata, saving: false, dirty: false, error }
           const metaStore = useMetadataStore()
           panel.activePanel.entries.forEach((e, i) => {
             metaStore.updateEntryFromMetadata(e.path, allMetadata[i])

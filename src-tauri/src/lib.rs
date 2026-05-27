@@ -56,6 +56,7 @@ pub fn run() {
             commands::is_debug_build,
             commands::read_metadata,
             commands::write_metadata,
+            commands::batch_write_metadata,
             commands::scan_for_metadata,
             commands::stop_meta_scan,
             commands::preview_organize,
