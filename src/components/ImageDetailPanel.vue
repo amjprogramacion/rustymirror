@@ -185,7 +185,7 @@
           </div>
         </div>
 
-        <SaveLocationModal :show="showSaveModal" :lat="previewLat" :lon="previewLon" @save="onSaveCustomLocation" @close="showSaveModal = false" />
+        <SaveLocationModal :show="showSaveModal" :lat="previewLat" :lon="previewLon" :existing="metaStore.savedLocations" @save="onSaveCustomLocation" @close="showSaveModal = false" />
 
         <!-- Exposure -->
         <PanelSectionExposure

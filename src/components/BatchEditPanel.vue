@@ -230,7 +230,7 @@
           </div>
         </Transition>
 
-        <SaveLocationModal :show="showSaveModal" :lat="saveModalLat" :lon="saveModalLon" @save="onSaveCustomLocation" @close="showSaveModal = false" />
+        <SaveLocationModal :show="showSaveModal" :lat="saveModalLat" :lon="saveModalLon" :existing="metaStore.savedLocations" @save="onSaveCustomLocation" @close="showSaveModal = false" />
 
       </div>
 

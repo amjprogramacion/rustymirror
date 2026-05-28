@@ -38,6 +38,9 @@
               />
             </label>
           </div>
+          <p v-if="duplicate" class="slm-error">
+            A custom location (“{{ duplicate.name }}”) already exists at these coordinates.
+          </p>
           <div class="slm-actions">
             <button class="slm-btn slm-btn-ghost" @click="$emit('close')">Cancel</button>
             <button class="slm-btn slm-btn-primary" :disabled="!valid" @click="onSave">Save</button>
@@ -52,24 +55,38 @@
 import { ref, computed, nextTick, watch } from 'vue'
 
 const props = defineProps({
-  show: { type: Boolean, default: false },
-  lat:  { type: Number,  default: null },
-  lon:  { type: Number,  default: null },
+  show:     { type: Boolean, default: false },
+  lat:      { type: Number,  default: null },
+  lon:      { type: Number,  default: null },
+  existing: { type: Array,   default: () => [] }, // saved locations, for duplicate check
 })
 const emit = defineEmits(['save', 'close'])
+
+// Two presets within ~11 m (0.0001°) are treated as the same place.
+const DUP_EPS = 0.0001
 
 const name    = ref('')
 const lat     = ref('')
 const lon     = ref('')
 const inputEl = ref(null)
 
-const valid = computed(() => {
+const coordsValid = computed(() => {
   const la = parseFloat(lat.value)
   const lo = parseFloat(lon.value)
-  return !!name.value.trim()
-    && !Number.isNaN(la) && la >= -90  && la <= 90
-    && !Number.isNaN(lo) && lo >= -180 && lo <= 180
+  return !Number.isNaN(la) && la >= -90  && la <= 90
+      && !Number.isNaN(lo) && lo >= -180 && lo <= 180
 })
+
+// Existing preset whose coordinates match (within tolerance) the entered ones.
+const duplicate = computed(() => {
+  if (!coordsValid.value) return null
+  const la = parseFloat(lat.value)
+  const lo = parseFloat(lon.value)
+  return props.existing.find(l =>
+    Math.abs(l.lat - la) < DUP_EPS && Math.abs(l.lon - lo) < DUP_EPS) ?? null
+})
+
+const valid = computed(() => !!name.value.trim() && coordsValid.value && !duplicate.value)
 
 watch(() => props.show, (open) => {
   if (open) {
@@ -144,6 +161,12 @@ function onSave() {
 .slm-field-label {
   font-size: 10px;
   color: var(--text-muted);
+}
+.slm-error {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-danger);
+  line-height: 1.3;
 }
 .slm-actions {
   display: flex;
