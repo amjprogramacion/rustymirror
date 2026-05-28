@@ -303,6 +303,68 @@
                   </section>
                 </template>
 
+                <template v-else-if="dataTab === 'custom'">
+                  <section class="settings-section">
+                    <div class="location-list">
+                      <template v-for="loc in sortedCustomLocations" :key="loc.name">
+                        <!-- Normal row -->
+                        <div v-if="editingCustomFor !== loc.name" class="location-item">
+                          <span class="location-name">
+                            {{ loc.name }}
+                            <span class="custom-loc-coords">{{ loc.lat.toFixed(6) }}, {{ loc.lon.toFixed(6) }}</span>
+                          </span>
+                          <button
+                            class="location-edit"
+                            title="Edit"
+                            @click="startEditCustom(loc)"
+                          >✎</button>
+                          <button
+                            class="location-remove"
+                            title="Remove"
+                            @click="meta.removeSavedLocation(loc.name)"
+                          >✕</button>
+                        </div>
+                        <!-- Inline editor -->
+                        <div v-else class="location-item location-item--editing custom-loc-edit">
+                          <input
+                            class="settings-input custom-loc-input"
+                            type="text"
+                            placeholder="Name"
+                            v-model="editCustom.name"
+                            @keydown.enter="confirmEditCustom"
+                            @keydown.escape="cancelEditCustom"
+                          />
+                          <input
+                            class="settings-input custom-loc-input custom-loc-input--coord"
+                            type="text"
+                            placeholder="Latitude"
+                            v-model="editCustom.lat"
+                            @keydown.enter="confirmEditCustom"
+                            @keydown.escape="cancelEditCustom"
+                          />
+                          <input
+                            class="settings-input custom-loc-input custom-loc-input--coord"
+                            type="text"
+                            placeholder="Longitude"
+                            v-model="editCustom.lon"
+                            @keydown.enter="confirmEditCustom"
+                            @keydown.escape="cancelEditCustom"
+                          />
+                          <button
+                            class="btn-setting btn-setting--active"
+                            :disabled="!customEditValid"
+                            @click="confirmEditCustom"
+                          >Save</button>
+                          <button class="btn-setting" @click="cancelEditCustom">Cancel</button>
+                        </div>
+                      </template>
+                      <p v-if="!sortedCustomLocations.length" class="settings-hint location-empty">
+                        No custom locations yet. Save one from the Location panel of any image.
+                      </p>
+                    </div>
+                  </section>
+                </template>
+
                 <template v-else-if="dataTab === 'devices'">
                   <section class="settings-section">
                     <div class="location-list">
@@ -457,6 +519,7 @@ const activeTab = ref('general')
 
 const dataTabs = [
   { id: 'locations', label: 'Locations' },
+  { id: 'custom',    label: 'Custom locations' },
   { id: 'devices',   label: 'Devices' },
 ]
 const dataTab = ref('locations')
@@ -539,6 +602,43 @@ function cancelAddDevice() {
   addingDevice.value = false
 }
 
+// ── Custom locations (named lat/lon presets) ──────────────────────────────────
+const editingCustomFor = ref(null)
+const editCustom = ref({ name: '', lat: '', lon: '' })
+
+const sortedCustomLocations = computed(() =>
+  [...meta.savedLocations].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+)
+
+const customEditValid = computed(() => {
+  const lat = parseFloat(editCustom.value.lat)
+  const lon = parseFloat(editCustom.value.lon)
+  return !!editCustom.value.name.trim()
+    && !Number.isNaN(lat) && lat >= -90  && lat <= 90
+    && !Number.isNaN(lon) && lon >= -180 && lon <= 180
+})
+
+function startEditCustom(loc) {
+  editingCustomFor.value = loc.name
+  editCustom.value = { name: loc.name, lat: String(loc.lat), lon: String(loc.lon) }
+}
+
+function confirmEditCustom() {
+  if (!customEditValid.value) return
+  meta.updateSavedLocation(
+    editingCustomFor.value,
+    editCustom.value.name.trim(),
+    parseFloat(editCustom.value.lat),
+    parseFloat(editCustom.value.lon),
+  )
+  editingCustomFor.value = null
+}
+
+function cancelEditCustom() {
+  editingCustomFor.value = null
+}
+
 const history = useDuplicatesHistoryStore()
 const dups    = useDuplicatesStore()
 const meta    = useMetadataStore()
@@ -581,6 +681,7 @@ onMounted(() => {
   meta.loadCustomDevices()
   meta.loadDiscoveredDevices()
   meta.loadDeviceAliases()
+  meta.loadSavedLocations()
 })
 </script>
 
@@ -1063,6 +1164,24 @@ onMounted(() => {
   padding: var(--space-2);
   background: var(--bg-card);
   border-radius: var(--border-radius-sm);
+}
+
+/* ── Custom locations ── */
+.custom-loc-coords {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.custom-loc-edit .custom-loc-input {
+  flex: 1 1 100%;
+  width: auto;
+}
+.custom-loc-edit .custom-loc-input--coord {
+  flex: 1 1 0;
+  min-width: 90px;
 }
 
 /* ── Transition ── */

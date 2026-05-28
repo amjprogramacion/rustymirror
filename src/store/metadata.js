@@ -525,6 +525,19 @@ export const useMetadataStore = defineStore('metadata', {
       } catch {}
     },
 
+    async updateSavedLocation(oldName, name, lat, lon) {
+      const trimmed = (name ?? '').trim()
+      if (!trimmed || lat == null || lon == null) return
+      // Drop the original entry and any colliding with the new name, then add.
+      const next = this.savedLocations.filter(l => l.name !== oldName && l.name !== trimmed)
+      next.push({ name: trimmed, lat, lon })
+      this.savedLocations = next
+      try {
+        const store = await getStore()
+        await store.set(SAVED_LOCATIONS_KEY, this.savedLocations)
+      } catch {}
+    },
+
     async removeSavedLocation(name) {
       this.savedLocations = this.savedLocations.filter(l => l.name !== name)
       try {
