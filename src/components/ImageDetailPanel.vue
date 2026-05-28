@@ -90,13 +90,13 @@
                 class="mp-loc-btn"
                 @click="copyLocation"
                 title="Copy location (lat, lon)"
-              >⧉ Copy</button>
+              >⧉</button>
               <button
                 v-if="metaStore.copiedLocation"
                 class="mp-loc-btn"
                 @click="pasteLocation"
                 title="Paste copied location"
-              >📍 Paste</button>
+              >📍</button>
             </div>
           </div>
           <div v-show="!collapsed.location">
@@ -712,16 +712,19 @@ const videoSrc = computed(() => {
   gap: 4px;
 }
 .mp-loc-btn {
-  font-size: 10px;
-  font-weight: 600;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
   line-height: 1;
-  padding: 3px 6px;
+  padding: 0;
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   background: var(--bg-secondary);
   color: var(--text-secondary);
   cursor: pointer;
-  white-space: nowrap;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .mp-loc-btn:hover {
