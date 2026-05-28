@@ -7,7 +7,10 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
-    sync::{Arc, Mutex, OnceLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, OnceLock,
+    },
 };
 
 #[cfg(target_os = "windows")]
@@ -17,6 +20,16 @@ use std::os::windows::process::CommandExt;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 static EXIFTOOL_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+// Monotonic counter so concurrent calls (e.g. a frontend `Promise.all` of
+// read_metadata) never share a temp argfile — a PID-only name let one call
+// overwrite another's path, making both exiftool runs read the same file.
+static ARGFILE_SEQ: AtomicU64 = AtomicU64::new(0);
+
+fn unique_argfile(prefix: &str) -> PathBuf {
+    let seq = ARGFILE_SEQ.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("{prefix}_{}_{}.txt", std::process::id(), seq))
+}
 
 fn which_exists(cmd: &str) -> bool {
     let mut c = Command::new(cmd);
@@ -86,8 +99,7 @@ pub fn read_tags(
     image_path: &Path,
     extra_args: &[&str],
 ) -> anyhow::Result<serde_json::Value> {
-    let argfile_path = std::env::temp_dir()
-        .join(format!("rustymirror_et_read_{}.txt", std::process::id()));
+    let argfile_path = unique_argfile("rustymirror_et_read");
     {
         let mut f = std::fs::File::create(&argfile_path)?;
         writeln!(f, "{}", image_path.to_string_lossy())?;
@@ -125,8 +137,7 @@ pub fn batch_read_tags(
     }
 
     // Write one path per line to a temp argfile.
-    let argfile_path = std::env::temp_dir()
-        .join(format!("rustymirror_et_{}.txt", std::process::id()));
+    let argfile_path = unique_argfile("rustymirror_et_batch_read");
 
     let mut f = std::fs::File::create(&argfile_path)?;
     for p in paths {
@@ -171,8 +182,7 @@ pub fn write_tags(
         return Ok(());
     }
 
-    let argfile_path = std::env::temp_dir()
-        .join(format!("rustymirror_et_write_{}.txt", std::process::id()));
+    let argfile_path = unique_argfile("rustymirror_et_write");
     {
         let mut f = std::fs::File::create(&argfile_path)?;
         writeln!(f, "{}", image_path.to_string_lossy())?;
@@ -226,8 +236,7 @@ pub fn batch_write_tags(
         return Ok(Vec::new());
     }
 
-    let argfile_path = std::env::temp_dir()
-        .join(format!("rustymirror_et_batch_write_{}.txt", std::process::id()));
+    let argfile_path = unique_argfile("rustymirror_et_batch_write");
     {
         let mut f = std::fs::File::create(&argfile_path)?;
         for p in paths {
