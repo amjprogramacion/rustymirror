@@ -405,10 +405,18 @@ watch(() => [meta.sortBy, meta.sortDir], () => panel.closePanel())
 watch(() => [meta.filterDateFrom, meta.filterDateTo, meta.filterLocation, meta.filterDevice], () => panel.closePanel())
 watch(() => meta.scanning, (scanning) => { if (scanning) panel.closePanel() })
 
-// When visible images change (filter/sort), cancel pending thumb loads and
-// scroll back to the top so the window starts fresh.
+// When the filter/sort/search criteria change (or a new scan/history entry
+// loads), cancel pending thumb loads and scroll back to the top. We watch the
+// criteria — not `filteredImages` itself — so editing a single image's metadata
+// (which recomputes the list) does NOT jump the scroll back to the top.
 watch(
-  () => meta.filteredImages,
+  () => [
+    meta.searchQuery,
+    meta.sortBy, meta.sortDir,
+    meta.filterDateFrom, meta.filterDateTo,
+    meta.filterLocation, meta.filterDevice,
+    meta.activeHistoryEntryId,
+  ],
   () => {
     thumbs.clearThumbQueue()
     scrollTop.value = 0
