@@ -5,6 +5,10 @@ import { createHistoryStore, foldersKey } from './historyFactory'
 // different version are treated as stale and a fresh scan is forced.
 const CACHE_VERSION = 3
 
+// Coalesces rapid snapshot edits (e.g. a batch save patching N images) into a
+// single persist instead of one disk write per image.
+let _saveTimer = null
+
 export const useMetadataHistoryStore = createHistoryStore({
   id: 'metadataHistory',
   historyKey: 'metaScanHistory',
@@ -36,6 +40,18 @@ export const useMetadataHistoryStore = createHistoryStore({
   },
 
   extraActions: {
+    // Patch a single image inside a stored snapshot so reloading that history
+    // entry reflects an edit made after the scan (e.g. a GPS location set).
+    updateImage(entryId, path, newEntry) {
+      const entry = this.entries.find(e => e.id === entryId)
+      if (!entry?.images) return
+      const idx = entry.images.findIndex(im => im.path === path)
+      if (idx === -1) return
+      entry.images[idx] = newEntry
+      clearTimeout(_saveTimer)
+      _saveTimer = setTimeout(() => this._save(), 300)
+    },
+
     // Returns cached images only if folders, fingerprint, and schema version all match.
     getCached(folders, fingerprint) {
       const key = foldersKey(folders)

@@ -212,6 +212,14 @@ export const useMetadataStore = defineStore('metadata', {
       } else {
         this.geocodeSingle(path)        // GPS set/changed → refresh name (cache hit instant, else background)
       }
+
+      // Persist the edit into the active history snapshot so reloading that
+      // entry reflects it (otherwise the stale pre-edit snapshot reappears).
+      if (this.activeHistoryEntryId != null) {
+        useMetadataHistoryStore().updateImage(
+          this.activeHistoryEntryId, path, { ...this.images[idx] }
+        )
+      }
     },
 
     // Reverse-geocode a single image's GPS into locationNames (used after a save).
