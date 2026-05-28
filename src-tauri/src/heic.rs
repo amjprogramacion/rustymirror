@@ -11,11 +11,11 @@ pub fn magick_path(resource_dir: Option<&Path>) -> Option<&'static PathBuf> {
     MAGICK_PATH.get_or_init(|| find_magick(resource_dir)).as_ref()
 }
 
-fn find_magick(resource_dir: Option<&Path>) -> Option<PathBuf> {
+fn find_magick(_resource_dir: Option<&Path>) -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         let mut candidates: Vec<PathBuf> = Vec::new();
-        if let Some(res) = resource_dir {
+        if let Some(res) = _resource_dir {
             // Dev mode: resource_dir == src-tauri/, magick.exe is in resources/ subdir
             candidates.push(res.join("resources").join("magick.exe"));
             // Direct fallback
@@ -59,6 +59,7 @@ fn find_magick(resource_dir: Option<&Path>) -> Option<PathBuf> {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn which_exists(cmd: &str) -> bool {
     std::process::Command::new(cmd).arg("--version").output().is_ok()
 }

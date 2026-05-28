@@ -149,7 +149,7 @@ pub fn is_network_path(path: String) -> bool {
         false
     }
     #[cfg(not(target_os = "windows"))]
-    { false }
+    { let _ = path; false }
 }
 
 /// Checks whether each path in `paths` exists on disk.
