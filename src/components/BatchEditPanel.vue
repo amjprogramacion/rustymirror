@@ -592,12 +592,19 @@ const showSaveModal = ref(false)
 const matchedCustomLocation = computed(() => {
   let lat, lon
   if (isBatch.value) {
-    const eff = batchGpsParsed.value
-      ?? ((!batchAgg.value?.gps?.mixed && batchAgg.value?.gps?.lat != null)
-            ? { lat: batchAgg.value.gps.lat, lon: batchAgg.value.gps.lon }
-            : null)
-    if (!eff) return ''
-    lat = eff.lat; lon = eff.lon
+    const agg = batchAgg.value?.gps
+    const aggValid = agg && !agg.mixed && agg.lat != null
+    // While the combined input still mirrors the aggregate, use the full-precision
+    // coords (the DMS string shown there loses precision when re-parsed).
+    if (aggValid && batchGpsCombinedRaw.value === formatBatchGps(agg.lat, agg.lon)) {
+      lat = agg.lat; lon = agg.lon
+    } else if (batchGpsParsed.value) {
+      lat = batchGpsParsed.value.lat; lon = batchGpsParsed.value.lon
+    } else if (aggValid) {
+      lat = agg.lat; lon = agg.lon
+    } else {
+      return ''
+    }
   } else {
     lat = previewLat.value; lon = previewLon.value
   }
