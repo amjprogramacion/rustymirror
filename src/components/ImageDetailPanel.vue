@@ -97,6 +97,12 @@
                 @click="pasteLocation"
                 title="Paste copied location"
               ><PasteIcon /></button>
+              <button
+                v-if="canDeleteLocation"
+                class="mp-loc-btn mp-loc-btn--danger"
+                @click="deleteLocation"
+                title="Delete location"
+              ><DeleteIcon /></button>
             </div>
           </div>
           <div v-show="!collapsed.location">
@@ -226,6 +232,7 @@ import MapPreview from './MapPreview.vue'
 import ChevronIcon from './ChevronIcon.vue'
 import CopyIcon from './CopyIcon.vue'
 import PasteIcon from './PasteIcon.vue'
+import DeleteIcon from './DeleteIcon.vue'
 import { fileExt, fileName, folderPath } from '../utils/formatters'
 import { useGpsEditor } from '../composables/useGpsEditor'
 import PanelSectionFileCamera from './PanelSectionFileCamera.vue'
@@ -330,9 +337,9 @@ const {
   gpsCombinedRaw, gpsCombinedError,
   locationName, locationLoading,
   showCombinedInput,
-  previewLat, previewLon, hasGpsPreview,
+  previewLat, previewLon, hasGpsPreview, canDeleteLocation,
   onCombinedInput, onGpsInput, normalizeGpsInput,
-  resetGps, validateGps,
+  deleteLocation, resetGps, validateGps,
 } = useGpsEditor(meta, () => { panel.activePanel.dirty = true })
 
 const SPAIN_CENTER = { lat: 40.416775, lon: -3.703790 }
@@ -383,7 +390,7 @@ function resetEdit() {
 watch(meta, (m) => { if (m) resetEdit() }, { immediate: true })
 
 async function save() {
-  const { ok, lat, lon } = validateGps()
+  const { ok, lat, lon, deleteGps } = validateGps()
   if (!ok) return
 
   const origDevice = [meta.value?.make, meta.value?.model].filter(Boolean).join(' ')
@@ -404,6 +411,7 @@ async function save() {
     copyright:        edit.value.copyright || null,
     gpsLatitude:      lat,
     gpsLongitude:     lon,
+    deleteGps:        deleteGps || false,
     make,
     model,
     deleteDevice,
@@ -733,6 +741,10 @@ const videoSrc = computed(() => {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: #fff;
+}
+.mp-loc-btn--danger:hover {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
 }
 
 /* Content padding inside each section */

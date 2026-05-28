@@ -9,6 +9,7 @@ export function useGpsEditor(meta, onDirty) {
   const gpsLonError      = ref(null)
   const gpsCombinedRaw   = ref('')
   const gpsCombinedError = ref(null)
+  const gpsDelete        = ref(false) // staged "delete location" until save
 
   const locationName    = ref(null)
   const locationLoading = ref(false)
@@ -46,15 +47,21 @@ export function useGpsEditor(meta, onDirty) {
   const parsedLat = computed(() => parseGpsInput(gpsLatitudeRaw.value))
   const parsedLon = computed(() => parseGpsInput(gpsLongitudeRaw.value))
 
-  const previewLat    = computed(() => parsedLat.value ?? meta.value?.gpsLatitude ?? null)
-  const previewLon    = computed(() => parsedLon.value ?? meta.value?.gpsLongitude ?? null)
+  const previewLat    = computed(() => gpsDelete.value ? null : (parsedLat.value ?? meta.value?.gpsLatitude ?? null))
+  const previewLon    = computed(() => gpsDelete.value ? null : (parsedLon.value ?? meta.value?.gpsLongitude ?? null))
   const hasGpsPreview = computed(() => previewLat.value != null && previewLon.value != null)
+
+  // True when there's a saved location that can be deleted.
+  const canDeleteLocation = computed(() =>
+    meta.value?.gpsLatitude != null && meta.value?.gpsLongitude != null
+  )
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   function onCombinedInput() {
     gpsCombinedError.value = null
     const result = parseCombinedGps(gpsCombinedRaw.value)
     if (result) {
+      gpsDelete.value       = false
       gpsLatitudeRaw.value  = result.lat.toFixed(6)
       gpsLongitudeRaw.value = result.lon.toFixed(6)
       gpsCombinedRaw.value  = ''
@@ -65,6 +72,19 @@ export function useGpsEditor(meta, onDirty) {
   function onGpsInput(field) {
     if (field === 'lat') gpsLatError.value = null
     else gpsLonError.value = null
+    gpsDelete.value = false
+    onDirty()
+  }
+
+  // Stage removal of the saved location; applied on save.
+  function deleteLocation() {
+    gpsLatitudeRaw.value   = ''
+    gpsLongitudeRaw.value  = ''
+    gpsCombinedRaw.value   = ''
+    gpsLatError.value      = null
+    gpsLonError.value      = null
+    gpsCombinedError.value = null
+    gpsDelete.value        = true
     onDirty()
   }
 
@@ -89,11 +109,14 @@ export function useGpsEditor(meta, onDirty) {
     gpsLonError.value      = null
     gpsCombinedRaw.value   = ''
     gpsCombinedError.value = null
+    gpsDelete.value        = false
   }
 
   // ── Validation (called before save) ───────────────────────────────────────
   // Returns { ok: true, lat, lon } or sets errors and returns { ok: false }
   function validateGps() {
+    if (gpsDelete.value) return { ok: true, lat: null, lon: null, deleteGps: true }
+
     const rawLat = gpsLatitudeRaw.value.trim()
     const rawLon = gpsLongitudeRaw.value.trim()
     const hasRaw = rawLat !== '' || rawLon !== ''
@@ -155,9 +178,11 @@ export function useGpsEditor(meta, onDirty) {
     previewLat,
     previewLon,
     hasGpsPreview,
+    canDeleteLocation,
     onCombinedInput,
     onGpsInput,
     normalizeGpsInput,
+    deleteLocation,
     resetGps,
     validateGps,
   }

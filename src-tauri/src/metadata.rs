@@ -322,21 +322,40 @@ fn build_write_tags(update: &MetadataUpdate, is_video: bool) -> Vec<(&'static st
         }
     }
 
-    if let Some(lat) = update.gps_latitude {
-        // ExifTool accepts signed decimal and sets Ref automatically.
-        tags.push(("GPSLatitude", format!("{lat:.8}")));
-        tags.push((
-            "GPSLatitudeRef",
-            if lat >= 0.0 { "N".into() } else { "S".into() },
-        ));
-    }
+    if update.delete_gps {
+        // GPS coordinates can live in the EXIF GPS IFD, XMP, and (for HEIC/MOV
+        // containers) QuickTime atoms. Clear every known location group so a
+        // later read can't resurface a leftover copy.
+        for tag in [
+            "GPS:all",
+            "XMP:GPSLatitude",
+            "XMP:GPSLongitude",
+            "XMP:GPSAltitude",
+            "XMP:GPSAltitudeRef",
+            "Keys:GPSCoordinates",
+            "UserData:GPSCoordinates",
+            "ItemList:GPSCoordinates",
+            "QuickTime:GPSCoordinates",
+        ] {
+            tags.push((tag, String::new()));
+        }
+    } else {
+        if let Some(lat) = update.gps_latitude {
+            // ExifTool accepts signed decimal and sets Ref automatically.
+            tags.push(("GPSLatitude", format!("{lat:.8}")));
+            tags.push((
+                "GPSLatitudeRef",
+                if lat >= 0.0 { "N".into() } else { "S".into() },
+            ));
+        }
 
-    if let Some(lon) = update.gps_longitude {
-        tags.push(("GPSLongitude", format!("{lon:.8}")));
-        tags.push((
-            "GPSLongitudeRef",
-            if lon >= 0.0 { "E".into() } else { "W".into() },
-        ));
+        if let Some(lon) = update.gps_longitude {
+            tags.push(("GPSLongitude", format!("{lon:.8}")));
+            tags.push((
+                "GPSLongitudeRef",
+                if lon >= 0.0 { "E".into() } else { "W".into() },
+            ));
+        }
     }
 
     tags

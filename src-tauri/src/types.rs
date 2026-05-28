@@ -117,6 +117,9 @@ pub struct MetadataUpdate {
     /// true = delete both Make and Model tags from the file.
     #[serde(default)]
     pub delete_device: bool,
+    /// true = delete all GPS location tags from the file.
+    #[serde(default)]
+    pub delete_gps: bool,
 }
 
 /// Reason a file was skipped during a scan.

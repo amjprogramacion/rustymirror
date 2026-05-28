@@ -101,6 +101,12 @@
                     @click="pasteLocation"
                     title="Paste copied location"
                   ><PasteIcon /></button>
+                  <button
+                    v-if="showDeleteLocation"
+                    class="mbp-loc-btn mbp-loc-btn--danger"
+                    @click="onDeleteLocation"
+                    title="Delete location"
+                  ><DeleteIcon /></button>
                 </div>
               </div>
 
@@ -154,7 +160,7 @@
                 :lat="isBatch ? batchPreviewLat : singleMapCenter.lat"
                 :lon="isBatch ? batchPreviewLon : singleMapCenter.lon"
                 :scroll-wheel-zoom="true"
-                :show-marker="isBatch ? ((!batchAgg.gps.mixed && batchAgg.gps.lat != null) || batchGpsParsed != null) : hasGpsPreview"
+                :show-marker="isBatch ? (!batchGpsDelete && ((!batchAgg.gps.mixed && batchAgg.gps.lat != null) || batchGpsParsed != null)) : hasGpsPreview"
                 :reset-key="mapResetKey"
                 :saved-view="savedMapView"
                 @set-location="onMapSetLocation"
@@ -233,6 +239,7 @@ import { useMetadataStore } from '../store/metadata'
 import MapPreview from './MapPreview.vue'
 import CopyIcon from './CopyIcon.vue'
 import PasteIcon from './PasteIcon.vue'
+import DeleteIcon from './DeleteIcon.vue'
 import { fileExt, fileName, folderPath } from '../utils/formatters'
 import { useGpsEditor, parseCombinedGps } from '../composables/useGpsEditor'
 import PanelSectionFileCamera from './PanelSectionFileCamera.vue'
@@ -383,6 +390,7 @@ const batchAgg = computed(() => {
 const batchEdit = ref({ dateTimeOriginal: null, imageDescription: null, artist: null, copyright: null, device: null })
 const batchGpsCombinedRaw   = ref('')
 const batchGpsCombinedError = ref(null)
+const batchGpsDelete        = ref(false) // staged "delete location" for the whole selection
 
 function resetBatch() {
   const agg = batchAgg.value
@@ -397,6 +405,7 @@ function resetBatch() {
   }
   batchGpsCombinedRaw.value   = (!agg.gps.mixed && agg.gps.lat != null) ? formatBatchGps(agg.gps.lat, agg.gps.lon) : ''
   batchGpsCombinedError.value = null
+  batchGpsDelete.value        = false
   if (panel.activePanel) panel.activePanel.dirty = false
 }
 
@@ -404,6 +413,7 @@ watch(batchAgg, (agg) => { if (agg) resetBatch() }, { immediate: true })
 
 function onBatchGpsInput() {
   batchGpsCombinedError.value = null
+  batchGpsDelete.value = false
   if (panel.activePanel) panel.activePanel.dirty = true
 }
 
@@ -480,6 +490,7 @@ async function saveBatch() {
     copyright:        batchEdit.value.copyright        || null,
     gpsLatitude:      lat,
     gpsLongitude:     lon,
+    deleteGps:        batchGpsDelete.value,
     make:         devMake,
     model:        devModel,
     deleteDevice: devDelete,
@@ -498,9 +509,9 @@ const {
   gpsCombinedRaw, gpsCombinedError,
   locationName, locationLoading,
   showCombinedInput,
-  previewLat, previewLon, hasGpsPreview,
+  previewLat, previewLon, hasGpsPreview, canDeleteLocation,
   onCombinedInput, onGpsInput, normalizeGpsInput,
-  resetGps, validateGps,
+  deleteLocation, resetGps, validateGps,
 } = useGpsEditor(meta, () => { if (panel.activePanel) panel.activePanel.dirty = true })
 
 function onMapSetLocation({ lat, lon }) {
@@ -535,6 +546,24 @@ function pasteLocation() {
   if (metaStore.copiedLocation) onMapSetLocation(metaStore.copiedLocation)
 }
 
+// Delete location — offered when the selection has a location to remove.
+const showDeleteLocation = computed(() =>
+  isBatch.value
+    ? (batchAgg.value?.gps?.mixed || batchAgg.value?.gps?.lat != null)
+    : canDeleteLocation.value
+)
+
+function onDeleteLocation() {
+  if (isBatch.value) {
+    batchGpsCombinedRaw.value   = ''
+    batchGpsCombinedError.value = null
+    batchGpsDelete.value        = true
+    if (panel.activePanel) panel.activePanel.dirty = true
+  } else {
+    deleteLocation()
+  }
+}
+
 // ── Editable fields ───────────────────────────────────────────────────────────
 const edit = ref({
   dateTimeOriginal: null,
@@ -560,7 +589,7 @@ function resetEdit() {
 watch(meta, (m) => { if (m) resetEdit() }, { immediate: true })
 
 async function save() {
-  const { ok, lat, lon } = validateGps()
+  const { ok, lat, lon, deleteGps } = validateGps()
   if (!ok) return
 
   const origDevice = [meta.value?.make, meta.value?.model].filter(Boolean).join(' ')
@@ -582,6 +611,7 @@ async function save() {
     copyright:        edit.value.copyright || null,
     gpsLatitude:      lat,
     gpsLongitude:     lon,
+    deleteGps:        deleteGps || false,
     make,
     model,
     deleteDevice,
@@ -928,6 +958,10 @@ const hasExposureInfoBatch = computed(() => {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: #fff;
+}
+.mbp-loc-btn--danger:hover {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
 }
 
 /* ── Read-only rows ── */
