@@ -1133,8 +1133,15 @@ const hasExposureInfoBatch = computed(() => {
 
 .mbp-gps-col {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: var(--space-2);
+}
+.mbp-gps-col .mbp-edit-row {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.mbp-gps-col .mbp-gps-error {
+  flex: 1 1 100%;
 }
 
 .mbp-gps-error {
