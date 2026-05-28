@@ -94,13 +94,13 @@
                     class="mbp-loc-btn"
                     @click="copyLocation"
                     title="Copy location (lat, lon)"
-                  >⧉</button>
+                  ><CopyIcon /></button>
                   <button
                     v-if="metaStore.copiedLocation"
                     class="mbp-loc-btn"
                     @click="pasteLocation"
                     title="Paste copied location"
-                  >📍</button>
+                  ><PasteIcon /></button>
                 </div>
               </div>
 
@@ -231,6 +231,8 @@ import { useThumbnailStore } from '../store/thumbnails'
 import { useMapViewStore } from '../store/mapView'
 import { useMetadataStore } from '../store/metadata'
 import MapPreview from './MapPreview.vue'
+import CopyIcon from './CopyIcon.vue'
+import PasteIcon from './PasteIcon.vue'
 import { fileExt, fileName, folderPath } from '../utils/formatters'
 import { useGpsEditor, parseCombinedGps } from '../composables/useGpsEditor'
 import PanelSectionFileCamera from './PanelSectionFileCamera.vue'
