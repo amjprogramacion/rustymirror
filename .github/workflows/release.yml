@@ -5,6 +5,9 @@ on:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   release:
     permissions:
@@ -72,21 +75,25 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          curl.exe -L "https://sourceforge.net/projects/exiftool/files/exiftool-13.57_64.zip/download" -o exiftool.zip
+          $ver = (Invoke-RestMethod "https://api.github.com/repos/exiftool/exiftool/releases/latest").tag_name
+          Write-Host "Downloading ExifTool $ver"
+          curl.exe -fL "https://exiftool.org/exiftool-${ver}_64.zip" -o exiftool.zip
           Expand-Archive -Path exiftool.zip -DestinationPath exiftool_tmp
-          Copy-Item "exiftool_tmp\exiftool-13.57_64\exiftool(-k).exe" "src-tauri\resources\exiftool.exe"
-          Copy-Item "exiftool_tmp\exiftool-13.57_64\exiftool_files" "src-tauri\resources\exiftool_files" -Recurse
+          Copy-Item "exiftool_tmp\exiftool-${ver}_64\exiftool(-k).exe" "src-tauri\resources\exiftool.exe"
+          Copy-Item "exiftool_tmp\exiftool-${ver}_64\exiftool_files" "src-tauri\resources\exiftool_files" -Recurse
           Remove-Item exiftool.zip, exiftool_tmp -Recurse -Force
 
       - name: Download ExifTool (macOS)
         if: runner.os == 'macOS'
         run: |
-          curl -L "https://exiftool.org/Image-ExifTool-13.57.tar.gz" -o exiftool.tar.gz
+          VER=$(curl -fsSL "https://api.github.com/repos/exiftool/exiftool/releases/latest" | grep '"tag_name"' | cut -d'"' -f4)
+          echo "Downloading ExifTool $VER"
+          curl -fL "https://github.com/exiftool/exiftool/archive/refs/tags/${VER}.tar.gz" -o exiftool.tar.gz
           tar xf exiftool.tar.gz
-          mv Image-ExifTool-13.57/exiftool src-tauri/resources/exiftool
-          mv Image-ExifTool-13.57/lib src-tauri/resources/lib
+          mv "exiftool-${VER}/exiftool" src-tauri/resources/exiftool
+          mv "exiftool-${VER}/lib" src-tauri/resources/lib
           chmod +x src-tauri/resources/exiftool
-          rm -rf exiftool.tar.gz Image-ExifTool-13.57
+          rm -rf exiftool.tar.gz "exiftool-${VER}"
 
       - name: Install frontend dependencies
         run: npm ci
