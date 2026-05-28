@@ -1,6 +1,6 @@
 {
   "productName": "RustyMirror",
-  "version": "1.4.16",
+  "version": "1.4.17",
   "identifier": "RustyMirror",
   "build": {
     "beforeDevCommand": "npm run dev",
