@@ -15,6 +15,12 @@ jobs:
         include:
           - platform: windows-latest
             args: '--target x86_64-pc-windows-msvc'
+            rust_target: x86_64-pc-windows-msvc
+            tauri_config: '{"bundle":{"targets":["nsis"],"resources":["resources/**/*"]}}'
+          - platform: macos-latest
+            args: '--target aarch64-apple-darwin'
+            rust_target: aarch64-apple-darwin
+            tauri_config: '{"bundle":{"targets":["dmg"],"resources":["resources/**/*"]}}'
 
     runs-on: ${{ matrix.platform }}
 
@@ -32,7 +38,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -46,7 +52,8 @@ jobs:
           config: cliff.toml
           args: --current --strip header
 
-      - name: Download ImageMagick
+      - name: Download ImageMagick (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           # imagemagick.org/archive keeps only the latest build, so resolve the
@@ -61,7 +68,8 @@ jobs:
           7z e magick.7z magick.exe -o"src-tauri\resources" -y
           Remove-Item magick.7z
 
-      - name: Download ExifTool
+      - name: Download ExifTool (Windows)
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           curl.exe -L "https://sourceforge.net/projects/exiftool/files/exiftool-13.57_64.zip/download" -o exiftool.zip
@@ -69,6 +77,16 @@ jobs:
           Copy-Item "exiftool_tmp\exiftool-13.57_64\exiftool(-k).exe" "src-tauri\resources\exiftool.exe"
           Copy-Item "exiftool_tmp\exiftool-13.57_64\exiftool_files" "src-tauri\resources\exiftool_files" -Recurse
           Remove-Item exiftool.zip, exiftool_tmp -Recurse -Force
+
+      - name: Download ExifTool (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          curl -L "https://exiftool.org/Image-ExifTool-13.57.tar.gz" -o exiftool.tar.gz
+          tar xf exiftool.tar.gz
+          mv Image-ExifTool-13.57/exiftool src-tauri/resources/exiftool
+          mv Image-ExifTool-13.57/lib src-tauri/resources/lib
+          chmod +x src-tauri/resources/exiftool
+          rm -rf exiftool.tar.gz Image-ExifTool-13.57
 
       - name: Install frontend dependencies
         run: npm ci
@@ -79,7 +97,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_CONFIG: '{"bundle":{"resources":["resources/**/*"]}}'
+          TAURI_CONFIG: ${{ matrix.tauri_config }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'RustyMirror ${{ github.ref_name }}'
