@@ -170,10 +170,10 @@
               <select
                 v-if="metaStore.savedLocations.length"
                 class="mp-custom-loc-select"
-                :value="''"
+                :value="matchedCustomLocation"
                 @change="applySavedLocation"
               >
-                <option value="" disabled>Apply a custom location…</option>
+                <option value="">Apply a custom location…</option>
                 <option v-for="loc in metaStore.savedLocations" :key="loc.name" :value="loc.name">
                   {{ loc.name }}
                 </option>
@@ -379,6 +379,15 @@ function onMapSetLocation({ lat, lon }) {
 // ── Custom locations (named lat/lon presets) ────────────────────────────────
 const showSaveModal = ref(false)
 
+// Name of the saved preset matching the current coords (6-decimal match), else ''.
+const matchedCustomLocation = computed(() => {
+  const lat = previewLat.value, lon = previewLon.value
+  if (lat == null || lon == null) return ''
+  const la = lat.toFixed(6), lo = lon.toFixed(6)
+  const m = metaStore.savedLocations.find(l => l.lat.toFixed(6) === la && l.lon.toFixed(6) === lo)
+  return m ? m.name : ''
+})
+
 function onSaveCustomLocation(name) {
   if (previewLat.value != null && previewLon.value != null) {
     metaStore.addSavedLocation(name, previewLat.value, previewLon.value)
@@ -389,7 +398,6 @@ function onSaveCustomLocation(name) {
 function applySavedLocation(e) {
   const loc = metaStore.savedLocations.find(l => l.name === e.target.value)
   if (loc) onMapSetLocation({ lat: loc.lat, lon: loc.lon })
-  e.target.value = ''
 }
 
 // ── Location copy / paste (shares the clipboard with the metadata editor) ────

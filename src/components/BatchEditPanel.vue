@@ -160,10 +160,10 @@
                 <select
                   v-if="metaStore.savedLocations.length"
                   class="mbp-custom-loc-select"
-                  :value="''"
+                  :value="matchedCustomLocation"
                   @change="applySavedLocation"
                 >
-                  <option value="" disabled>Apply a custom location…</option>
+                  <option value="">Apply a custom location…</option>
                   <option v-for="loc in metaStore.savedLocations" :key="loc.name" :value="loc.name">
                     {{ loc.name }}
                   </option>
@@ -588,6 +588,25 @@ function onDeleteLocation() {
 // ── Custom locations (named lat/lon presets) ────────────────────────────────
 const showSaveModal = ref(false)
 
+// Name of the saved preset matching the current coords (6-decimal match), else ''.
+const matchedCustomLocation = computed(() => {
+  let lat, lon
+  if (isBatch.value) {
+    const eff = batchGpsParsed.value
+      ?? ((!batchAgg.value?.gps?.mixed && batchAgg.value?.gps?.lat != null)
+            ? { lat: batchAgg.value.gps.lat, lon: batchAgg.value.gps.lon }
+            : null)
+    if (!eff) return ''
+    lat = eff.lat; lon = eff.lon
+  } else {
+    lat = previewLat.value; lon = previewLon.value
+  }
+  if (lat == null || lon == null) return ''
+  const la = lat.toFixed(6), lo = lon.toFixed(6)
+  const m = metaStore.savedLocations.find(l => l.lat.toFixed(6) === la && l.lon.toFixed(6) === lo)
+  return m ? m.name : ''
+})
+
 function onSaveCustomLocation(name) {
   const loc = isBatch.value
     ? { lat: batchAgg.value?.gps?.lat, lon: batchAgg.value?.gps?.lon }
@@ -601,7 +620,6 @@ function onSaveCustomLocation(name) {
 function applySavedLocation(e) {
   const loc = metaStore.savedLocations.find(l => l.name === e.target.value)
   if (loc) onMapSetLocation({ lat: loc.lat, lon: loc.lon })
-  e.target.value = ''
 }
 
 // ── Editable fields ───────────────────────────────────────────────────────────
