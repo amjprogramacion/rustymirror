@@ -47,6 +47,16 @@ function geoCacheStats(cache) {
   return { count, bytes }
 }
 
+// Two coordinates within ~11 m (0.0001°) count as the same custom location.
+const CUSTOM_LOC_EPS = 0.0001
+
+// The saved preset whose coordinates match the given lat/lon, or null.
+function matchCustomLocation(saved, lat, lon) {
+  if (lat == null || lon == null) return null
+  return saved.find(l =>
+    Math.abs(l.lat - lat) < CUSTOM_LOC_EPS && Math.abs(l.lon - lon) < CUSTOM_LOC_EPS) ?? null
+}
+
 // Reverse-geocode a coordinate to a "City, Country" name via Nominatim.
 async function reverseGeocode(lat, lon, signal) {
   const res = await fetch(
@@ -67,7 +77,7 @@ export const useMetadataStore = defineStore('metadata', {
     geoCacheCount: 0,
     geoCacheBytes: 0,
     customLocations: [],
-    savedLocations: [], // [{ name, lat, lon }] — reusable GPS presets, not used in filters
+    savedLocations: [], // [{ name, lat, lon }] — reusable GPS presets
     discoveredLocations: [],
     customDevices: [],
     discoveredDevices: [],
@@ -85,6 +95,7 @@ export const useMetadataStore = defineStore('metadata', {
     filterDateFrom: '',   // 'YYYY-MM-DD' or ''
     filterDateTo:   '',
     filterLocation: '',   // exact location name or '' = all
+    filterCustomLocation: '', // saved-preset name, '__no_custom__', or '' = all
     filterDevice:   '',   // exact device string  or '' = all
     error: null,
     failedFiles: [],
@@ -106,6 +117,17 @@ export const useMetadataStore = defineStore('metadata', {
         a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }))
     },
 
+    // Saved presets that match at least one scanned image (for the filter dropdown).
+    availableCustomLocations(state) {
+      const seen = new Set()
+      for (const img of state.images) {
+        const m = matchCustomLocation(state.savedLocations, img.gpsLatitude, img.gpsLongitude)
+        if (m) seen.add(m.name)
+      }
+      return [...seen].sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }))
+    },
+
     availableDevices(state) {
       const seen = new Set()
       for (const img of state.images) {
@@ -116,11 +138,12 @@ export const useMetadataStore = defineStore('metadata', {
     },
 
     filteredImages(state) {
-      const q     = state.searchQuery.trim().toLowerCase()
-      const from  = state.filterDateFrom
-      const to    = state.filterDateTo
-      const loc   = state.filterLocation
-      const dev   = state.filterDevice
+      const q       = state.searchQuery.trim().toLowerCase()
+      const from    = state.filterDateFrom
+      const to      = state.filterDateTo
+      const loc     = state.filterLocation
+      const custLoc = state.filterCustomLocation
+      const dev     = state.filterDevice
 
       let list = state.images.filter(e => {
         // Search query
@@ -136,6 +159,13 @@ export const useMetadataStore = defineStore('metadata', {
         if (loc === '__no_location__') {
           if (state.locationNames[e.path] || e.gpsLatitude != null) return false
         } else if (loc && (state.locationNames[e.path] ?? '') !== loc) return false
+        // Custom location (saved presets) — independent from the geocoded filter
+        if (custLoc) {
+          const match = matchCustomLocation(state.savedLocations, e.gpsLatitude, e.gpsLongitude)
+          if (custLoc === '__no_custom__') {
+            if (match) return false
+          } else if (!match || match.name !== custLoc) return false
+        }
         // Device
         if (dev && (e.device ?? '') !== dev) return false
         return true
@@ -282,6 +312,7 @@ export const useMetadataStore = defineStore('metadata', {
       this.filterDateFrom = ''
       this.filterDateTo   = ''
       this.filterLocation = ''
+      this.filterCustomLocation = ''
       this.filterDevice   = ''
       this.error = null
       this.failedFiles = []
@@ -367,6 +398,7 @@ export const useMetadataStore = defineStore('metadata', {
       this.filterDateFrom = ''
       this.filterDateTo   = ''
       this.filterLocation = ''
+      this.filterCustomLocation = ''
       this.filterDevice   = ''
       this.error = null
       this.activeHistoryEntryId = entry.id

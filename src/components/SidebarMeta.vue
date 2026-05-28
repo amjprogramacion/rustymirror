@@ -95,6 +95,24 @@
         </div>
       </div>
 
+      <!-- Custom location -->
+      <div class="filter-labeled-row">
+        <span class="filter-label">Custom location</span>
+        <div class="filter-row">
+          <div class="select-field">
+            <select class="sort-select filter-select" v-model="meta.filterCustomLocation">
+              <option value="">All</option>
+              <option value="__no_custom__">Without custom location</option>
+              <option v-for="loc in meta.availableCustomLocations" :key="loc" :value="loc">{{ loc }}</option>
+            </select>
+            <SelectChevron />
+          </div>
+          <button v-if="meta.filterCustomLocation" class="filter-clear-sq" @click="meta.filterCustomLocation = ''" title="Clear">
+            <ClearIcon />
+          </button>
+        </div>
+      </div>
+
       <!-- Device -->
       <div class="filter-labeled-row">
         <span class="filter-label">Device</span>

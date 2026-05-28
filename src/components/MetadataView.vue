@@ -402,7 +402,7 @@ watch(selectedKey, () => {
 
 // Close the metadata panel on sort, filter, or new scan
 watch(() => [meta.sortBy, meta.sortDir], () => panel.closePanel())
-watch(() => [meta.filterDateFrom, meta.filterDateTo, meta.filterLocation, meta.filterDevice], () => panel.closePanel())
+watch(() => [meta.filterDateFrom, meta.filterDateTo, meta.filterLocation, meta.filterCustomLocation, meta.filterDevice], () => panel.closePanel())
 watch(() => meta.scanning, (scanning) => { if (scanning) panel.closePanel() })
 
 // When the filter/sort/search criteria change (or a new scan/history entry
@@ -414,7 +414,7 @@ watch(
     meta.searchQuery,
     meta.sortBy, meta.sortDir,
     meta.filterDateFrom, meta.filterDateTo,
-    meta.filterLocation, meta.filterDevice,
+    meta.filterLocation, meta.filterCustomLocation, meta.filterDevice,
     meta.activeHistoryEntryId,
   ],
   () => {
