@@ -161,8 +161,28 @@
               </p>
             </div>
             <MapPreview ref="mapPreviewRef" :lat="mapCenter.lat" :lon="mapCenter.lon" :show-marker="hasGpsPreview" :reset-key="mapResetKey" :saved-view="savedMapView" @set-location="onMapSetLocation" />
+
+            <!-- Custom locations -->
+            <div class="mp-custom-loc">
+              <button v-if="hasGpsPreview" class="mp-custom-loc-save" @click="showSaveModal = true">
+                Save as custom location
+              </button>
+              <select
+                v-if="metaStore.savedLocations.length"
+                class="mp-custom-loc-select"
+                :value="''"
+                @change="applySavedLocation"
+              >
+                <option value="" disabled>Apply a custom location…</option>
+                <option v-for="loc in metaStore.savedLocations" :key="loc.name" :value="loc.name">
+                  {{ loc.name }}
+                </option>
+              </select>
+            </div>
           </div>
         </div>
+
+        <SaveLocationModal :show="showSaveModal" @save="onSaveCustomLocation" @close="showSaveModal = false" />
 
         <!-- Exposure -->
         <PanelSectionExposure
@@ -233,6 +253,7 @@ import ChevronIcon from './ChevronIcon.vue'
 import CopyIcon from './CopyIcon.vue'
 import PasteIcon from './PasteIcon.vue'
 import DeleteIcon from './DeleteIcon.vue'
+import SaveLocationModal from './SaveLocationModal.vue'
 import { fileExt, fileName, folderPath } from '../utils/formatters'
 import { useGpsEditor } from '../composables/useGpsEditor'
 import PanelSectionFileCamera from './PanelSectionFileCamera.vue'
@@ -353,6 +374,22 @@ function onMapSetLocation({ lat, lon }) {
   gpsLongitudeRaw.value = lon.toFixed(6)
   onGpsInput('lat')
   onGpsInput('lon')
+}
+
+// ── Custom locations (named lat/lon presets) ────────────────────────────────
+const showSaveModal = ref(false)
+
+function onSaveCustomLocation(name) {
+  if (previewLat.value != null && previewLon.value != null) {
+    metaStore.addSavedLocation(name, previewLat.value, previewLon.value)
+  }
+  showSaveModal.value = false
+}
+
+function applySavedLocation(e) {
+  const loc = metaStore.savedLocations.find(l => l.name === e.target.value)
+  if (loc) onMapSetLocation({ lat: loc.lat, lon: loc.lon })
+  e.target.value = ''
 }
 
 // ── Location copy / paste (shares the clipboard with the metadata editor) ────
@@ -745,6 +782,36 @@ const videoSrc = computed(() => {
 .mp-loc-btn--danger:hover {
   background: var(--color-danger);
   border-color: var(--color-danger);
+}
+
+/* Custom locations */
+.mp-custom-loc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.mp-custom-loc-save,
+.mp-custom-loc-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font-size: var(--font-size-xs);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.mp-custom-loc-save:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+.mp-custom-loc-select:focus {
+  outline: none;
+  border-color: var(--color-accent);
 }
 
 /* Content padding inside each section */

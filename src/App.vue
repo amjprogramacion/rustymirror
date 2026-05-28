@@ -43,6 +43,7 @@ const metaStore = useMetadataStore()
 onMounted(() => {
   if (autoCheck.value) checkForUpdates({ notify: true, silent: true })
   metaStore.loadDeviceAliases()
+  metaStore.loadSavedLocations()
 })
 </script>
 

@@ -151,6 +151,24 @@
                   <p v-if="batchAgg.gps.mixed && !batchGpsCombinedRaw" class="mbp-various-hint">Various values — leave empty to keep each file's location</p>
                 </div>
               </template>
+
+              <!-- Custom locations -->
+              <div class="mbp-custom-loc">
+                <button v-if="canCopyLocation" class="mbp-custom-loc-save" @click="showSaveModal = true">
+                  Save as custom location
+                </button>
+                <select
+                  v-if="metaStore.savedLocations.length"
+                  class="mbp-custom-loc-select"
+                  :value="''"
+                  @change="applySavedLocation"
+                >
+                  <option value="" disabled>Apply a custom location…</option>
+                  <option v-for="loc in metaStore.savedLocations" :key="loc.name" :value="loc.name">
+                    {{ loc.name }}
+                  </option>
+                </select>
+              </div>
             </div>
 
             <!-- Map -->
@@ -209,6 +227,8 @@
           </div>
         </Transition>
 
+        <SaveLocationModal :show="showSaveModal" @save="onSaveCustomLocation" @close="showSaveModal = false" />
+
       </div>
 
       <!-- Save notification (centered) -->
@@ -240,6 +260,7 @@ import MapPreview from './MapPreview.vue'
 import CopyIcon from './CopyIcon.vue'
 import PasteIcon from './PasteIcon.vue'
 import DeleteIcon from './DeleteIcon.vue'
+import SaveLocationModal from './SaveLocationModal.vue'
 import { fileExt, fileName, folderPath } from '../utils/formatters'
 import { useGpsEditor, parseCombinedGps } from '../composables/useGpsEditor'
 import PanelSectionFileCamera from './PanelSectionFileCamera.vue'
@@ -562,6 +583,25 @@ function onDeleteLocation() {
   } else {
     deleteLocation()
   }
+}
+
+// ── Custom locations (named lat/lon presets) ────────────────────────────────
+const showSaveModal = ref(false)
+
+function onSaveCustomLocation(name) {
+  const loc = isBatch.value
+    ? { lat: batchAgg.value?.gps?.lat, lon: batchAgg.value?.gps?.lon }
+    : { lat: previewLat.value, lon: previewLon.value }
+  if (loc.lat != null && loc.lon != null) {
+    metaStore.addSavedLocation(name, loc.lat, loc.lon)
+  }
+  showSaveModal.value = false
+}
+
+function applySavedLocation(e) {
+  const loc = metaStore.savedLocations.find(l => l.name === e.target.value)
+  if (loc) onMapSetLocation({ lat: loc.lat, lon: loc.lon })
+  e.target.value = ''
 }
 
 // ── Editable fields ───────────────────────────────────────────────────────────
@@ -962,6 +1002,36 @@ const hasExposureInfoBatch = computed(() => {
 .mbp-loc-btn--danger:hover {
   background: var(--color-danger);
   border-color: var(--color-danger);
+}
+
+/* Custom locations */
+.mbp-custom-loc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.mbp-custom-loc-save,
+.mbp-custom-loc-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font-size: var(--font-size-xs);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.mbp-custom-loc-save:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+.mbp-custom-loc-select:focus {
+  outline: none;
+  border-color: var(--color-accent);
 }
 
 /* ── Read-only rows ── */

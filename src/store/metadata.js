@@ -14,6 +14,10 @@ const DISCOVERED_LOCATIONS_KEY = 'discoveredLocations'
 const CUSTOM_DEVICES_KEY = 'customDevices'
 const DISCOVERED_DEVICES_KEY = 'discoveredDevices'
 const DEVICE_ALIASES_KEY = 'deviceAliases'
+// Named lat/lon presets the user can re-apply. Deliberately separate from
+// CUSTOM_LOCATIONS_KEY (which feeds the location filters) so these never
+// affect filtering.
+const SAVED_LOCATIONS_KEY = 'savedGpsLocations'
 
 let _geocodeAbortController = null
 let _store = null
@@ -63,6 +67,7 @@ export const useMetadataStore = defineStore('metadata', {
     geoCacheCount: 0,
     geoCacheBytes: 0,
     customLocations: [],
+    savedLocations: [], // [{ name, lat, lon }] — reusable GPS presets, not used in filters
     discoveredLocations: [],
     customDevices: [],
     discoveredDevices: [],
@@ -497,6 +502,35 @@ export const useMetadataStore = defineStore('metadata', {
         const store = await getStore()
         this.discoveredLocations = (await store.get(DISCOVERED_LOCATIONS_KEY)) ?? []
       } catch { this.discoveredLocations = [] }
+    },
+
+    // ── Saved GPS presets (named lat/lon), independent from filters ────────────
+    async loadSavedLocations() {
+      try {
+        const store = await getStore()
+        this.savedLocations = (await store.get(SAVED_LOCATIONS_KEY)) ?? []
+      } catch { this.savedLocations = [] }
+    },
+
+    async addSavedLocation(name, lat, lon) {
+      const trimmed = (name ?? '').trim()
+      if (!trimmed || lat == null || lon == null) return
+      // Replace an existing preset with the same name, otherwise append.
+      const next = this.savedLocations.filter(l => l.name !== trimmed)
+      next.push({ name: trimmed, lat, lon })
+      this.savedLocations = next
+      try {
+        const store = await getStore()
+        await store.set(SAVED_LOCATIONS_KEY, this.savedLocations)
+      } catch {}
+    },
+
+    async removeSavedLocation(name) {
+      this.savedLocations = this.savedLocations.filter(l => l.name !== name)
+      try {
+        const store = await getStore()
+        await store.set(SAVED_LOCATIONS_KEY, this.savedLocations)
+      } catch {}
     },
 
     async saveDiscoveredLocation(name) {
