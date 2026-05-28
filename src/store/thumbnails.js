@@ -33,6 +33,13 @@ export const useThumbnailStore = defineStore('thumbnails', {
     },
     setThumb(path, src)     { this.thumbCache[path] = src },
     setDirectSrc(path, src) { this.directSrcCache[path] = src },
+    // Drop in-memory thumbnails for deleted files so they can't be shown again.
+    removeThumbnails(paths) {
+      for (const p of paths) {
+        delete this.thumbCache[p]
+        delete this.directSrcCache[p]
+      }
+    },
     clearThumbQueue()       { this._thumbQueue = [] },
     dequeueThumbnail(path) {
       const idx = this._thumbQueue.indexOf(path)

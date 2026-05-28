@@ -7,6 +7,10 @@ pub async fn delete_files(paths: Vec<String>, app: tauri::AppHandle) -> Result<(
     let total = paths.len();
     tracing::debug!("delete_files: {} files", total);
 
+    // Remove cached thumbnails first — their cache key needs the file's size and
+    // mtime, which are gone once the file is deleted.
+    super::thumbnail::evict_thumbnails_for(&app, &paths);
+
     #[cfg(target_os = "windows")]
     {
         for (i, path) in paths.iter().enumerate() {

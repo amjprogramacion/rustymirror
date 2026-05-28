@@ -6,6 +6,7 @@ import { useSettings } from '../composables/useSettings'
 import { errorMessage } from '../utils/errors'
 import { fileName } from '../utils/formatters'
 import { useMetadataHistoryStore } from './metadataHistory'
+import { useThumbnailStore } from './thumbnails'
 
 const STORE_FILE = 'rustymirror.json'
 const GEO_CACHE_KEY = 'geoCache'
@@ -730,6 +731,12 @@ export const useMetadataStore = defineStore('metadata', {
       await invoke('delete_files', { paths })
       this.images = this.images.filter(e => !pathSet.has(e.path))
       this.selected = new Set()
+      useThumbnailStore().removeThumbnails(paths)
+      // Drop the deleted files from the active history snapshot so reloading
+      // that scan from history doesn't show them again.
+      if (this.activeHistoryEntryId != null) {
+        await useMetadataHistoryStore().removeImages(this.activeHistoryEntryId, paths)
+      }
     },
   },
 })

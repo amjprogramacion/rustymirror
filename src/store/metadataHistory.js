@@ -52,6 +52,19 @@ export const useMetadataHistoryStore = createHistoryStore({
       _saveTimer = setTimeout(() => this._save(), 300)
     },
 
+    // Drop deleted images from a stored snapshot so reloading the entry from
+    // history doesn't resurface files that no longer exist. The fingerprint is
+    // cleared because the directory changed (forces a fresh scan if re-scanned).
+    async removeImages(entryId, paths) {
+      const entry = this.entries.find(e => e.id === entryId)
+      if (!entry?.images) return
+      const set = new Set(paths)
+      entry.images = entry.images.filter(im => !set.has(im.path))
+      entry.imageCount = entry.images.length
+      entry.fingerprint = null
+      await this._save()
+    },
+
     // Returns cached images only if folders, fingerprint, and schema version all match.
     getCached(folders, fingerprint) {
       const key = foldersKey(folders)

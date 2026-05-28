@@ -16,6 +16,21 @@ fn thumb_meta_key(prefix: &str, path: &str, meta: &std::fs::Metadata) -> String 
     format!("{}_{}.jpg", prefix, &hash.to_hex()[..16])
 }
 
+/// Remove cached thumbnails for the given paths.
+///
+/// Must run BEFORE the files are deleted: the cache key hashes the file's size
+/// and mtime, which are unrecoverable once the file is gone. The thumbnail could
+/// have been generated under either the "heic" or "jpg" prefix, so both are tried.
+pub fn evict_thumbnails_for(app: &tauri::AppHandle, paths: &[String]) {
+    let Some(dir) = cache_data_dir(app).ok().map(|d| d.join("thumb_cache")) else { return };
+    for path in paths {
+        let Ok(meta) = std::fs::metadata(path) else { continue };
+        for prefix in ["heic", "jpg"] {
+            let _ = std::fs::remove_file(dir.join(thumb_meta_key(prefix, path, &meta)));
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String, AppError> {
     let resource_dir    = app.path().resource_dir().ok();

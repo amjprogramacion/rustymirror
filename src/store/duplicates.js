@@ -483,6 +483,7 @@ export const useDuplicatesStore = defineStore('duplicates', {
 
       this.groups = updated
       this.selected = new Set()
+      useThumbnailStore().removeThumbnails(paths)
       logger.info(`groups after delete: ${this.groups.length}`)
 
       const history = useDuplicatesHistoryStore()
