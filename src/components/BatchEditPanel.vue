@@ -153,20 +153,21 @@
               </template>
 
               <!-- Custom locations -->
-              <div class="mbp-custom-loc">
-                <button v-if="canCopyLocation" class="mbp-custom-loc-save" @click="showSaveModal = true">
-                  Save as custom location
-                </button>
-                <div v-if="metaStore.savedLocations.length" class="select-field">
+              <div v-if="canCopyLocation || metaStore.savedLocations.length" class="mbp-custom-loc">
+                <div class="select-field">
                   <select
                     class="sort-select filter-select"
                     :value="matchedCustomLocation"
-                    @change="applySavedLocation"
+                    @change="onCustomLocationSelect"
                   >
-                    <option value="">Apply a custom location…</option>
-                    <option v-for="loc in metaStore.savedLocations" :key="loc.name" :value="loc.name">
-                      {{ loc.name }}
-                    </option>
+                    <option value="" disabled hidden>Custom location…</option>
+                    <option value="__save__">Save as custom location</option>
+                    <template v-if="metaStore.savedLocations.length">
+                      <option value="__sep__" disabled>──────────────</option>
+                      <option v-for="loc in metaStore.savedLocations" :key="loc.name" :value="loc.name">
+                        {{ loc.name }}
+                      </option>
+                    </template>
                   </select>
                   <SelectChevron />
                 </div>
@@ -229,7 +230,7 @@
           </div>
         </Transition>
 
-        <SaveLocationModal :show="showSaveModal" @save="onSaveCustomLocation" @close="showSaveModal = false" />
+        <SaveLocationModal :show="showSaveModal" :lat="saveModalLat" :lon="saveModalLon" @save="onSaveCustomLocation" @close="showSaveModal = false" />
 
       </div>
 
@@ -618,18 +619,23 @@ const matchedCustomLocation = computed(() => {
   return m ? m.name : ''
 })
 
-function onSaveCustomLocation(name) {
-  const loc = isBatch.value
-    ? { lat: batchAgg.value?.gps?.lat, lon: batchAgg.value?.gps?.lon }
-    : { lat: previewLat.value, lon: previewLon.value }
-  if (loc.lat != null && loc.lon != null) {
-    metaStore.addSavedLocation(name, loc.lat, loc.lon)
-  }
+const saveModalLat = computed(() => isBatch.value ? (batchAgg.value?.gps?.lat ?? null) : (previewLat.value ?? null))
+const saveModalLon = computed(() => isBatch.value ? (batchAgg.value?.gps?.lon ?? null) : (previewLon.value ?? null))
+
+function onSaveCustomLocation({ name, lat, lon }) {
+  metaStore.addSavedLocation(name, lat, lon)
   showSaveModal.value = false
 }
 
-function applySavedLocation(e) {
-  const loc = metaStore.savedLocations.find(l => l.name === e.target.value)
+function onCustomLocationSelect(e) {
+  const val = e.target.value
+  if (val === '__save__') {
+    // Open the modal and revert the select to its current display.
+    if (canCopyLocation.value) showSaveModal.value = true
+    e.target.value = matchedCustomLocation.value
+    return
+  }
+  const loc = metaStore.savedLocations.find(l => l.name === val)
   if (loc) onMapSetLocation({ lat: loc.lat, lon: loc.lon })
 }
 
@@ -1035,27 +1041,7 @@ const hasExposureInfoBatch = computed(() => {
 
 /* Custom locations */
 .mbp-custom-loc {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
   margin-top: var(--space-2);
-}
-.mbp-custom-loc-save {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 6px 8px;
-  font-size: var(--font-size-xs);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.mbp-custom-loc-save:hover {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: #fff;
 }
 
 /* ── Read-only rows ── */

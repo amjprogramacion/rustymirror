@@ -14,9 +14,33 @@
             @keydown.enter.prevent="onSave"
             @keydown.esc.prevent="$emit('close')"
           />
+          <div class="slm-coords">
+            <label class="slm-field">
+              <span class="slm-field-label">Latitude</span>
+              <input
+                v-model="lat"
+                class="slm-input"
+                type="text"
+                placeholder="40.71600"
+                @keydown.enter.prevent="onSave"
+                @keydown.esc.prevent="$emit('close')"
+              />
+            </label>
+            <label class="slm-field">
+              <span class="slm-field-label">Longitude</span>
+              <input
+                v-model="lon"
+                class="slm-input"
+                type="text"
+                placeholder="-74.00600"
+                @keydown.enter.prevent="onSave"
+                @keydown.esc.prevent="$emit('close')"
+              />
+            </label>
+          </div>
           <div class="slm-actions">
             <button class="slm-btn slm-btn-ghost" @click="$emit('close')">Cancel</button>
-            <button class="slm-btn slm-btn-primary" :disabled="!name.trim()" @click="onSave">Save</button>
+            <button class="slm-btn slm-btn-primary" :disabled="!valid" @click="onSave">Save</button>
           </div>
         </div>
       </div>
@@ -25,27 +49,44 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
+  lat:  { type: Number,  default: null },
+  lon:  { type: Number,  default: null },
 })
 const emit = defineEmits(['save', 'close'])
 
 const name    = ref('')
+const lat     = ref('')
+const lon     = ref('')
 const inputEl = ref(null)
+
+const valid = computed(() => {
+  const la = parseFloat(lat.value)
+  const lo = parseFloat(lon.value)
+  return !!name.value.trim()
+    && !Number.isNaN(la) && la >= -90  && la <= 90
+    && !Number.isNaN(lo) && lo >= -180 && lo <= 180
+})
 
 watch(() => props.show, (open) => {
   if (open) {
     name.value = ''
+    lat.value  = props.lat != null ? props.lat.toFixed(6) : ''
+    lon.value  = props.lon != null ? props.lon.toFixed(6) : ''
     nextTick(() => inputEl.value?.focus())
   }
 })
 
 function onSave() {
-  const trimmed = name.value.trim()
-  if (!trimmed) return
-  emit('save', trimmed)
+  if (!valid.value) return
+  emit('save', {
+    name: name.value.trim(),
+    lat:  parseFloat(lat.value),
+    lon:  parseFloat(lon.value),
+  })
 }
 </script>
 
@@ -87,6 +128,22 @@ function onSave() {
 }
 .slm-input:focus {
   border-color: var(--color-accent);
+}
+.slm-coords {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.slm-field {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.slm-field-label {
+  font-size: 10px;
+  color: var(--text-muted);
 }
 .slm-actions {
   display: flex;

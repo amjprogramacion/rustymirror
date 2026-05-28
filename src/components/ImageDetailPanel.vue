@@ -163,20 +163,21 @@
             <MapPreview ref="mapPreviewRef" :lat="mapCenter.lat" :lon="mapCenter.lon" :show-marker="hasGpsPreview" :reset-key="mapResetKey" :saved-view="savedMapView" @set-location="onMapSetLocation" />
 
             <!-- Custom locations -->
-            <div class="mp-custom-loc">
-              <button v-if="hasGpsPreview" class="mp-custom-loc-save" @click="showSaveModal = true">
-                Save as custom location
-              </button>
-              <div v-if="metaStore.savedLocations.length" class="select-field">
+            <div v-if="hasGpsPreview || metaStore.savedLocations.length" class="mp-custom-loc">
+              <div class="select-field">
                 <select
                   class="sort-select filter-select"
                   :value="matchedCustomLocation"
-                  @change="applySavedLocation"
+                  @change="onCustomLocationSelect"
                 >
-                  <option value="">Apply a custom location…</option>
-                  <option v-for="loc in metaStore.savedLocations" :key="loc.name" :value="loc.name">
-                    {{ loc.name }}
-                  </option>
+                  <option value="" disabled hidden>Custom location…</option>
+                  <option value="__save__">Save as custom location</option>
+                  <template v-if="metaStore.savedLocations.length">
+                    <option value="__sep__" disabled>──────────────</option>
+                    <option v-for="loc in metaStore.savedLocations" :key="loc.name" :value="loc.name">
+                      {{ loc.name }}
+                    </option>
+                  </template>
                 </select>
                 <SelectChevron />
               </div>
@@ -184,7 +185,7 @@
           </div>
         </div>
 
-        <SaveLocationModal :show="showSaveModal" @save="onSaveCustomLocation" @close="showSaveModal = false" />
+        <SaveLocationModal :show="showSaveModal" :lat="previewLat" :lon="previewLon" @save="onSaveCustomLocation" @close="showSaveModal = false" />
 
         <!-- Exposure -->
         <PanelSectionExposure
@@ -392,15 +393,20 @@ const matchedCustomLocation = computed(() => {
   return m ? m.name : ''
 })
 
-function onSaveCustomLocation(name) {
-  if (previewLat.value != null && previewLon.value != null) {
-    metaStore.addSavedLocation(name, previewLat.value, previewLon.value)
-  }
+function onSaveCustomLocation({ name, lat, lon }) {
+  metaStore.addSavedLocation(name, lat, lon)
   showSaveModal.value = false
 }
 
-function applySavedLocation(e) {
-  const loc = metaStore.savedLocations.find(l => l.name === e.target.value)
+function onCustomLocationSelect(e) {
+  const val = e.target.value
+  if (val === '__save__') {
+    // Open the modal and revert the select to its current display.
+    if (hasGpsPreview.value) showSaveModal.value = true
+    e.target.value = matchedCustomLocation.value
+    return
+  }
+  const loc = metaStore.savedLocations.find(l => l.name === val)
   if (loc) onMapSetLocation({ lat: loc.lat, lon: loc.lon })
 }
 
@@ -798,27 +804,7 @@ const videoSrc = computed(() => {
 
 /* Custom locations */
 .mp-custom-loc {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
   margin-top: var(--space-2);
-}
-.mp-custom-loc-save {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 6px 8px;
-  font-size: var(--font-size-xs);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-.mp-custom-loc-save:hover {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: #fff;
 }
 
 /* Content padding inside each section */
