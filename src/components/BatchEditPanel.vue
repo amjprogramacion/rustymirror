@@ -157,17 +157,19 @@
                 <button v-if="canCopyLocation" class="mbp-custom-loc-save" @click="showSaveModal = true">
                   Save as custom location
                 </button>
-                <select
-                  v-if="metaStore.savedLocations.length"
-                  class="mbp-custom-loc-select"
-                  :value="matchedCustomLocation"
-                  @change="applySavedLocation"
-                >
-                  <option value="">Apply a custom location…</option>
-                  <option v-for="loc in metaStore.savedLocations" :key="loc.name" :value="loc.name">
-                    {{ loc.name }}
-                  </option>
-                </select>
+                <div v-if="metaStore.savedLocations.length" class="select-field">
+                  <select
+                    class="sort-select filter-select"
+                    :value="matchedCustomLocation"
+                    @change="applySavedLocation"
+                  >
+                    <option value="">Apply a custom location…</option>
+                    <option v-for="loc in metaStore.savedLocations" :key="loc.name" :value="loc.name">
+                      {{ loc.name }}
+                    </option>
+                  </select>
+                  <SelectChevron />
+                </div>
               </div>
             </div>
 
@@ -261,6 +263,8 @@ import CopyIcon from './CopyIcon.vue'
 import PasteIcon from './PasteIcon.vue'
 import DeleteIcon from './DeleteIcon.vue'
 import SaveLocationModal from './SaveLocationModal.vue'
+import SelectChevron from './SelectChevron.vue'
+import '../styles/sidebar-shared.css'
 import { fileExt, fileName, folderPath } from '../utils/formatters'
 import { useGpsEditor, parseCombinedGps } from '../composables/useGpsEditor'
 import PanelSectionFileCamera from './PanelSectionFileCamera.vue'
@@ -1036,8 +1040,7 @@ const hasExposureInfoBatch = computed(() => {
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
-.mbp-custom-loc-save,
-.mbp-custom-loc-select {
+.mbp-custom-loc-save {
   width: 100%;
   box-sizing: border-box;
   padding: 6px 8px;
@@ -1053,10 +1056,6 @@ const hasExposureInfoBatch = computed(() => {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: #fff;
-}
-.mbp-custom-loc-select:focus {
-  outline: none;
-  border-color: var(--color-accent);
 }
 
 /* ── Read-only rows ── */
