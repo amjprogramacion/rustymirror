@@ -80,9 +80,25 @@
 
         <!-- Location -->
         <div class="mp-section">
-          <button class="mp-section-title" @click="toggle('location')">
-            Location <ChevronIcon :open="!collapsed.location" />
-          </button>
+          <div class="mp-section-header">
+            <button class="mp-section-title" @click="toggle('location')">
+              Location <ChevronIcon :open="!collapsed.location" />
+            </button>
+            <div class="mp-loc-actions" v-show="!collapsed.location">
+              <button
+                v-if="hasGpsPreview"
+                class="mp-loc-btn"
+                @click="copyLocation"
+                title="Copy location (lat, lon)"
+              >⧉ Copy</button>
+              <button
+                v-if="metaStore.copiedLocation"
+                class="mp-loc-btn"
+                @click="pasteLocation"
+                title="Paste copied location"
+              >📍 Paste</button>
+            </div>
+          </div>
           <div v-show="!collapsed.location">
             <div class="mp-rows" v-if="hasGpsPreview">
               <div class="mp-row" v-if="locationLoading">
@@ -205,6 +221,7 @@ import { useDuplicatesStore } from '../store/duplicates'
 import { usePanelStore } from '../store/panel'
 import { useThumbnailStore } from '../store/thumbnails'
 import { useMapViewStore } from '../store/mapView'
+import { useMetadataStore } from '../store/metadata'
 import MapPreview from './MapPreview.vue'
 import ChevronIcon from './ChevronIcon.vue'
 import { fileExt, fileName, folderPath } from '../utils/formatters'
@@ -222,9 +239,10 @@ function splitDevice(device) {
   return { make: device.slice(0, idx), model: device.slice(idx + 1) }
 }
 
-const store  = useDuplicatesStore()
-const panel  = usePanelStore()
-const thumbs = useThumbnailStore()
+const store     = useDuplicatesStore()
+const panel     = usePanelStore()
+const thumbs    = useThumbnailStore()
+const metaStore = useMetadataStore()
 const HEIC   = new Set(['heic', 'heif'])
 const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mpg', 'mpeg', 'mkv'])
 
@@ -326,6 +344,15 @@ function onMapSetLocation({ lat, lon }) {
   gpsLongitudeRaw.value = lon.toFixed(6)
   onGpsInput('lat')
   onGpsInput('lon')
+}
+
+// ── Location copy / paste (shares the clipboard with the metadata editor) ────
+function copyLocation() {
+  metaStore.setCopiedLocation({ lat: previewLat.value, lon: previewLon.value })
+}
+
+function pasteLocation() {
+  if (metaStore.copiedLocation) onMapSetLocation(metaStore.copiedLocation)
 }
 
 // ── Editable fields ───────────────────────────────────────────────────────────
@@ -668,6 +695,40 @@ const videoSrc = computed(() => {
 
 /* .mp-section-title is defined globally in base.css */
 
+/* Location section header — title + copy/paste actions on one row */
+.mp-section-header {
+  display: flex;
+  align-items: center;
+  padding-bottom: 0 !important;
+}
+.mp-section-header .mp-section-title {
+  width: auto;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+.mp-loc-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.mp-loc-btn {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.mp-loc-btn:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
 
 /* Content padding inside each section */
 .mp-section > *:not(.mp-section-title) {

@@ -43,6 +43,18 @@ function geoCacheStats(cache) {
   return { count, bytes }
 }
 
+// Reverse-geocode a coordinate to a "City, Country" name via Nominatim.
+async function reverseGeocode(lat, lon, signal) {
+  const res = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+    { headers: { 'User-Agent': 'RustyMirror/1.0 (desktop app)' }, signal }
+  )
+  const data = await res.json()
+  const addr = data.address ?? {}
+  const city = addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.county ?? null
+  return [city, addr.country].filter(Boolean).join(', ') || ''
+}
+
 export const useMetadataStore = defineStore('metadata', {
   state: () => ({
     folders: [],
@@ -73,6 +85,7 @@ export const useMetadataStore = defineStore('metadata', {
     failedFiles: [],
     multiSelect: false,
     selected: new Set(),
+    copiedLocation: null, // { lat, lon } copied from a Location section, for paste
     networkFolders: new Set(),
     scanProgress: { total: 0, processed: 0 },
     heicProgress: { analyzed: 0, total: 0, phase: '' },
@@ -113,9 +126,10 @@ export const useMetadataStore = defineStore('metadata', {
         const dateStr = (e.dateTaken ?? e.modified ?? '').slice(0, 10)
         if (from && dateStr < from) return false
         if (to   && dateStr > to)   return false
-        // Location
+        // Location — "without location" means no geocoded name AND no GPS coords,
+        // so a just-saved GPS edit drops out of the filter immediately (no rescan).
         if (loc === '__no_location__') {
-          if (state.locationNames[e.path]) return false
+          if (state.locationNames[e.path] || e.gpsLatitude != null) return false
         } else if (loc && (state.locationNames[e.path] ?? '') !== loc) return false
         // Device
         if (dev && (e.device ?? '') !== dev) return false
@@ -183,13 +197,54 @@ export const useMetadataStore = defineStore('metadata', {
       const entry = this.images[idx]
       const device = [metadata.make, metadata.model].filter(Boolean).join(' ') || null
       if (device) this.saveDiscoveredDevice(device)
+      const lat = metadata.gpsLatitude  ?? null
+      const lon = metadata.gpsLongitude ?? null
       this.images[idx] = {
         ...entry,
         dateTaken:    metadata.dateTimeOriginal ?? entry.dateTaken,
-        gpsLatitude:  metadata.gpsLatitude  ?? null,
-        gpsLongitude: metadata.gpsLongitude ?? null,
+        gpsLatitude:  lat,
+        gpsLongitude: lon,
         device,
       }
+      // Keep the location filter/sort in sync with the just-saved GPS.
+      if (lat == null || lon == null) {
+        this.locationNames[path] = ''   // GPS removed → no location name
+      } else {
+        this.geocodeSingle(path)        // GPS set/changed → refresh name (cache hit instant, else background)
+      }
+    },
+
+    // Reverse-geocode a single image's GPS into locationNames (used after a save).
+    // Cache hits resolve instantly; misses do one background fetch (no rescan needed).
+    async geocodeSingle(path) {
+      const img = this.images.find(e => e.path === path)
+      if (!img || img.gpsLatitude == null || img.gpsLongitude == null) return
+      const lat = img.gpsLatitude, lon = img.gpsLongitude
+      const key = `${lat.toFixed(2)},${lon.toFixed(2)}`
+      const geoCache = await loadGeoCache()
+      if (key in geoCache) {
+        this.locationNames[path] = geoCache[key]
+        if (geoCache[key]) this.saveDiscoveredLocation(geoCache[key])
+        return
+      }
+      try {
+        const name = await reverseGeocode(lat, lon)
+        this.locationNames[path] = name
+        if (name) this.saveDiscoveredLocation(name)
+        geoCache[key] = name
+        const stats = geoCacheStats(geoCache)
+        this.geoCacheCount = stats.count
+        this.geoCacheBytes = stats.bytes
+        await saveGeoCache(geoCache)
+      } catch { /* leave name unset; filter still works via gpsLatitude */ }
+    },
+
+    // Clipboard for GPS location, shared across the panel so a copied location
+    // can be pasted onto any other image(s) the user selects.
+    setCopiedLocation(loc) {
+      this.copiedLocation = (loc && loc.lat != null && loc.lon != null)
+        ? { lat: loc.lat, lon: loc.lon }
+        : null
     },
 
     toggleSelected(path) {
@@ -348,14 +403,7 @@ export const useMetadataStore = defineStore('metadata', {
         for (const { key, lat, lon, paths } of pending) {
           if (abort.signal.aborted) break
           try {
-            const res = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
-              { headers: { 'User-Agent': 'RustyMirror/1.0 (desktop app)' }, signal: abort.signal }
-            )
-            const data = await res.json()
-            const addr = data.address ?? {}
-            const city = addr.city ?? addr.town ?? addr.village ?? addr.municipality ?? addr.county ?? null
-            const name = [city, addr.country].filter(Boolean).join(', ') || ''
+            const name = await reverseGeocode(lat, lon, abort.signal)
             for (const p of paths) this.locationNames[p] = name
             if (name) this.saveDiscoveredLocation(name)
             geoCache[key] = name

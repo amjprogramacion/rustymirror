@@ -86,7 +86,23 @@
           <!-- Location -->
           <div class="mbp-section mbp-section--location">
             <div class="mbp-location-left">
-              <div class="mbp-section-title">Location</div>
+              <div class="mbp-location-header">
+                <div class="mbp-section-title">Location</div>
+                <div class="mbp-loc-actions">
+                  <button
+                    v-if="canCopyLocation"
+                    class="mbp-loc-btn"
+                    @click="copyLocation"
+                    title="Copy location (lat, lon)"
+                  >⧉ Copy</button>
+                  <button
+                    v-if="metaStore.copiedLocation"
+                    class="mbp-loc-btn"
+                    @click="pasteLocation"
+                    title="Paste copied location"
+                  >📍 Paste</button>
+                </div>
+              </div>
 
               <!-- Single mode: geocoded name + combined/split inputs -->
               <template v-if="!isBatch">
@@ -497,6 +513,26 @@ function onMapSetLocation({ lat, lon }) {
   }
 }
 
+// ── Location copy / paste ───────────────────────────────────────────────────
+// Copy is offered only when the current selection has a single concrete GPS;
+// paste is offered anywhere once something has been copied (stored in metaStore).
+const canCopyLocation = computed(() =>
+  isBatch.value
+    ? (!batchAgg.value?.gps?.mixed && batchAgg.value?.gps?.lat != null)
+    : hasGpsPreview.value
+)
+
+function copyLocation() {
+  const loc = isBatch.value
+    ? { lat: batchAgg.value?.gps?.lat, lon: batchAgg.value?.gps?.lon }
+    : { lat: previewLat.value, lon: previewLon.value }
+  metaStore.setCopiedLocation(loc)
+}
+
+function pasteLocation() {
+  if (metaStore.copiedLocation) onMapSetLocation(metaStore.copiedLocation)
+}
+
 // ── Editable fields ───────────────────────────────────────────────────────────
 const edit = ref({
   dateTimeOriginal: null,
@@ -857,6 +893,36 @@ const hasExposureInfoBatch = computed(() => {
   letter-spacing: 0.6px;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+/* Location section header — title + copy/paste actions */
+.mbp-location-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.mbp-loc-actions {
+  display: flex;
+  gap: 4px;
+}
+.mbp-loc-btn {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.mbp-loc-btn:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
 }
 
 /* ── Read-only rows ── */
