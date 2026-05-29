@@ -131,6 +131,7 @@ pub enum FailedFileKind {
     UnsupportedFormat,
     CorruptedFile,
     IoError,
+    ConversionFailed,
 }
 
 impl FailedFileKind {

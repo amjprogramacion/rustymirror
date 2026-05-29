@@ -189,27 +189,47 @@ pub async fn scan_for_metadata(
                 phase: "Correcting HEICs…".into(),
             });
 
-            let corrections: Vec<(usize, u32, u32, Option<String>)> = heic_indices
+            // Each HEIC maps to one outcome: Ok (corrected), Failed (magick could
+            // not read/convert it — surfaced to the user via failed_files), or
+            // Stopped (aborted, not a real failure).
+            enum HeicOutcome {
+                Ok(usize, u32, u32, Option<String>),
+                Failed(usize),
+                Stopped,
+            }
+
+            let outcomes: Vec<HeicOutcome> = heic_indices
                 .par_iter()
-                .filter_map(|&idx| {
-                    if stop.load(Ordering::Relaxed) { return None; }
+                .map(|&idx| {
+                    if stop.load(Ordering::Relaxed) { return HeicOutcome::Stopped; }
                     let path = std::path::Path::new(&entries[idx].path);
-                    let (w, h, date) = crate::heic::heic_capture_info(path, resource_dir.as_deref());
+                    let (w, h, date) = crate::heic::heic_capture_info(path, resource_dir.as_deref(), Some(&*stop));
                     let done = heic_done.fetch_add(1, Ordering::Relaxed) + 1;
                     let _ = app_handle.emit("meta_analyze_progress", AnalyzeProgress {
                         analyzed: done,
                         total: heic_total,
                         phase: "Correcting HEICs…".into(),
                     });
-                    if w == 0 && date.is_none() { return None; }
-                    Some((idx, w, h, date))
+                    // A (0,0,None) result after a stop is an abort, not a failure.
+                    if stop.load(Ordering::Relaxed) { return HeicOutcome::Stopped; }
+                    if w == 0 && date.is_none() { return HeicOutcome::Failed(idx); }
+                    HeicOutcome::Ok(idx, w, h, date)
                 })
                 .collect();
 
-            for (idx, w, h, date) in corrections {
-                let e = &mut entries[idx];
-                if w > 0 { e.width = w; e.height = h; }
-                e.date_taken = date;
+            for outcome in outcomes {
+                match outcome {
+                    HeicOutcome::Ok(idx, w, h, date) => {
+                        let e = &mut entries[idx];
+                        if w > 0 { e.width = w; e.height = h; }
+                        e.date_taken = date;
+                    }
+                    HeicOutcome::Failed(idx) => failed_files.push(FailedFile {
+                        path: entries[idx].path.clone(),
+                        kind: crate::types::FailedFileKind::ConversionFailed,
+                    }),
+                    HeicOutcome::Stopped => {}
+                }
             }
         }
 

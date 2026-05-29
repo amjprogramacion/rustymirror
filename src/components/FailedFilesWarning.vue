@@ -42,6 +42,7 @@ const KIND_LABELS = {
   UNSUPPORTED_FORMAT: 'Unsupported format',
   CORRUPTED_FILE:     'Corrupted file',
   IO_ERROR:           'I/O error',
+  CONVERSION_FAILED:  'HEIC conversion failed',
 }
 
 function kindLabel(kind) {

@@ -67,6 +67,7 @@ pub async fn get_thumbnail(path: String, app: tauri::AppHandle) -> Result<String
                 std::path::Path::new(&path),
                 resource_dir.as_deref(),
                 None, // full resolution for thumbnail/viewer
+                None, // no stop flag for on-demand thumbnail conversion
             ).ok_or_else(|| thumb_err("HEIC converter not available".to_string()))?;
 
             let jpeg_bytes = std::fs::read(&tmp).map_err(|e| thumb_err(e.to_string()))?;
@@ -179,6 +180,7 @@ pub async fn get_full_image(path: String, app: tauri::AppHandle) -> Result<Strin
                 std::path::Path::new(&path),
                 resource_dir.as_deref(),
                 None, // full resolution for thumbnail/viewer
+                None, // no stop flag for on-demand thumbnail conversion
             ).ok_or_else(|| thumb_err("HEIC converter not available".to_string()))?;
             let b = std::fs::read(&tmp).map_err(|e| thumb_err(e.to_string()))?;
             let _ = std::fs::remove_file(&tmp);

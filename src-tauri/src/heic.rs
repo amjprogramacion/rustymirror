@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{Context, Result};
 
 // ── Cached magick path ────────────────────────────────────────────────────────
@@ -64,14 +65,29 @@ fn which_exists(cmd: &str) -> bool {
     std::process::Command::new(cmd).arg("--version").output().is_ok()
 }
 
-/// Waits for `child` to exit, killing it and returning an error if it exceeds `timeout`.
-fn wait_timeout(mut child: std::process::Child, timeout: std::time::Duration) -> Result<std::process::ExitStatus> {
+fn stop_requested(stop: Option<&AtomicBool>) -> bool {
+    stop.map(|s| s.load(Ordering::Relaxed)).unwrap_or(false)
+}
+
+/// Waits for `child` to exit, killing it if it exceeds `timeout` or if `stop`
+/// is set. Returns an error on timeout or stop so callers treat it as a failure.
+fn wait_timeout(
+    mut child: std::process::Child,
+    timeout: std::time::Duration,
+    stop: Option<&AtomicBool>,
+) -> Result<std::process::ExitStatus> {
     let start = std::time::Instant::now();
     loop {
         match child.try_wait()? {
             Some(status) => return Ok(status),
+            None if stop_requested(stop) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                anyhow::bail!("HEIC conversion aborted");
+            }
             None if start.elapsed() >= timeout => {
                 let _ = child.kill();
+                let _ = child.wait();
                 anyhow::bail!("HEIC converter timed out after {:?}", timeout);
             }
             None => std::thread::sleep(std::time::Duration::from_millis(100)),
@@ -79,12 +95,57 @@ fn wait_timeout(mut child: std::process::Child, timeout: std::time::Duration) ->
     }
 }
 
+const IDENTIFY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Runs a command capturing stdout, killing it if it exceeds `timeout` or if
+/// `stop` is set. A background thread drains stdout so a full pipe buffer can
+/// never deadlock the polling loop. Returns the captured stdout on a clean exit.
+fn output_with_timeout(
+    mut cmd: std::process::Command,
+    timeout: std::time::Duration,
+    stop: Option<&AtomicBool>,
+) -> Option<String> {
+    use std::process::Stdio;
+    use std::io::Read;
+
+    cmd.stdout(Stdio::piped()).stderr(Stdio::null()).stdin(Stdio::null());
+    let mut child = cmd.spawn().ok()?;
+
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut buf = String::new();
+        let _ = stdout.read_to_string(&mut buf);
+        buf
+    });
+
+    let start = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if stop_requested(stop) || start.elapsed() >= timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                return None;
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Err(_) => {
+                let _ = reader.join();
+                return None;
+            }
+        }
+    };
+
+    let out = reader.join().ok()?;
+    if status.success() { Some(out) } else { None }
+}
+
 // ── Metadata extraction (no full decode) ─────────────────────────────────────
 
 /// Extract dimensions from HEIC using `magick identify` — much faster than
 /// full conversion because it only reads the file header.
 #[allow(dead_code)]
-pub fn heic_dimensions(path: &Path, resource_dir: Option<&Path>) -> (u32, u32) {
+pub fn heic_dimensions(path: &Path, resource_dir: Option<&Path>, stop: Option<&AtomicBool>) -> (u32, u32) {
     let cmd = match magick_path(resource_dir) {
         Some(c) => c,
         None    => return (0, 0),
@@ -92,23 +153,24 @@ pub fn heic_dimensions(path: &Path, resource_dir: Option<&Path>) -> (u32, u32) {
 
     // `magick identify -format "%wx%h" file.heic` prints e.g. "4032x3024"
     #[cfg(target_os = "windows")]
-    let output = {
+    let command = {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
-        std::process::Command::new(cmd)
-            .args(["identify", "-format", "%wx%h", path.to_str().unwrap_or("")])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
+        let mut c = std::process::Command::new(cmd);
+        c.args(["identify", "-format", "%wx%h", path.to_str().unwrap_or("")])
+            .creation_flags(CREATE_NO_WINDOW);
+        c
     };
 
     #[cfg(not(target_os = "windows"))]
-    let output = std::process::Command::new(cmd)
-        .args(["identify", "-format", "%wx%h", path.to_str().unwrap_or("")])
-        .output();
+    let command = {
+        let mut c = std::process::Command::new(cmd);
+        c.args(["identify", "-format", "%wx%h", path.to_str().unwrap_or("")]);
+        c
+    };
 
-    match output {
-        Ok(out) if out.status.success() => {
-            let s = String::from_utf8_lossy(&out.stdout);
+    match output_with_timeout(command, IDENTIFY_TIMEOUT, stop) {
+        Some(s) => {
             let s = s.trim();
             if let Some((w, h)) = s.split_once('x') {
                 let w = w.parse::<u32>().unwrap_or(0);
@@ -117,7 +179,7 @@ pub fn heic_dimensions(path: &Path, resource_dir: Option<&Path>) -> (u32, u32) {
             }
             (0, 0)
         }
-        _ => (0, 0),
+        None => (0, 0),
     }
 }
 
@@ -132,6 +194,7 @@ pub fn heic_to_temp_jpeg(
     heic_path: &Path,
     resource_dir: Option<&Path>,
     max_dim: Option<u32>,
+    stop: Option<&AtomicBool>,
 ) -> Option<(PathBuf, u32, u32)> {
     let stem = heic_path.file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -140,9 +203,9 @@ pub fn heic_to_temp_jpeg(
 
     // Capture original dimensions before any resize so callers always get the
     // source resolution, not the downscaled temp-file resolution.
-    let (w, h) = heic_dimensions(heic_path, resource_dir);
+    let (w, h) = heic_dimensions(heic_path, resource_dir, stop);
 
-    convert_one(heic_path, &tmp, resource_dir, max_dim).ok()?;
+    convert_one(heic_path, &tmp, resource_dir, max_dim, stop).ok()?;
     if !tmp.exists() { return None; }
 
     Some((tmp, w, h))
@@ -150,7 +213,7 @@ pub fn heic_to_temp_jpeg(
 
 const CONVERT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
-fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim: Option<u32>) -> Result<()> {
+fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim: Option<u32>, stop: Option<&AtomicBool>) -> Result<()> {
     let cmd = magick_path(resource_dir).context("no HEIC converter")?;
 
     // `-resize NxN>` shrinks only if either dimension exceeds N; `>` is passed
@@ -166,7 +229,7 @@ fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim
         }
         c.args([input.to_str().unwrap(), "--setProperty", "format", "jpeg",
                 "--out", output.to_str().unwrap()]);
-        wait_timeout(c.spawn().context("sips failed")?, CONVERT_TIMEOUT)?
+        wait_timeout(c.spawn().context("sips failed")?, CONVERT_TIMEOUT, stop)?
     };
 
     #[cfg(target_os = "windows")]
@@ -180,7 +243,7 @@ fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim
         }
         c.arg(output.to_str().unwrap())
          .creation_flags(CREATE_NO_WINDOW);
-        wait_timeout(c.spawn().context("magick failed")?, CONVERT_TIMEOUT)?
+        wait_timeout(c.spawn().context("magick failed")?, CONVERT_TIMEOUT, stop)?
     };
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -191,7 +254,7 @@ fn convert_one(input: &Path, output: &Path, resource_dir: Option<&Path>, max_dim
             c.args(["-resize", r]);
         }
         c.arg(output.to_str().unwrap());
-        wait_timeout(c.spawn().context("magick/convert failed")?, CONVERT_TIMEOUT)?
+        wait_timeout(c.spawn().context("magick/convert failed")?, CONVERT_TIMEOUT, stop)?
     };
 
     if status.success() { Ok(()) } else { anyhow::bail!("converter exit {}", status) }
@@ -210,8 +273,8 @@ pub fn cleanup_temp(path: &Path) {
 ///
 /// Returns `(width, height, capture_date_iso)`.
 /// Width/height are 0 and date is `None` if the conversion fails.
-pub fn heic_capture_info(path: &Path, resource_dir: Option<&Path>) -> (u32, u32, Option<String>) {
-    let Some((tmp_path, w, h)) = heic_to_temp_jpeg(path, resource_dir, Some(512)) else {
+pub fn heic_capture_info(path: &Path, resource_dir: Option<&Path>, stop: Option<&AtomicBool>) -> (u32, u32, Option<String>) {
+    let Some((tmp_path, w, h)) = heic_to_temp_jpeg(path, resource_dir, Some(512), stop) else {
         return (0, 0, None);
     };
     let date = std::fs::read(&tmp_path)

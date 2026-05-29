@@ -356,7 +356,7 @@ where
         .filter_map(|&i| {
             if stop.load(AOrdering::Relaxed) { return None; }
             let path = PathBuf::from(&records[i].entry.path);
-            let (tmp, w, h) = heic_to_temp_jpeg(&path, resource_dir.as_deref(), Some(512))?;
+            let (tmp, w, h) = heic_to_temp_jpeg(&path, resource_dir.as_deref(), Some(512), None)?;
             let done = phase3_counter.fetch_add(1, AOrdering::Relaxed) + 1;
             analyze_cb(AnalyzeProgress { analyzed: done, total: heic_count.max(1),
                 phase: "Converting images…".into() });
@@ -406,7 +406,7 @@ where
         .par_iter()
         .filter_map(|&i| {
             let path = PathBuf::from(&records[i].entry.path);
-            let (tmp, w, h) = heic_to_temp_jpeg(&path, resource_dir.as_deref(), Some(512))?;
+            let (tmp, w, h) = heic_to_temp_jpeg(&path, resource_dir.as_deref(), Some(512), None)?;
             cleanup_temp(&tmp);
             if w == 0 { return None; }
             if let Some(ref c) = cache {

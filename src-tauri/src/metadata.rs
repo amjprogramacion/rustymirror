@@ -155,7 +155,7 @@ pub fn read_metadata(path: &Path, resource_dir: &Path) -> Result<ImageMetadata> 
         .or_else(|| tag_str(&obj, "CreateDate"))
         .map(exif_date_to_iso);
     if is_heic_format {
-        let (w, h, date) = crate::heic::heic_capture_info(path, Some(resource_dir));
+        let (w, h, date) = crate::heic::heic_capture_info(path, Some(resource_dir), None);
         if w > 0 { width = w; height = h; }
         date_time_original = date;
     }
