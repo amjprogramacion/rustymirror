@@ -22,12 +22,14 @@ const root = resolve(__dirname, '..')
 // ── Read source of truth ──────────────────────────────────────────────────────
 const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
 const version = pkg.version
-console.log(`[sync-version] Syncing version ${version}`)
+// Cargo requires strict semver (major.minor.patch); strip any 4th segment
+const cargoVersion = version.split('.').slice(0, 3).join('.')
+console.log(`[sync-version] Syncing version ${version}${cargoVersion !== version ? ` (Cargo: ${cargoVersion})` : ''}`)
 
 // ── tauri.conf.json ───────────────────────────────────────────────────────────
 const tauriConfPath = resolve(root, 'src-tauri/tauri.conf.json')
 const tauriConf = JSON.parse(readFileSync(tauriConfPath, 'utf8'))
-tauriConf.version = version
+tauriConf.version = cargoVersion
 writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n')
 console.log(`[sync-version] Updated tauri.conf.json`)
 
@@ -35,14 +37,14 @@ console.log(`[sync-version] Updated tauri.conf.json`)
 const cargoPath = resolve(root, 'src-tauri/Cargo.toml')
 let cargo = readFileSync(cargoPath, 'utf8')
 // Only replace the first occurrence (the package version, not dependency versions)
-cargo = cargo.replace(/^version = "[\d.]+"/m, `version = "${version}"`)
+cargo = cargo.replace(/^version = "[\d.]+"/m, `version = "${cargoVersion}"`)
 writeFileSync(cargoPath, cargo)
 console.log(`[sync-version] Updated Cargo.toml`)
 
 // ── Cargo.lock ────────────────────────────────────────────────────────────────
 // Cargo.lock is auto-generated, so we let cargo update only the package entry.
 const srcTauriPath = resolve(root, 'src-tauri')
-execSync(`cargo update --precise ${version} --package rustymirror`, { cwd: srcTauriPath, stdio: 'inherit' })
+execSync(`cargo update --precise ${cargoVersion} --package rustymirror`, { cwd: srcTauriPath, stdio: 'inherit' })
 console.log(`[sync-version] Updated Cargo.lock`)
 
 // ── package-lock.json ─────────────────────────────────────────────────────────

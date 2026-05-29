@@ -1,7 +1,7 @@
 {
   "name": "rustymirror",
   "private": true,
-  "version": "1.5.1",
+  "version": "1.5.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "sync-version": "node scripts/sync-version.js",
+    "pretauri": "node scripts/sync-version.js",
     "predev": "node scripts/sync-version.js",
     "prebuild": "node scripts/sync-version.js"
   },
