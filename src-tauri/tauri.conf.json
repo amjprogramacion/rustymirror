@@ -45,7 +45,8 @@
   "bundle": {
     "active": true,
     "targets": [
-      "nsis"
+      "nsis",
+      "dmg"
     ],
     "createUpdaterArtifacts": true,
     "icon": [
@@ -56,7 +57,7 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/*"
+      "resources/**/*"
     ]
   }
 }
