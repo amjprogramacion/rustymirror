@@ -243,7 +243,7 @@ async function openFolder(path) {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: var(--space-3);
 }
 

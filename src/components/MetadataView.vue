@@ -276,18 +276,21 @@ function isVideoPath(path) {
 // Only the cards near the viewport are kept in the DOM / Vue's vnode tree.
 // Rendering thousands of cards at once makes scrolling janky because every
 // reactive update has to diff all of them; here we render at most a few rows.
-const COLUMNS           = 8     // matches `grid-template-columns: repeat(8, 1fr)`
+const MIN_CARD_WIDTH    = 160   // must match CSS minmax(160px, ...)
+const CARD_GAP          = 12    // --space-3
 const BUFFER_ROWS       = 4     // rows rendered above & below the viewport
 const FALLBACK_ROW_H    = 240   // used until a real card height is measured
 
 const scrollTop  = ref(0)
 const viewportH  = ref(0)
 const rowHeight  = ref(0)
+const columns    = ref(8)       // updated dynamically by measure()
 
-const totalRows = computed(() => Math.ceil(meta.filteredImages.length / COLUMNS))
+const totalRows = computed(() => Math.ceil(meta.filteredImages.length / columns.value))
 
 const visibleRange = computed(() => {
   const total = meta.filteredImages.length
+  const cols = columns.value
   if (total === 0) return { start: 0, end: 0, padTop: 0, padBottom: 0 }
   const rh = rowHeight.value || FALLBACK_ROW_H
   const vh = viewportH.value || 800
@@ -296,8 +299,8 @@ const visibleRange = computed(() => {
   const startRow = Math.max(0, firstRow - BUFFER_ROWS)
   const endRow   = Math.min(totalRows.value, firstRow + rowsInView + BUFFER_ROWS)
   return {
-    start: startRow * COLUMNS,
-    end: Math.min(total, endRow * COLUMNS),
+    start: startRow * cols,
+    end: Math.min(total, endRow * cols),
     padTop: startRow * rh,
     padBottom: Math.max(0, (totalRows.value - endRow) * rh),
   }
@@ -322,11 +325,19 @@ function onScroll() {
   })
 }
 
-// Measure viewport height and a real card's row height (card + row gap).
+// Measure viewport height, column count and a real card's row height (card + row gap).
 function measure() {
   const el = gridEl.value
   if (!el) return
   viewportH.value = el.clientHeight
+  // Derive column count using the same formula CSS auto-fill uses.
+  // paddingLeft accounts for .grid-scroll padding so we get the inner width.
+  const pad = parseFloat(getComputedStyle(el).paddingLeft) || 0
+  const availableWidth = el.clientWidth - pad * 2
+  if (availableWidth > 0) {
+    const newCols = Math.max(1, Math.floor((availableWidth + CARD_GAP) / (MIN_CARD_WIDTH + CARD_GAP)))
+    if (newCols !== columns.value) columns.value = newCols
+  }
   const card = el.querySelector('.card')
   if (card) {
     const gap = parseFloat(getComputedStyle(card.parentElement).rowGap) || 0
@@ -609,7 +620,7 @@ async function doDelete() {
 
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: var(--space-3);
 }
 
