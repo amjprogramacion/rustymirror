@@ -54,21 +54,17 @@ jobs:
           config: cliff.toml
           args: --current --strip header
 
-      - name: Download ImageMagick (Windows)
+      - name: Download ImageMagick (Windows, vendored 7.1.2-17)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # imagemagick.org/archive keeps only the latest build, so resolve the
-          # current 7.x portable Q16 x64 filename from the listing instead of
-          # pinning a patch version (which 404s as soon as a new patch ships).
-          $base = "https://imagemagick.org/archive/binaries/"
-          $html = (Invoke-WebRequest -Uri $base -UseBasicParsing).Content
-          $file = [regex]::Match($html, 'ImageMagick-7\.[0-9.]+-[0-9]+-portable-Q16-x64\.7z').Value
-          if (-not $file) { throw "No ImageMagick 7.x portable Q16 x64 build found at $base" }
-          Write-Host "Downloading $file"
-          Invoke-WebRequest -Uri "$base$file" -OutFile magick.7z
-          7z e magick.7z magick.exe -o"src-tauri\resources" -y
-          Remove-Item magick.7z
+          # Pinned to 7.1.2-17 hosted as a release asset on this repo.
+          # ImageMagick 7.1.2-24 (current latest on imagemagick.org/archive) has
+          # a HEIC decoding regression that produces garbled thumbnails — same
+          # libheif version on both builds, but the output is corrupted.
+          # Revisit and switch back to "latest" once upstream ships a fix.
+          $url = "https://github.com/amjprogramacion/rustymirror/releases/download/vendor-magick-7.1.2-17/magick.exe"
+          Invoke-WebRequest -Uri $url -OutFile "src-tauri\resources\magick.exe" -UseBasicParsing
 
       - name: Download ExifTool (Windows)
         if: runner.os == 'Windows'
