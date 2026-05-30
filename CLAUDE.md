@@ -82,10 +82,8 @@ Tauri v2 desktop app for duplicate image detection, metadata management, and med
 
 ## Sidecar binaries
 
-`magick.exe` and `exiftool.exe` are **not committed to git** — they are downloaded at CI build time and kept locally via `.gitignore`. See `.github/workflows/release.yml` for the download steps. Fresh clones require manual download of both binaries into `src-tauri/resources/`.
-
-- `exiftool.exe` + `exiftool_files/` — ExifTool 13.57 (Perl runtime included, always required alongside)
-- `magick.exe` — ImageMagick 7.1.2 portable Q16 x64 (single standalone exe)
+- `magick.exe` — **committed** to `src-tauri/resources/magick.exe`. Pinned to ImageMagick 7.1.2-17 portable Q16 x64 (single standalone exe). 7.1.2-24 has a HEIC decoding regression that garbles thumbnails — revisit once upstream ships a fix.
+- `exiftool.exe` + `exiftool_files/` — **not committed**, downloaded at CI build time via `.github/workflows/release.yml`. ExifTool 13.57 (Perl runtime included, always required alongside). Fresh clones require manual download into `src-tauri/resources/`.
 
 `tauri.conf.json` uses `"resources/**/*"` to recursively bundle `exiftool_files/` subdirectories.
 

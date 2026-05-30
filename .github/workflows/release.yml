@@ -54,17 +54,11 @@ jobs:
           config: cliff.toml
           args: --current --strip header
 
-      - name: Download ImageMagick (Windows, vendored 7.1.2-17)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          # Pinned to 7.1.2-17 hosted as a release asset on this repo.
-          # ImageMagick 7.1.2-24 (current latest on imagemagick.org/archive) has
-          # a HEIC decoding regression that produces garbled thumbnails — same
-          # libheif version on both builds, but the output is corrupted.
-          # Revisit and switch back to "latest" once upstream ships a fix.
-          $url = "https://github.com/amjprogramacion/rustymirror/releases/download/vendor-magick-7.1.2-17/magick.exe"
-          Invoke-WebRequest -Uri $url -OutFile "src-tauri\resources\magick.exe" -UseBasicParsing
+      # ImageMagick is no longer downloaded here — it is checked into the repo
+      # at src-tauri/resources/magick.exe. We pinned to 7.1.2-17 because
+      # 7.1.2-24 introduced a HEIC decoding regression that produced garbled
+      # thumbnails. Replace the in-repo binary to bump versions; revisit once
+      # upstream ships a fix and we can return to downloading the latest.
 
       - name: Download ExifTool (Windows)
         if: runner.os == 'Windows'
