@@ -138,11 +138,21 @@ export const useOrganizerStore = defineStore('organizer', () => {
     const t0 = Date.now()
     await _subscribeScanProgress()
     try {
-      const result = await invoke('count_media_files', { paths: folders.value, config: _buildConfig() })
-      scanResult.value = result
       const orgHistory = useOrganizerHistoryStore()
+
+      // Reuse a previous result if the directory is unchanged (same fingerprint)
+      // and the date-priority config still matches — skips the slow ExifTool pass.
+      let fingerprint = null
+      try { fingerprint = await invoke('directory_fingerprint', { paths: [...folders.value] }) } catch { /* ignore */ }
+      const cached = fingerprint
+        ? orgHistory.getCached(folders.value, fingerprint, config.value.datePriorityOrder)
+        : null
+
+      const result = cached ?? await invoke('count_media_files', { paths: folders.value, config: _buildConfig() })
+      scanResult.value = result
+      const durationMs = cached ? null : (Date.now() - t0)
       const entryId = await orgHistory.addEntry(
-        folders.value, result.total, result.images, result.videos, Date.now() - t0
+        folders.value, result, fingerprint, durationMs, config.value.datePriorityOrder
       )
       activeHistoryEntryId.value = entryId
     } catch (e) {
@@ -154,11 +164,24 @@ export const useOrganizerStore = defineStore('organizer', () => {
     }
   }
 
-  async function loadFromHistory(entry) {
+  function loadFromHistory(entry) {
     if (scanning.value) return
     folders.value = [...entry.folders]
     if (entry.id === activeHistoryEntryId.value) return
-    await runScan()
+
+    // Restore the cached snapshot instantly. Older entries (pre-cache) have no
+    // stored file list, so fall back to a fresh scan for those.
+    const cached = useOrganizerHistoryStore().getEntryResult(entry.id)
+    if (!cached) { runScan(); return }
+
+    scanResult.value         = cached
+    activeHistoryEntryId.value = entry.id
+    // Switching scans invalidates any standing preview/summary.
+    previewActions.value     = []
+    previewDateActions.value = []
+    previewOnlyRename.value  = null
+    lastSummary.value        = null
+    error.value              = null
   }
 
   async function runPreviewRewrite() {

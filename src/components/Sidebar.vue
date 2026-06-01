@@ -55,6 +55,17 @@
         Clear scan history
       </button>
       <button
+        v-if="activeMode === 'organizer'"
+        class="btn btn-cache btn-full btn-sm"
+        :class="{ 'btn-cache--active': orgCacheBytes > 0 }"
+        @click="orgHistory.clearCache()"
+        :disabled="orgCacheBytes === 0"
+        :title="`Cached file lists that let history loads skip re-scanning: ${formatSize(orgCacheBytes)}. Clearing keeps the history but forces a fresh scan next time.`"
+      >
+        Clear data cache
+        <span class="cache-size" v-if="orgCacheBytes > 0">{{ formatSize(orgCacheBytes) }}</span>
+      </button>
+      <button
         v-if="activeMode !== 'organizer'"
         class="btn btn-cache btn-full btn-sm"
         :class="{ 'btn-cache--active': thumbCacheSize > 0 }"
@@ -96,7 +107,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useMode } from '../composables/useMode'
 import { useSettings } from '../composables/useSettings'
 import { invoke } from '@tauri-apps/api/core'
@@ -123,6 +134,15 @@ const thumbStore  = useThumbnailStore()
 const history     = useDuplicatesHistoryStore()
 const metaHistory = useMetadataHistoryStore()
 const orgHistory  = useOrganizerHistoryStore()
+
+// Byte size of the cached file lists held across organizer history entries.
+const orgCacheBytes = computed(() => {
+  let bytes = 0
+  for (const e of orgHistory.entries) {
+    if (e.files?.length) bytes += new TextEncoder().encode(JSON.stringify(e.files)).length
+  }
+  return bytes
+})
 
 const { status: updateStatus } = useUpdater()
 const baseVersion = import.meta.env.VITE_APP_VERSION ?? '0.1.0'
