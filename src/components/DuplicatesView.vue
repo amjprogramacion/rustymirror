@@ -43,9 +43,14 @@
         <span class="badge" v-if="store.selectedCount > 0">{{ store.selectedCount }}</span>
       </button>
 
-      <span class="image-count">
-        {{ totalImages }} image{{ totalImages !== 1 ? 's' : '' }}<template v-if="store.selectedCount > 0"> · {{ store.selectedCount }} selected</template>
-      </span>
+      <MediaInfoBar
+        inline
+        :show-videos="false"
+        :total="mediaStats.total"
+        :images="mediaStats.images"
+        :image-exts="mediaStats.imageExts"
+      />
+      <span class="image-count" v-if="store.selectedCount > 0">· {{ store.selectedCount }} selected</span>
 
       <!-- Search -->
       <SearchInput v-model="store.searchQuery" />
@@ -191,12 +196,15 @@ import ScanProgress from './ScanProgress.vue'
 import ImageDetailPanel from './ImageDetailPanel.vue'
 import SearchInput from './SearchInput.vue'
 import { useThumbnailStore } from '../store/thumbnails'
-import { fileName } from '../utils/formatters'
+import { fileName, computeMediaStats } from '../utils/formatters'
 import { errorMessage } from '../utils/errors'
 import FailedFilesWarning from './FailedFilesWarning.vue'
+import MediaInfoBar from './MediaInfoBar.vue'
 
 const store        = useDuplicatesStore()
-const totalImages  = computed(() => store.filteredGroups.reduce((n, g) => n + g.entries.length, 0))
+// Header breakdown over every duplicate found (videos never appear in this mode).
+const mediaStats   = computed(() =>
+  computeMediaStats(store.groups.flatMap(g => g.entries.map(e => e.path))))
 const thumbs       = useThumbnailStore()
 const showConfirm  = ref(false)
 const deleteError  = ref(null)

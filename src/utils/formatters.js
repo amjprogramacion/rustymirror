@@ -15,6 +15,35 @@ export function isVideo(p) {
   return VIDEO_EXTS.has(fileExt(p))
 }
 
+// Tallies a list of media paths into the shape the MediaInfoBar header expects:
+// total / image+video counts and per-extension breakdowns sorted by frequency.
+// Any non-video file counts as an image (these lists only ever hold media).
+export function computeMediaStats(paths) {
+  const imageExts = {}
+  const videoExts = {}
+  let images = 0
+  let videos = 0
+  for (const p of paths) {
+    const ext = fileExt(p)
+    if (isVideo(p)) {
+      videos++
+      videoExts[ext] = (videoExts[ext] ?? 0) + 1
+    } else {
+      images++
+      imageExts[ext] = (imageExts[ext] ?? 0) + 1
+    }
+  }
+  const sortByCount = obj =>
+    Object.fromEntries(Object.entries(obj).sort((a, b) => b[1] - a[1]))
+  return {
+    total: images + videos,
+    images,
+    videos,
+    imageExts: sortByCount(imageExts),
+    videoExts: sortByCount(videoExts),
+  }
+}
+
 export function folderPath(p) {
   const parts = p?.split(/[/\\]/) ?? []
   return parts.slice(0, -1).join('/')

@@ -15,23 +15,15 @@
       </div>
 
       <!-- Info bar -->
-      <div v-if="org.scanResult" class="info-bar">
-        <span class="info-total">{{ org.scanResult.total }} files</span>
-        <span class="info-sep" />
-        <span class="info-dot info-dot--images" />
-        <span class="info-label">Images</span>
-        <span class="info-count">{{ org.scanResult.images }}</span>
-        <div class="ext-list">
-          <span v-for="(count, ext) in org.scanResult.imageExts" :key="ext" class="ext-pill ext-pill--images">.{{ ext }} <em>{{ count }}</em></span>
-        </div>
-        <span class="info-sep" />
-        <span class="info-dot info-dot--videos" />
-        <span class="info-label">Videos</span>
-        <span class="info-count">{{ org.scanResult.videos }}</span>
-        <div class="ext-list">
-          <span v-for="(count, ext) in org.scanResult.videoExts" :key="ext" class="ext-pill ext-pill--videos">.{{ ext }} <em>{{ count }}</em></span>
-        </div>
-      </div>
+      <MediaInfoBar
+        v-if="org.scanResult"
+        class="info-bar--flush"
+        :total="org.scanResult.total"
+        :images="org.scanResult.images"
+        :videos="org.scanResult.videos"
+        :image-exts="org.scanResult.imageExts"
+        :video-exts="org.scanResult.videoExts"
+      />
 
       <!-- Action buttons -->
       <div v-if="org.scanResult" class="action-bar">
@@ -184,6 +176,7 @@ import { useOrganizerStore } from '../store/organizer'
 import { usePanelStore } from '../store/panel'
 import ScanProgress from './ScanProgress.vue'
 import ImageDetailPanel from './ImageDetailPanel.vue'
+import MediaInfoBar from './MediaInfoBar.vue'
 import { fileExt } from '../utils/formatters'
 
 const org = useOrganizerStore()
@@ -322,81 +315,9 @@ function formatDate(d) {
 }
 
 /* ── Info bar ── */
-.info-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-4);
-  height: 44px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-secondary);
-  flex-shrink: 0;
-  flex-wrap: nowrap;
-  overflow: hidden;
+/* Pull the shared bar flush against the padded organizer container edges. */
+.info-bar--flush {
   margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-3)) 0;
-}
-.info-total {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-.info-sep {
-  width: 1px;
-  height: 16px;
-  background: var(--border-color);
-  flex-shrink: 0;
-}
-.info-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.info-dot--images { background: var(--color-accent); }
-.info-dot--videos { background: var(--color-success); }
-.info-label {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-.info-count {
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  color: var(--text-primary);
-  white-space: nowrap;
-  margin-right: 2px;
-}
-
-/* Extension pills */
-.ext-list {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 4px;
-}
-.ext-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: var(--border-radius-pill);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.3px;
-  white-space: nowrap;
-}
-.ext-pill em {
-  font-style: normal;
-  font-weight: 700;
-  opacity: 0.8;
-}
-.ext-pill--images {
-  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-  color: var(--color-accent);
-}
-.ext-pill--videos {
-  background: color-mix(in srgb, var(--color-success) 15%, transparent);
-  color: var(--color-success);
 }
 
 /* ── Action bar ── */

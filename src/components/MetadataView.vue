@@ -47,7 +47,15 @@
         <span class="badge" v-if="meta.selectedCount > 0">{{ meta.selectedCount }}</span>
       </button>
 
-      <span class="image-count">{{ meta.filteredImages.length }} file{{ meta.filteredImages.length !== 1 ? 's' : '' }}<template v-if="meta.selectedCount > 0"> · {{ meta.selectedCount }} selected</template></span>
+      <MediaInfoBar
+        inline
+        :total="mediaStats.total"
+        :images="mediaStats.images"
+        :videos="mediaStats.videos"
+        :image-exts="mediaStats.imageExts"
+        :video-exts="mediaStats.videoExts"
+      />
+      <span class="image-count" v-if="meta.selectedCount > 0">· {{ meta.selectedCount }} selected</span>
 
       <!-- Search -->
       <SearchInput v-model="meta.searchQuery" />
@@ -250,14 +258,18 @@ import { useMetadataStore } from '../store/metadata'
 import { usePanelStore } from '../store/panel'
 import { useThumbnailStore } from '../store/thumbnails'
 import { useSettings } from '../composables/useSettings'
-import { fileExt, fileName, formatSize, formatDate } from '../utils/formatters'
+import { fileExt, fileName, formatSize, formatDate, computeMediaStats } from '../utils/formatters'
 import { errorMessage } from '../utils/errors'
 import BatchEditPanel from './BatchEditPanel.vue'
 import SearchInput from './SearchInput.vue'
 import ScanProgress from './ScanProgress.vue'
 import FailedFilesWarning from './FailedFilesWarning.vue'
+import MediaInfoBar from './MediaInfoBar.vue'
 
 const meta   = useMetadataStore()
+
+// Header breakdown over the full scan (collect_media bundles images + videos).
+const mediaStats = computed(() => computeMediaStats(meta.images.map(i => i.path)))
 const panel  = usePanelStore()
 const thumbs = useThumbnailStore()
 const { prefetchFilters } = useSettings()
