@@ -167,8 +167,10 @@ export const useMetadataStore = defineStore('metadata', {
             if (match) return false
           } else if (!match || match.name !== custLoc) return false
         }
-        // Device
-        if (dev && (e.device ?? '') !== dev) return false
+        // Device — "without device" means no device string at all
+        if (dev === '__no_device__') {
+          if (e.device) return false
+        } else if (dev && (e.device ?? '') !== dev) return false
         return true
       })
 

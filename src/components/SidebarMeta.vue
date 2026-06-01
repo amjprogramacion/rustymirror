@@ -120,6 +120,7 @@
           <div class="select-field">
             <select class="sort-select filter-select" v-model="meta.filterDevice">
               <option value="">All</option>
+              <option value="__no_device__">Without device</option>
               <option v-for="dev in meta.availableDevices" :key="dev" :value="dev">{{ meta.deviceAliases[dev] || dev }}</option>
             </select>
             <SelectChevron />
