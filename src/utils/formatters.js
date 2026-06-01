@@ -8,6 +8,13 @@ export function fileName(p) {
   return p?.split(/[/\\]/).pop() ?? ''
 }
 
+// Mirrors the backend VIDEO_EXTENSIONS list (scanner/walk.rs).
+const VIDEO_EXTS = new Set(['mp4', 'mov', 'avi', 'mpg', 'mpeg', 'mkv'])
+
+export function isVideo(p) {
+  return VIDEO_EXTS.has(fileExt(p))
+}
+
 export function folderPath(p) {
   const parts = p?.split(/[/\\]/) ?? []
   return parts.slice(0, -1).join('/')

@@ -155,7 +155,7 @@
   >
     <template #stats="{ entry }">
       <span class="history-stats">
-        {{ entry.imageCount ?? 0 }} image{{ (entry.imageCount ?? 0) !== 1 ? 's' : '' }}
+        {{ (entry.imageCount ?? 0) - (entry.videoCount ?? 0) }} img · {{ entry.videoCount ?? 0 }} vid
       </span>
     </template>
   </SidebarHistory>

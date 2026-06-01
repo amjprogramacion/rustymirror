@@ -1,4 +1,11 @@
 import { createHistoryStore, foldersKey } from './historyFactory'
+import { isVideo } from '../utils/formatters'
+
+// imageCount on a metadata history entry counts ALL media (collect_media bundles
+// images + videos), so the video tally is derived from the snapshot paths.
+function countVideos(images) {
+  return images?.reduce((n, im) => n + (isVideo(im.path) ? 1 : 0), 0) ?? 0
+}
 
 // Bump this whenever the shape or data source of ImageEntry fields changes
 // (e.g. switching metadata backend, adding new fields). Cached entries with a
@@ -15,7 +22,7 @@ export const useMetadataHistoryStore = createHistoryStore({
   logPrefix: 'metadataHistory',
   clearLabel: 'metadata history',
 
-  // Each entry: { id, folders, date, durationMs, imageCount, fingerprint, images }
+  // Each entry: { id, folders, date, durationMs, imageCount, videoCount, fingerprint, images }
   async addEntry(folders, imageCount, images, fingerprint, durationMs) {
     const key = foldersKey(folders)
     const match = e => foldersKey(e.folders) === key
@@ -29,6 +36,7 @@ export const useMetadataHistoryStore = createHistoryStore({
       // Never update duration once set — it records how long the FIRST real scan took.
       durationMs: existing?.durationMs ?? durationMs ?? null,
       imageCount,
+      videoCount: countVideos(images),
       fingerprint: fingerprint ?? null,
       images: images ?? [],
       _v: CACHE_VERSION,
@@ -61,6 +69,7 @@ export const useMetadataHistoryStore = createHistoryStore({
       const set = new Set(paths)
       entry.images = entry.images.filter(im => !set.has(im.path))
       entry.imageCount = entry.images.length
+      entry.videoCount = countVideos(entry.images)
       entry.fingerprint = null
       await this._save()
     },
