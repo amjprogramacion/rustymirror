@@ -110,7 +110,12 @@
                       Restart now
                     </button>
                   </div>
-                  <div v-if="releaseNotes" class="changelog-block" v-html="formattedNotes" />
+                  <div v-if="versionNotes.length" class="changelog-block">
+                    <div v-for="v in versionNotes" :key="v.version" class="changelog-version">
+                      <span class="changelog-version-title">v{{ v.version }}</span>
+                      <div class="changelog-version-notes" v-html="formatReleaseNotes(v.notes)" />
+                    </div>
+                  </div>
                 </section>
 
                 <div class="settings-divider" />
@@ -503,7 +508,7 @@ import { useOrganizerStore } from '../store/organizer'
 import { useCacheSize } from '../composables/useCacheSize'
 import { useUpdater } from '../composables/useUpdater'
 import { useSettings } from '../composables/useSettings'
-import { formatSize } from '../utils/formatters'
+import { formatSize, formatReleaseNotes } from '../utils/formatters'
 
 defineProps({ modelValue: Boolean })
 defineEmits(['update:modelValue'])
@@ -659,20 +664,7 @@ const version = ref(import.meta.env.VITE_APP_VERSION ?? '0.1.0')
 const { maxHistory, thumbConcurrency, crossDatePhash, fastMode, autoUpdate: autoCheck, notifyOnUpdate, prefetchFilters } = useSettings()
 
 const { cacheSize, thumbCacheSize, loadCacheSizes, clearCache, clearThumbCache } = useCacheSize()
-const { status: updateStatus, latestVersion, releaseNotes, downloadProgress, errorMessage, checkForUpdates, installUpdate, restartApp } = useUpdater()
-
-const formattedNotes = computed(() => {
-  if (!releaseNotes.value) return ''
-  return releaseNotes.value
-    .split('\n')
-    .map(line => {
-      if (line.startsWith('### ')) return `<span class="notes-group">${line.slice(4)}</span>`
-      if (line.startsWith('- '))   return `<span class="notes-item">• ${line.slice(2)}</span>`
-      return null
-    })
-    .filter(Boolean)
-    .join('')
-})
+const { status: updateStatus, latestVersion, versionNotes, downloadProgress, errorMessage, checkForUpdates, installUpdate, restartApp } = useUpdater()
 
 onMounted(() => {
   loadCacheSizes()
@@ -1022,6 +1014,26 @@ onMounted(() => {
   font-size: 11px;
   line-height: 1.5;
   margin-top: -4px;
+}
+
+.changelog-version + .changelog-version {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.changelog-version-title {
+  display: block;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.changelog-version-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .changelog-block :deep(.notes-group) {

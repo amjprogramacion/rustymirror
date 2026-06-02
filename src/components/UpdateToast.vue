@@ -20,7 +20,12 @@
       <div v-if="updateStatus === 'downloading'" class="update-toast-progress">
         <div class="update-toast-progress-bar" :style="{ width: downloadProgress >= 0 ? `${downloadProgress}%` : '100%' }" />
       </div>
-      <div v-if="releaseNotes && updateStatus === 'available'" class="update-toast-notes" v-html="formattedNotes" />
+      <div v-if="versionNotes.length && updateStatus === 'available'" class="update-toast-notes">
+        <div v-for="v in versionNotes" :key="v.version" class="update-toast-version">
+          <span class="update-toast-version-title">v{{ v.version }}</span>
+          <div class="update-toast-version-notes" v-html="formatReleaseNotes(v.notes)" />
+        </div>
+      </div>
       <div v-if="updateStatus !== 'downloading'" class="update-toast-actions">
         <template v-if="updateStatus === 'ready'">
           <button class="toast-btn toast-btn-primary" @click="restartApp">Restart now</button>
@@ -36,23 +41,10 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
 import { useUpdater } from '../composables/useUpdater'
+import { formatReleaseNotes } from '../utils/formatters'
 
-const { showNotification, latestVersion, releaseNotes, status: updateStatus, downloadProgress, installUpdate, restartApp } = useUpdater()
-
-const formattedNotes = computed(() => {
-  if (!releaseNotes.value) return ''
-  return releaseNotes.value
-    .split('\n')
-    .map(line => {
-      if (line.startsWith('### ')) return `<span class="notes-group">${line.slice(4)}</span>`
-      if (line.startsWith('- '))   return `<span class="notes-item">• ${line.slice(2)}</span>`
-      return null
-    })
-    .filter(Boolean)
-    .join('')
-})
+const { showNotification, latestVersion, versionNotes, status: updateStatus, downloadProgress, installUpdate, restartApp } = useUpdater()
 </script>
 
 <style scoped>
@@ -127,6 +119,26 @@ const formattedNotes = computed(() => {
   border-radius: var(--border-radius-sm);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.update-toast-version + .update-toast-version {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+}
+
+.update-toast-version-title {
+  display: block;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.update-toast-version-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .update-toast-notes :deep(.notes-group) {

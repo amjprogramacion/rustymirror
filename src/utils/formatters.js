@@ -128,6 +128,23 @@ export function datetimeLocalToIso(v) {
   return v.length === 16 ? `${v}:00` : v
 }
 
+// ── Release notes ─────────────────────────────────────────────────────────────
+
+// Renders a git-cliff release-notes body into the inline HTML the updater UIs
+// expect: "### group" → group header, "- item" → bullet. Other lines are dropped.
+export function formatReleaseNotes(body) {
+  if (!body) return ''
+  return body
+    .split('\n')
+    .map(line => {
+      if (line.startsWith('### ')) return `<span class="notes-group">${line.slice(4)}</span>`
+      if (line.startsWith('- '))   return `<span class="notes-item">• ${line.slice(2)}</span>`
+      return null
+    })
+    .filter(Boolean)
+    .join('')
+}
+
 // ── Duplicate kind label ──────────────────────────────────────────────────────
 
 export function kindLabel(kind) {
