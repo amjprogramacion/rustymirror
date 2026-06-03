@@ -10,9 +10,10 @@ TARGET_BASE="src-tauri/target"
 VERSION="${TAG#v}"
 
 # ── Locate .app.tar.gz or .app bundle ────────────────────────────────────────
-# Prefer an already-created tarball (bundler may produce it with createUpdaterArtifacts)
-TARBALL_PATH=$(find "$TARGET_BASE" -name "*.app.tar.gz" 2>/dev/null \
-  | grep -v "\.build\|Intermediates" | head -1)
+# Prefer an already-created tarball (bundler may produce it with createUpdaterArtifacts).
+# grep -v is intentionally avoided in these pipelines: on empty find output it exits 1
+# and would trip set -o pipefail.
+TARBALL_PATH=$(find "$TARGET_BASE" -name "*.app.tar.gz" 2>/dev/null | head -1)
 
 if [ -n "$TARBALL_PATH" ]; then
   echo "Found existing tarball: $TARBALL_PATH"
@@ -20,8 +21,7 @@ if [ -n "$TARBALL_PATH" ]; then
   SIG_PATH="${TARBALL_PATH}.sig"
 else
   # Fall back to locating the .app directory and creating the tarball ourselves
-  APP_PATH=$(find "$TARGET_BASE" -name "*.app" 2>/dev/null \
-    | grep -v "\.build\|Intermediates" | head -1)
+  APP_PATH=$(find "$TARGET_BASE" -name "*.app" -type d 2>/dev/null | head -1)
 
   if [ -z "$APP_PATH" ]; then
     echo "DEBUG: Searching for bundle output directories..."
