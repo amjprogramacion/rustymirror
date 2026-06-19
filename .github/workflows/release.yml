@@ -95,6 +95,7 @@ jobs:
         run: npm ci
 
       - name: Build and release
+        id: tauri
         uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -116,4 +117,5 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          ARTIFACT_PATHS: ${{ steps.tauri.outputs.artifactPaths }}
         run: bash scripts/add-mac-updater.sh

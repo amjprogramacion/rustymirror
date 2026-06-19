@@ -4,33 +4,37 @@
 #
 # Required env vars: GITHUB_TOKEN, TAURI_SIGNING_PRIVATE_KEY,
 #                    TAURI_SIGNING_PRIVATE_KEY_PASSWORD, TAG, REPO
-set -euo pipefail
+# Optional:          ARTIFACT_PATHS (JSON array from tauri-action's artifactPaths output)
+set -uo pipefail
 
-TARGET_BASE="src-tauri/target"
 VERSION="${TAG#v}"
 
-# ── Locate .app.tar.gz or .app bundle ────────────────────────────────────────
-# Prefer an already-created tarball (bundler may produce it with createUpdaterArtifacts).
-# grep -v is intentionally avoided in these pipelines: on empty find output it exits 1
-# and would trip set -o pipefail.
-TARBALL_PATH=$(find "$TARGET_BASE" -name "*.app.tar.gz" 2>/dev/null | head -1)
+# ── Diagnostics: show exactly what tauri-action produced ─────────────────────
+echo "::group::Bundle diagnostics"
+echo "pwd: $(pwd)"
+echo "ARTIFACT_PATHS: ${ARTIFACT_PATHS:-<unset>}"
+echo "--- All .app / .app.tar.gz / .dmg / .sig under workspace ---"
+find . -type d -name "node_modules" -prune -o \
+  \( -name "*.app" -o -name "*.app.tar.gz" -o -name "*.dmg" -o -name "*.sig" \) -print 2>/dev/null
+echo "::endgroup::"
+
+# ── Locate the .app.tar.gz (preferred) or .app bundle ────────────────────────
+# Search the whole workspace; a plain string is captured (no head in the pipe so
+# an empty result can't trip pipefail). Take the first line in pure bash.
+ALL_TARBALLS=$(find . -type d -name "node_modules" -prune -o -name "*.app.tar.gz" -print 2>/dev/null)
+TARBALL_PATH="${ALL_TARBALLS%%$'\n'*}"
 
 if [ -n "$TARBALL_PATH" ]; then
   echo "Found existing tarball: $TARBALL_PATH"
-  TARBALL=$(basename "$TARBALL_PATH")
   SIG_PATH="${TARBALL_PATH}.sig"
 else
-  # Fall back to locating the .app directory and creating the tarball ourselves
-  APP_PATH=$(find "$TARGET_BASE" -name "*.app" -type d 2>/dev/null | head -1)
+  ALL_APPS=$(find . -type d -name "node_modules" -prune -o -type d -name "*.app" -print 2>/dev/null)
+  APP_PATH="${ALL_APPS%%$'\n'*}"
 
   if [ -z "$APP_PATH" ]; then
-    echo "DEBUG: Searching for bundle output directories..."
-    find "$TARGET_BASE" -name "bundle" -type d 2>/dev/null | while read -r d; do
-      echo "  $d:"
-      ls -la "$d" 2>/dev/null || true
-    done
-    echo "No .app bundle or .app.tar.gz found — skipping"
-    exit 0
+    echo "No .app bundle or .app.tar.gz found anywhere — cannot build updater artifact."
+    echo "Inspect the diagnostics above to locate the bundle, then adjust this script."
+    exit 1
   fi
 
   echo "Found .app bundle: $APP_PATH"
@@ -44,15 +48,18 @@ else
   (cd "$BUNDLE_DIR" && tar czf "$TARBALL" "${APP_NAME}.app")
 fi
 
+TARBALL=$(basename "$TARBALL_PATH")
+
 # ── Sign if not already signed ────────────────────────────────────────────────
 # TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD are read
 # automatically from the environment by the Tauri CLI.
 if [ ! -f "$SIG_PATH" ]; then
-  echo "Signing $(basename "$TARBALL_PATH")..."
+  echo "Signing $TARBALL..."
   npx tauri signer sign "$TARBALL_PATH"
 fi
 
-TARBALL=$(basename "$TARBALL_PATH")
+# From here on a failure should fail the job.
+set -e
 
 # ── Fetch release metadata ────────────────────────────────────────────────────
 RELEASE_JSON=$(curl -sf -H "Authorization: token $GITHUB_TOKEN" \
