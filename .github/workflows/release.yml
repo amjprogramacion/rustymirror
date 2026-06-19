@@ -69,7 +69,9 @@ jobs:
           $headers = @{Authorization = "Bearer $env:GH_TOKEN"}
           $ver = (Invoke-RestMethod -Headers $headers "https://api.github.com/repos/exiftool/exiftool/tags")[0].name
           Write-Host "Downloading ExifTool $ver"
-          curl.exe -fL "https://exiftool.org/exiftool-${ver}_64.zip" -o exiftool.zip
+          # exiftool.org only hosts the current build and has been returning 404s for the
+          # Windows zip; SourceForge mirrors every recent release reliably.
+          curl.exe -fL "https://sourceforge.net/projects/exiftool/files/exiftool-${ver}_64.zip/download" -o exiftool.zip
           Expand-Archive -Path exiftool.zip -DestinationPath exiftool_tmp
           Copy-Item "exiftool_tmp\exiftool-${ver}_64\exiftool(-k).exe" "src-tauri\resources\exiftool.exe"
           Copy-Item "exiftool_tmp\exiftool-${ver}_64\exiftool_files" "src-tauri\resources\exiftool_files" -Recurse
@@ -95,7 +97,6 @@ jobs:
         run: npm ci
 
       - name: Build and release
-        id: tauri
         uses: tauri-apps/tauri-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -109,13 +110,20 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
-      - name: Add macOS updater artifact to latest.json
-        if: runner.os == 'macOS'
+  # Both matrix legs upload their own single-platform latest.json and clobber each
+  # other. This job runs once after both finish and rewrites latest.json with every
+  # platform, assembled from the signed artifacts already in the release.
+  finalize-updater:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build unified latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
-          ARTIFACT_PATHS: ${{ steps.tauri.outputs.artifactPaths }}
-        run: bash scripts/add-mac-updater.sh
+        run: python3 scripts/build_latest_json.py
